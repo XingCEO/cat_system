@@ -1,0 +1,291 @@
+"""
+Turnover Router - API endpoints for high turnover rate limit-up analysis
+"""
+from fastapi import APIRouter, Query, HTTPException
+from typing import Optional, List
+
+from services.high_turnover_analyzer import high_turnover_analyzer
+from schemas.turnover import (
+    HighTurnoverLimitUpResponse, Top20Response, TurnoverStats,
+    TurnoverHistoryResponse, SymbolTurnoverHistoryResponse,
+    HighTurnoverFilterParams, TrackRequest, TrackStatsResponse
+)
+
+router = APIRouter(prefix="/api/turnover", tags=["高周轉漲停分析"])
+
+
+@router.get("/limit-up", response_model=HighTurnoverLimitUpResponse)
+async def get_high_turnover_limit_up(
+    date: Optional[str] = Query(None, description="查詢日期 YYYY-MM-DD"),
+    min_turnover_rate: Optional[float] = Query(None, description="最低周轉率", ge=0),
+    limit_up_types: Optional[str] = Query(None, description="漲停類型(逗號分隔): 一字板,秒板,盤中,尾盤"),
+    max_open_count: Optional[int] = Query(None, description="開板次數上限", ge=0),
+    industries: Optional[str] = Query(None, description="產業類別(逗號分隔)"),
+    price_min: Optional[float] = Query(None, description="最低股價"),
+    price_max: Optional[float] = Query(None, description="最高股價"),
+    volume_min: Optional[int] = Query(None, description="最低成交量(張)"),
+    preset: Optional[str] = Query(None, description="快速預設: strong_retail/demon/big_player/low_price"),
+):
+    """
+    取得周轉率前20中的漲停股
+    
+    核心邏輯：
+    1. 計算當日所有股票周轉率
+    2. 依周轉率排序取前20名
+    3. 在前20名中篩選漲停股（漲幅>=9.9%）
+    
+    回傳資料包含統計資訊及股票明細
+    """
+    filters = {}
+    
+    if min_turnover_rate is not None:
+        filters["min_turnover_rate"] = min_turnover_rate
+    if limit_up_types:
+        filters["limit_up_types"] = [t.strip() for t in limit_up_types.split(",")]
+    if max_open_count is not None:
+        filters["max_open_count"] = max_open_count
+    if industries:
+        filters["industries"] = [i.strip() for i in industries.split(",")]
+    if price_min is not None:
+        filters["price_min"] = price_min
+    if price_max is not None:
+        filters["price_max"] = price_max
+    if volume_min is not None:
+        filters["volume_min"] = volume_min
+    if preset:
+        filters["preset"] = preset
+    
+    result = await high_turnover_analyzer.get_high_turnover_limit_up(
+        date=date,
+        filters=filters if filters else None
+    )
+    
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "查詢失敗"))
+    
+    return result
+
+
+@router.get("/limit-up/stats", response_model=TurnoverStats)
+async def get_limit_up_stats(
+    date: Optional[str] = Query(None, description="查詢日期 YYYY-MM-DD"),
+):
+    """
+    取得高周轉漲停統計資訊
+    
+    包含：
+    - 周轉率前20總數
+    - 其中漲停股數量
+    - 漲停占比
+    - 平均周轉率
+    - 總成交金額
+    """
+    result = await high_turnover_analyzer.get_high_turnover_limit_up(date=date)
+    
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "查詢失敗"))
+    
+    return result["stats"]
+
+
+@router.get("/top20", response_model=Top20Response)
+async def get_top20_turnover(
+    date: Optional[str] = Query(None, description="查詢日期 YYYY-MM-DD"),
+):
+    """
+    取得周轉率前20完整名單
+    
+    顯示所有前20名股票，並標註哪些有漲停
+    """
+    result = await high_turnover_analyzer.get_top20_turnover(date=date)
+    
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "查詢失敗"))
+    
+    return result
+
+
+@router.get("/history", response_model=TurnoverHistoryResponse)
+async def get_turnover_history(
+    days: int = Query(10, ge=1, le=60, description="查詢天數"),
+    min_occurrence: int = Query(2, ge=1, description="最少出現次數"),
+):
+    """
+    批次歷史分析
+    
+    找出連續多日都在周轉率前20且漲停的股票
+    
+    範例：查詢最近10個交易日，找出至少出現2次的股票
+    """
+    result = await high_turnover_analyzer.get_history(
+        days=days,
+        min_occurrence=min_occurrence
+    )
+    
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "查詢失敗"))
+    
+    return result
+
+
+@router.get("/{symbol}/history", response_model=SymbolTurnoverHistoryResponse)
+async def get_symbol_turnover_history(
+    symbol: str,
+    days: int = Query(20, ge=1, le=60, description="查詢天數"),
+):
+    """
+    查詢單一股票在過去N天的周轉率排名變化
+    
+    顯示該股票每日是否進入前20名及其排名
+    """
+    result = await high_turnover_analyzer.get_symbol_history(
+        symbol=symbol.upper(),
+        days=days
+    )
+    
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "查詢失敗"))
+    
+    return result
+
+
+@router.post("/track")
+async def create_track(request: TrackRequest):
+    """
+    建立追蹤任務
+    
+    追蹤高周轉漲停股的後續表現：
+    - 隔日漲跌幅
+    - 隔日是否繼續漲停
+    - 3/5/7日後表現
+    """
+    # TODO: 實作追蹤邏輯，需要定時任務
+    return {
+        "success": True,
+        "message": "追蹤任務已建立",
+        "date": request.date,
+        "symbols": request.symbols or "all_limit_up"
+    }
+
+
+@router.get("/track/stats", response_model=TrackStatsResponse)
+async def get_track_stats(
+    start_date: Optional[str] = Query(None, description="開始日期"),
+    end_date: Optional[str] = Query(None, description="結束日期"),
+):
+    """
+    取得追蹤統計
+    
+    顯示高周轉漲停股的後續表現統計：
+    - 隔日繼續漲停比例
+    - 隔日平均漲跌幅
+    - 7日後平均報酬
+    """
+    # TODO: 實作追蹤統計
+    return {
+        "success": True,
+        "total_tracked": 0,
+        "day1_continued_limit_up_ratio": None,
+        "day1_avg_change": None,
+        "day3_avg_change": None,
+        "day7_avg_change": None,
+        "results": []
+    }
+
+
+# ===== 快速預設查詢 =====
+
+@router.get("/presets/strong-retail")
+async def get_strong_retail(date: Optional[str] = Query(None)):
+    """
+    超強游資股
+    周轉率>20% + 漲停 + 開板<=1次
+    """
+    return await high_turnover_analyzer.get_high_turnover_limit_up(
+        date=date,
+        filters={"preset": "strong_retail"}
+    )
+
+
+@router.get("/presets/demon")
+async def get_demon_stocks(date: Optional[str] = Query(None)):
+    """
+    妖股候選
+    周轉率前20 + 連續漲停>=2天
+    """
+    return await high_turnover_analyzer.get_high_turnover_limit_up(
+        date=date,
+        filters={"preset": "demon"}
+    )
+
+
+@router.get("/presets/big-player")
+async def get_big_player(date: Optional[str] = Query(None)):
+    """
+    大戶進場
+    周轉率>15% + 封單>5000張
+    """
+    return await high_turnover_analyzer.get_high_turnover_limit_up(
+        date=date,
+        filters={"preset": "big_player"}
+    )
+
+
+@router.get("/presets/low-price")
+async def get_low_price_stocks(date: Optional[str] = Query(None)):
+    """
+    低價飆股
+    周轉率前20 + 漲停 + 股價<30元
+    """
+    return await high_turnover_analyzer.get_high_turnover_limit_up(
+        date=date,
+        filters={"preset": "low_price"}
+    )
+
+
+# ===== Top20 Limit-Up Dedicated Endpoints =====
+
+@router.get("/top20-limit-up")
+async def get_top20_limit_up(
+    date: Optional[str] = Query(None, description="查詢日期 YYYY-MM-DD"),
+):
+    """
+    取得當日周轉率前20名且漲停的股票（專用端點）
+    
+    回傳增強的統計資訊：
+    - 符合條件股票清單
+    - 完整前20名清單
+    - 詳細統計數據
+    """
+    result = await high_turnover_analyzer.get_top20_limit_up_enhanced(date=date)
+    
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "查詢失敗"))
+    
+    return result
+
+
+@router.get("/top20-limit-up/batch")
+async def get_top20_limit_up_batch(
+    start_date: str = Query(..., description="開始日期 YYYY-MM-DD"),
+    end_date: str = Query(..., description="結束日期 YYYY-MM-DD"),
+    min_occurrence: int = Query(2, ge=1, description="最少出現次數"),
+):
+    """
+    批次查詢多日資料，找出連續出現的股票
+    
+    回傳：
+    - 各日期符合條件的股票
+    - 重複出現的股票統計
+    """
+    result = await high_turnover_analyzer.get_top20_limit_up_batch(
+        start_date=start_date,
+        end_date=end_date,
+        min_occurrence=min_occurrence
+    )
+    
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "查詢失敗"))
+    
+    return result
+
