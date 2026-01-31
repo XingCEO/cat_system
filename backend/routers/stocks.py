@@ -34,6 +34,7 @@ async def filter_stocks(
     volume_ratio_max: Optional[float] = Query(None, description="量比上限"),
     industries: Optional[str] = Query(None, description="產業類別(逗號分隔)"),
     exclude_etf: bool = Query(True, description="排除ETF"),
+    exclude_special: bool = Query(True, description="排除權證/特別股"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     sort_by: str = Query("change_percent", description="排序欄位"),
@@ -41,10 +42,12 @@ async def filter_stocks(
 ):
     """
     篩選符合條件的股票
-    
-    - 預設條件：漲幅2%-3%、成交量>=500張、排除ETF
-    - 支援多種進階篩選條件
-    - 計算連續上漲天數、振幅、量比等指標
+
+    預設條件：
+    - 漲幅 2%-10%
+    - 成交量 >= 500 張
+    - 股價 >= 10 元
+    - 排除 ETF 和特別股
     """
     # Parse industries from comma-separated string
     industry_list = industries.split(",") if industries else None

@@ -18,8 +18,8 @@ class HighTurnoverAnalyzer:
     """高周轉率漲停股分析服務"""
     
     # 預設參數
-    TOP_N = 100  # 取周轉率前N名
-    LIMIT_UP_THRESHOLD = 0.099  # 漲停閾值 9.9%
+    TOP_N = 200  # 取周轉率前N名
+    # 移除固定閾值，改用實際漲停價計算
     
     # 快速預設條件
     PRESETS = {
@@ -43,6 +43,46 @@ class HighTurnoverAnalyzer:
     def __init__(self):
         self.data_fetcher = data_fetcher
         self.calculator = StockCalculator()
+
+    def _calculate_limit_up_price(self, prev_close: float) -> float:
+        """
+        計算台股漲停價
+        台股漲停為昨收+10%，依升降單位(tick size)規則取整
+        """
+        if prev_close <= 0:
+            return 0
+
+        raw_limit = prev_close * 1.10
+
+        # 台股升降單位規則
+        if raw_limit < 10:
+            tick = 0.01
+        elif raw_limit < 50:
+            tick = 0.05
+        elif raw_limit < 100:
+            tick = 0.1
+        elif raw_limit < 500:
+            tick = 0.5
+        elif raw_limit < 1000:
+            tick = 1.0
+        else:
+            tick = 5.0
+
+        # 漲停價取整（向下取整到最近的tick）
+        limit_up_price = (raw_limit // tick) * tick
+        return round(limit_up_price, 2)
+
+    def _is_limit_up(self, close_price: float, prev_close: float) -> bool:
+        """
+        判定是否漲停
+        收盤價等於漲停價即為漲停
+        """
+        if prev_close <= 0 or close_price <= 0:
+            return False
+
+        limit_up_price = self._calculate_limit_up_price(prev_close)
+        # 允許微小誤差（0.01元）
+        return abs(close_price - limit_up_price) < 0.02
     
     async def get_high_turnover_limit_up(
         self,
@@ -141,9 +181,10 @@ class HighTurnoverAnalyzer:
             # 5. 加入排名
             for idx, stock in enumerate(sorted_stocks, 1):
                 stock["turnover_rank"] = idx
-                # 判定漲停
-                change_pct = stock.get("change_percent", 0) or 0
-                stock["is_limit_up"] = change_pct >= self.LIMIT_UP_THRESHOLD * 100
+                # 判定漲停：使用實際漲停價計算
+                close_price = stock.get("close_price", 0) or 0
+                prev_close = stock.get("prev_close", 0) or 0
+                stock["is_limit_up"] = self._is_limit_up(close_price, prev_close)
                 if stock["is_limit_up"]:
                     stock["limit_up_type"] = self._determine_limit_up_type(stock)
             
@@ -773,6 +814,468 @@ class HighTurnoverAnalyzer:
             "total_days": len(daily_results),
             "daily_results": daily_results,
             "frequent_stocks": frequent_stocks,
+        }
+
+    async def get_top200_limit_up(self, date: Optional[str] = None) -> Dict[str, Any]:
+        """
+        週轉率前200名且漲停股
+        """
+        if date is None:
+            from utils.date_utils import get_latest_trading_day
+            date = get_latest_trading_day()
+
+        top200_result = await self.get_top20_turnover(date)
+        if not top200_result.get("success"):
+            return top200_result
+
+        limit_up_stocks = [
+            stock for stock in top200_result["items"]
+            if stock.get("is_limit_up", False)
+        ]
+
+        return {
+            "success": True,
+            "query_date": date,
+            "total_in_top200": len(top200_result["items"]),
+            "limit_up_count": len(limit_up_stocks),
+            "items": limit_up_stocks,
+        }
+
+    async def get_top200_change_range(
+        self,
+        date: Optional[str] = None,
+        change_min: Optional[float] = None,
+        change_max: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """
+        週轉率前200名且漲幅在指定區間
+        """
+        if date is None:
+            from utils.date_utils import get_latest_trading_day
+            date = get_latest_trading_day()
+
+        top200_result = await self.get_top20_turnover(date)
+        if not top200_result.get("success"):
+            return top200_result
+
+        filtered_stocks = []
+        for stock in top200_result["items"]:
+            change_pct = stock.get("change_percent", 0) or 0
+            if change_min is not None and change_pct < change_min:
+                continue
+            if change_max is not None and change_pct > change_max:
+                continue
+            filtered_stocks.append(stock)
+
+        return {
+            "success": True,
+            "query_date": date,
+            "filter": {"change_min": change_min, "change_max": change_max},
+            "total_in_top200": len(top200_result["items"]),
+            "filtered_count": len(filtered_stocks),
+            "items": filtered_stocks,
+        }
+
+    async def get_top200_5day_high(self, date: Optional[str] = None) -> Dict[str, Any]:
+        """
+        週轉率前200名且收盤價五日內創新高
+        """
+        if date is None:
+            from utils.date_utils import get_latest_trading_day
+            date = get_latest_trading_day()
+
+        top200_result = await self.get_top20_turnover(date)
+        if not top200_result.get("success"):
+            return top200_result
+
+        # 取得過去5個交易日資料
+        from utils.date_utils import get_past_trading_days
+        past_days = get_past_trading_days(5)
+
+        new_high_stocks = []
+        for stock in top200_result["items"]:
+            symbol = stock["symbol"]
+            current_close = stock.get("close_price", 0) or 0
+
+            if current_close <= 0:
+                continue
+
+            # 檢查是否為5日新高
+            is_new_high = True
+            for past_date in past_days[1:]:  # 排除今天
+                past_result = await self.get_top20_turnover(past_date)
+                if past_result.get("success"):
+                    for past_stock in past_result["items"]:
+                        if past_stock["symbol"] == symbol:
+                            past_close = past_stock.get("close_price", 0) or 0
+                            if past_close >= current_close:
+                                is_new_high = False
+                            break
+
+            if is_new_high:
+                stock["is_5day_high"] = True
+                new_high_stocks.append(stock)
+
+        return {
+            "success": True,
+            "query_date": date,
+            "total_in_top200": len(top200_result["items"]),
+            "new_high_count": len(new_high_stocks),
+            "items": new_high_stocks,
+        }
+
+    async def get_top200_5day_low(self, date: Optional[str] = None) -> Dict[str, Any]:
+        """
+        週轉率前200名且收盤價五日內創新低
+        """
+        if date is None:
+            from utils.date_utils import get_latest_trading_day
+            date = get_latest_trading_day()
+
+        top200_result = await self.get_top20_turnover(date)
+        if not top200_result.get("success"):
+            return top200_result
+
+        from utils.date_utils import get_past_trading_days
+        past_days = get_past_trading_days(5)
+
+        new_low_stocks = []
+        for stock in top200_result["items"]:
+            symbol = stock["symbol"]
+            current_close = stock.get("close_price", 0) or 0
+
+            if current_close <= 0:
+                continue
+
+            is_new_low = True
+            for past_date in past_days[1:]:
+                past_result = await self.get_top20_turnover(past_date)
+                if past_result.get("success"):
+                    for past_stock in past_result["items"]:
+                        if past_stock["symbol"] == symbol:
+                            past_close = past_stock.get("close_price", 0) or 0
+                            if past_close > 0 and past_close <= current_close:
+                                is_new_low = False
+                            break
+
+            if is_new_low:
+                stock["is_5day_low"] = True
+                new_low_stocks.append(stock)
+
+        return {
+            "success": True,
+            "query_date": date,
+            "total_in_top200": len(top200_result["items"]),
+            "new_low_count": len(new_low_stocks),
+            "items": new_low_stocks,
+        }
+
+    async def get_ma_breakout(
+        self,
+        date: Optional[str] = None,
+        min_change: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """
+        突破糾結均線篩選（無周轉率限制）
+        糾結均線定義：5日、10日、20日均線在3%範圍內糾結，今日收盤突破
+        """
+        if date is None:
+            from utils.date_utils import get_latest_trading_day
+            date = get_latest_trading_day()
+
+        # 取得當日所有股票資料（不限制周轉率）
+        all_stocks_df = await self._fetch_daily_data(date)
+        if all_stocks_df.empty:
+            return {"success": False, "error": "無法取得當日股票資料"}
+
+        # 取得流通股數資料
+        float_shares_map = await self._get_float_shares()
+
+        # 計算周轉率
+        stocks_with_turnover = self._calculate_turnover_rates(all_stocks_df, float_shares_map)
+        if not stocks_with_turnover:
+            return {"success": False, "error": "無有效資料"}
+
+        from utils.date_utils import get_past_trading_days
+        past_days = get_past_trading_days(25)
+
+        breakout_stocks = []
+
+        for stock in stocks_with_turnover:
+            symbol = stock["symbol"]
+            current_close = stock.get("close_price", 0) or 0
+            change_pct = stock.get("change_percent", 0) or 0
+
+            # 檢查漲幅條件（如有指定）
+            if min_change is not None and change_pct < min_change:
+                continue
+
+            if current_close <= 0:
+                continue
+
+            # 收集過去25日收盤價計算均線
+            closes = [current_close]
+            for past_date in past_days[1:25]:
+                past_df = await self._fetch_daily_data(past_date)
+                if not past_df.empty:
+                    stock_row = past_df[past_df["stock_id"] == symbol]
+                    if not stock_row.empty:
+                        past_close = float(stock_row.iloc[0].get("close", 0) or 0)
+                        if past_close > 0:
+                            closes.append(past_close)
+
+            if len(closes) < 20:
+                continue
+
+            # 計算均線
+            ma5 = sum(closes[:5]) / 5
+            ma10 = sum(closes[:10]) / 10
+            ma20 = sum(closes[:20]) / 20
+
+            # 計算昨日均線（用於判斷突破）
+            if len(closes) >= 21:
+                yesterday_closes = closes[1:21]
+                yesterday_ma5 = sum(yesterday_closes[:5]) / 5
+                yesterday_ma10 = sum(yesterday_closes[:10]) / 10
+                yesterday_ma20 = sum(yesterday_closes[:20]) / 20
+
+                # 判斷昨日均線糾結（在3%範圍內）
+                ma_values = [yesterday_ma5, yesterday_ma10, yesterday_ma20]
+                ma_avg = sum(ma_values) / 3
+                if ma_avg > 0:
+                    ma_range = (max(ma_values) - min(ma_values)) / ma_avg * 100
+
+                    # 糾結條件：均線範圍在3%內，今日收盤突破所有均線
+                    if ma_range <= 3.0 and current_close > max(ma5, ma10, ma20):
+                        stock["ma5"] = round(ma5, 2)
+                        stock["ma10"] = round(ma10, 2)
+                        stock["ma20"] = round(ma20, 2)
+                        stock["ma_range"] = round(ma_range, 2)
+                        stock["is_breakout"] = True
+                        breakout_stocks.append(stock)
+
+        # 依漲幅排序
+        breakout_stocks.sort(key=lambda x: x.get("change_percent", 0), reverse=True)
+
+        return {
+            "success": True,
+            "query_date": date,
+            "filter": {"min_change": min_change},
+            "breakout_count": len(breakout_stocks),
+            "items": breakout_stocks,
+        }
+
+    # ===== 日期區間查詢方法 =====
+
+    async def _get_date_range(
+        self,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None
+    ) -> List[str]:
+        """
+        取得日期區間內的交易日列表
+        """
+        from utils.date_utils import get_latest_trading_day, get_past_trading_days
+        from datetime import datetime, timedelta
+
+        # 預設使用最新交易日
+        if start_date is None and end_date is None:
+            return [get_latest_trading_day()]
+
+        # 只有開始日期 = 單日查詢
+        if start_date and not end_date:
+            return [start_date]
+
+        # 只有結束日期 = 單日查詢
+        if end_date and not start_date:
+            return [end_date]
+
+        # 有區間，產生日期列表
+        try:
+            start = datetime.strptime(start_date, "%Y-%m-%d")
+            end = datetime.strptime(end_date, "%Y-%m-%d")
+        except ValueError:
+            return [get_latest_trading_day()]
+
+        if start > end:
+            start, end = end, start
+
+        dates = []
+        current = start
+        while current <= end:
+            dates.append(current.strftime("%Y-%m-%d"))
+            current += timedelta(days=1)
+
+        return dates
+
+    async def get_top200_limit_up_range(
+        self,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        週轉率前200名且漲停股（支援日期區間）
+        """
+        dates = await self._get_date_range(start_date, end_date)
+        all_items = []
+        daily_stats = []
+
+        for date in dates:
+            result = await self.get_top200_limit_up(date)
+            if result.get("success"):
+                for item in result.get("items", []):
+                    item["query_date"] = date
+                    all_items.append(item)
+                daily_stats.append({
+                    "date": date,
+                    "count": result.get("limit_up_count", 0)
+                })
+
+        return {
+            "success": True,
+            "start_date": start_date or dates[0] if dates else None,
+            "end_date": end_date or dates[-1] if dates else None,
+            "total_days": len(dates),
+            "limit_up_count": len(all_items),
+            "daily_stats": daily_stats,
+            "items": all_items,
+        }
+
+    async def get_top200_change_range_batch(
+        self,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        change_min: Optional[float] = None,
+        change_max: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """
+        週轉率前200名且漲幅在指定區間（支援日期區間）
+        """
+        dates = await self._get_date_range(start_date, end_date)
+        all_items = []
+        daily_stats = []
+
+        for date in dates:
+            result = await self.get_top200_change_range(date, change_min, change_max)
+            if result.get("success"):
+                for item in result.get("items", []):
+                    item["query_date"] = date
+                    all_items.append(item)
+                daily_stats.append({
+                    "date": date,
+                    "count": result.get("filtered_count", 0)
+                })
+
+        return {
+            "success": True,
+            "start_date": start_date or dates[0] if dates else None,
+            "end_date": end_date or dates[-1] if dates else None,
+            "filter": {"change_min": change_min, "change_max": change_max},
+            "total_days": len(dates),
+            "filtered_count": len(all_items),
+            "daily_stats": daily_stats,
+            "items": all_items,
+        }
+
+    async def get_top200_5day_high_range(
+        self,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        週轉率前200名且五日創新高（支援日期區間）
+        """
+        dates = await self._get_date_range(start_date, end_date)
+        all_items = []
+        daily_stats = []
+
+        for date in dates:
+            result = await self.get_top200_5day_high(date)
+            if result.get("success"):
+                for item in result.get("items", []):
+                    item["query_date"] = date
+                    all_items.append(item)
+                daily_stats.append({
+                    "date": date,
+                    "count": result.get("new_high_count", 0)
+                })
+
+        return {
+            "success": True,
+            "start_date": start_date or dates[0] if dates else None,
+            "end_date": end_date or dates[-1] if dates else None,
+            "total_days": len(dates),
+            "new_high_count": len(all_items),
+            "daily_stats": daily_stats,
+            "items": all_items,
+        }
+
+    async def get_top200_5day_low_range(
+        self,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        週轉率前200名且五日創新低（支援日期區間）
+        """
+        dates = await self._get_date_range(start_date, end_date)
+        all_items = []
+        daily_stats = []
+
+        for date in dates:
+            result = await self.get_top200_5day_low(date)
+            if result.get("success"):
+                for item in result.get("items", []):
+                    item["query_date"] = date
+                    all_items.append(item)
+                daily_stats.append({
+                    "date": date,
+                    "count": result.get("new_low_count", 0)
+                })
+
+        return {
+            "success": True,
+            "start_date": start_date or dates[0] if dates else None,
+            "end_date": end_date or dates[-1] if dates else None,
+            "total_days": len(dates),
+            "new_low_count": len(all_items),
+            "daily_stats": daily_stats,
+            "items": all_items,
+        }
+
+    async def get_ma_breakout_range(
+        self,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        min_change: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """
+        突破糾結均線（支援日期區間）
+        """
+        dates = await self._get_date_range(start_date, end_date)
+        all_items = []
+        daily_stats = []
+
+        for date in dates:
+            result = await self.get_ma_breakout(date, min_change)
+            if result.get("success"):
+                for item in result.get("items", []):
+                    item["query_date"] = date
+                    all_items.append(item)
+                daily_stats.append({
+                    "date": date,
+                    "count": result.get("breakout_count", 0)
+                })
+
+        return {
+            "success": True,
+            "start_date": start_date or dates[0] if dates else None,
+            "end_date": end_date or dates[-1] if dates else None,
+            "filter": {"min_change": min_change},
+            "total_days": len(dates),
+            "breakout_count": len(all_items),
+            "daily_stats": daily_stats,
+            "items": all_items,
         }
 
 

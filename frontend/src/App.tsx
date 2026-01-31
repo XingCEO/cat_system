@@ -5,9 +5,11 @@ import { HomePage } from '@/pages/HomePage';
 import { BacktestPage, WatchlistPage, HistoryPage, BatchComparePage } from '@/pages/OtherPages';
 import { HighTurnoverPage } from '@/pages/HighTurnoverPage';
 import { Top20TurnoverLimitUpPage } from '@/pages/Top20TurnoverLimitUpPage';
+import { TurnoverFiltersPage } from '@/pages/TurnoverFiltersPage';
+import { MaBreakoutPage } from '@/pages/MaBreakoutPage';
 import { Button } from '@/components/ui/button';
 import { useStore } from '@/store/store';
-import { Moon, Sun, TrendingUp, Flame, Trophy } from 'lucide-react';
+import { Moon, Sun, TrendingUp, Flame, Trophy, Activity, Zap } from 'lucide-react';
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -29,7 +31,17 @@ function NavBar() {
                     <Button variant="ghost" size="sm" asChild><Link to="/">即時篩選</Link></Button>
                     <Button variant="ghost" size="sm" asChild>
                         <Link to="/top20-limit-up" className="flex items-center gap-1">
-                            <Trophy className="w-4 h-4 text-yellow-500" />前100周轉漲停
+                            <Trophy className="w-4 h-4 text-yellow-500" />前200周轉漲停
+                        </Link>
+                    </Button>
+                    <Button variant="ghost" size="sm" asChild>
+                        <Link to="/turnover-filters" className="flex items-center gap-1">
+                            <Activity className="w-4 h-4 text-blue-500" />篩選器
+                        </Link>
+                    </Button>
+                    <Button variant="ghost" size="sm" asChild>
+                        <Link to="/ma-breakout" className="flex items-center gap-1">
+                            <Zap className="w-4 h-4 text-purple-500" />均線突破
                         </Link>
                     </Button>
                     <Button variant="ghost" size="sm" asChild>
@@ -63,6 +75,8 @@ function AppContent() {
             <Routes>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/top20-limit-up" element={<Top20TurnoverLimitUpPage />} />
+                <Route path="/turnover-filters" element={<TurnoverFiltersPage />} />
+                <Route path="/ma-breakout" element={<MaBreakoutPage />} />
                 <Route path="/turnover" element={<HighTurnoverPage />} />
                 <Route path="/batch" element={<BatchComparePage />} />
                 <Route path="/backtest" element={<BacktestPage />} />

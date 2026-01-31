@@ -129,10 +129,10 @@ export function HighTurnoverPage() {
                 <div>
                     <h1 className="text-2xl font-bold flex items-center gap-2">
                         <Flame className="w-7 h-7 text-orange-500" />
-                        周轉率前20名漲停股分析
+                        周轉率前200名漲停股分析
                     </h1>
                     <p className="text-sm text-muted-foreground">
-                        顯示當日周轉率排名前20的股票中，達到漲停（漲幅≥9.9%）的股票（{queryDate}）
+                        顯示當日周轉率排名前200的股票中，達到漲停的股票（{queryDate}）
                     </p>
                 </div>
             </div>
@@ -142,10 +142,10 @@ export function HighTurnoverPage() {
                 <div className="grid gap-4 md:grid-cols-4 mb-6">
                     <Card>
                         <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium text-muted-foreground">周轉率前20名</CardTitle>
+                            <CardTitle className="text-sm font-medium text-muted-foreground">周轉率前200名</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">20 檔</div>
+                            <div className="text-2xl font-bold">{stats.top20_count} 檔</div>
                         </CardContent>
                     </Card>
                     <Card className="border-orange-500/50">
@@ -161,7 +161,7 @@ export function HighTurnoverPage() {
                             <CardTitle className="text-sm font-medium text-muted-foreground">漲停佔比</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">{stats.limit_up_count}/20 = {stats.limit_up_ratio}%</div>
+                            <div className="text-2xl font-bold">{stats.limit_up_count}/{stats.top20_count} = {stats.limit_up_ratio}%</div>
                         </CardContent>
                     </Card>
                     <Card>
@@ -200,7 +200,7 @@ export function HighTurnoverPage() {
                                 variant={viewMode === 'top20' ? 'default' : 'outline'}
                                 onClick={() => setViewMode('top20')}
                             >
-                                <BarChart2 className="w-4 h-4 mr-1" /> Top20完整
+                                <BarChart2 className="w-4 h-4 mr-1" /> Top200完整
                             </Button>
                         </div>
 
@@ -275,7 +275,7 @@ export function HighTurnoverPage() {
                             {viewMode === 'limit_up' ? (
                                 <><Flame className="w-5 h-5 text-orange-500" /> 高周轉漲停股</>
                             ) : (
-                                <><Award className="w-5 h-5" /> 周轉率前20完整名單</>
+                                <><Award className="w-5 h-5" /> 周轉率前200完整名單</>
                             )}
                         </span>
                         <span className="text-sm font-normal text-muted-foreground">

@@ -115,9 +115,14 @@ class StockFilter:
         elif "close" in df.columns and "open" in df.columns:
             df["prev_close"] = df["close"].shift(1)
         
-        # Filter: Exclude ETF (00 prefix)
+        # Filter: Exclude ETF (00 prefix and 006xxx patterns)
         if params.exclude_etf:
-            df = df[~df["stock_id"].str.startswith("00")]
+            df = df[~df["stock_id"].str.match(r"^00\d*")]
+
+        # Filter: Exclude special securities (warrants, preferred stocks)
+        if hasattr(params, 'exclude_special') and params.exclude_special:
+            # 排除權證(開頭7)、特別股(開頭9)、存託憑證等
+            df = df[~df["stock_id"].str.match(r"^[789]")]
         
         # Filter: Change percent range
         if "spread" in df.columns and "close" in df.columns:

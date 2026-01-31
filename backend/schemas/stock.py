@@ -62,11 +62,11 @@ class StockFilterParams(BaseModel):
     date: Optional[str] = Field(None, description="查詢日期 YYYY-MM-DD")
 
     # Change percent range
-    change_min: Optional[float] = Field(2.0, description="漲幅下限(%)")
-    change_max: Optional[float] = Field(3.0, description="漲幅上限(%)")
+    change_min: Optional[float] = Field(None, description="漲幅下限(%)")
+    change_max: Optional[float] = Field(None, description="漲幅上限(%)")
 
     # Volume filter (in lots/張)
-    volume_min: Optional[int] = Field(500, description="最小成交量(張)")
+    volume_min: Optional[int] = Field(None, description="最小成交量(張)")
     volume_max: Optional[int] = Field(None, description="最大成交量(張)")
 
     # Price range
@@ -94,6 +94,9 @@ class StockFilterParams(BaseModel):
 
     # ETF exclusion
     exclude_etf: bool = Field(True, description="排除ETF")
+
+    # Special securities exclusion
+    exclude_special: bool = Field(True, description="排除權證/特別股")
 
     # Pagination
     page: int = Field(1, ge=1)

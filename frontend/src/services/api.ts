@@ -170,6 +170,56 @@ export async function getTop20LimitUpBatch(
     return data;
 }
 
+// ===== 新增篩選 API =====
+
+// 週轉率前200名且漲停股（支援日期區間）
+export async function getTop200LimitUp(startDate?: string, endDate?: string): Promise<any> {
+    const params = new URLSearchParams();
+    if (startDate) params.set('start_date', startDate);
+    if (endDate) params.set('end_date', endDate);
+    const { data } = await api.get<any>(`/turnover/top200-limit-up?${params}`);
+    return data;
+}
+
+// 週轉率前200名且漲幅在指定區間（支援日期區間）
+export async function getTop200ChangeRange(startDate?: string, endDate?: string, changeMin?: number, changeMax?: number): Promise<any> {
+    const params = new URLSearchParams();
+    if (startDate) params.set('start_date', startDate);
+    if (endDate) params.set('end_date', endDate);
+    if (changeMin !== undefined) params.set('change_min', String(changeMin));
+    if (changeMax !== undefined) params.set('change_max', String(changeMax));
+    const { data } = await api.get<any>(`/turnover/top200-change-range?${params}`);
+    return data;
+}
+
+// 週轉率前200名且五日創新高（支援日期區間）
+export async function getTop200_5DayHigh(startDate?: string, endDate?: string): Promise<any> {
+    const params = new URLSearchParams();
+    if (startDate) params.set('start_date', startDate);
+    if (endDate) params.set('end_date', endDate);
+    const { data } = await api.get<any>(`/turnover/top200-5day-high?${params}`);
+    return data;
+}
+
+// 週轉率前200名且五日創新低（支援日期區間）
+export async function getTop200_5DayLow(startDate?: string, endDate?: string): Promise<any> {
+    const params = new URLSearchParams();
+    if (startDate) params.set('start_date', startDate);
+    if (endDate) params.set('end_date', endDate);
+    const { data } = await api.get<any>(`/turnover/top200-5day-low?${params}`);
+    return data;
+}
+
+// 突破糾結均線（支援日期區間）
+export async function getMaBreakout(startDate?: string, endDate?: string, minChange?: number): Promise<any> {
+    const params = new URLSearchParams();
+    if (startDate) params.set('start_date', startDate);
+    if (endDate) params.set('end_date', endDate);
+    if (minChange !== undefined) params.set('min_change', String(minChange));
+    const { data } = await api.get<any>(`/turnover/ma-breakout?${params}`);
+    return data;
+}
+
 // Export data as file download
 export function downloadExportFile(format: 'csv' | 'excel' | 'json', data: any[], filename: string): void {
     let content: string;

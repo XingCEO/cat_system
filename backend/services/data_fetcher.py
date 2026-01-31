@@ -4,7 +4,7 @@ Data Fetcher - FinMind API + TWSE Open Data
 import httpx
 import pandas as pd
 from datetime import datetime, date, timedelta
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 import asyncio
 import logging
 
@@ -15,11 +15,25 @@ settings = get_settings()
 logger = logging.getLogger(__name__)
 
 
+def parse_number(val: Any, to_float: bool = False) -> Optional[Union[int, float]]:
+    """統一的數值解析函式，處理各種格式的數值字串"""
+    if val is None or val == "" or val == "--" or val == "X":
+        return None
+    val_str = str(val).replace(",", "").replace("+", "").replace(" ", "")
+    try:
+        return float(val_str) if to_float else int(float(val_str))
+    except (ValueError, TypeError):
+        return None
+
+
 class DataFetcher:
     """Fetch stock data from FinMind API and TWSE Open Data"""
 
     # Class-level flag to skip FinMind when it's unavailable
     _finmind_available = True
+    # Shared HTTP client for connection pooling
+    _http_client: Optional[httpx.AsyncClient] = None
+    _client_lock = asyncio.Lock()
 
     def __init__(self):
         self.finmind_url = settings.finmind_base_url
@@ -27,15 +41,37 @@ class DataFetcher:
         self.token = settings.finmind_api_token
         self.retry_count = settings.api_retry_count
         self.retry_delay = settings.api_retry_delay
+
+    @classmethod
+    async def get_client(cls) -> httpx.AsyncClient:
+        """取得共享的 HTTP Client（連線池重用）"""
+        if cls._http_client is None or cls._http_client.is_closed:
+            async with cls._client_lock:
+                if cls._http_client is None or cls._http_client.is_closed:
+                    cls._http_client = httpx.AsyncClient(
+                        timeout=30.0,
+                        limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+                        headers={
+                            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+                        }
+                    )
+        return cls._http_client
+
+    @classmethod
+    async def close_client(cls):
+        """關閉共享的 HTTP Client"""
+        if cls._http_client and not cls._http_client.is_closed:
+            await cls._http_client.aclose()
+            cls._http_client = None
     
     async def fetch_with_retry(self, url: str, params: dict) -> Optional[dict]:
-        """Fetch data with retry logic"""
+        """Fetch data with retry logic using shared client"""
+        client = await self.get_client()
         for attempt in range(self.retry_count):
             try:
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    response = await client.get(url, params=params)
-                    response.raise_for_status()
-                    return response.json()
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                return response.json()
             except Exception as e:
                 logger.warning(f"Attempt {attempt + 1} failed: {e}")
                 if attempt < self.retry_count - 1:
@@ -64,15 +100,15 @@ class DataFetcher:
         cached = cache_manager.get(cache_key, "industry")
         if cached is not None:
             return pd.DataFrame(cached)
-        
+
         # Use TWSE OpenAPI for stock info
         twse_openapi_url = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
-        
+
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(twse_openapi_url)
-                response.raise_for_status()
-                data = response.json()
+            client = await self.get_client()
+            response = await client.get(twse_openapi_url)
+            response.raise_for_status()
+            data = response.json()
                 
             if data:
                 stocks = []
@@ -149,18 +185,18 @@ class DataFetcher:
 
         # Try FinMind with single attempt
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(self.finmind_url, params=params)
-                if response.status_code == 402:
-                    DataFetcher._finmind_available = False
-                    logger.warning("FinMind API quota exceeded, switching to TWSE")
-                    return await self._fetch_twse_daily_openapi(trade_date)
-                response.raise_for_status()
-                data = response.json()
-                if data and data.get("status") == 200 and data.get("data"):
-                    df = pd.DataFrame(data["data"])
-                    cache_manager.set(cache_key, df.to_dict("records"), "daily")
-                    return df
+            client = await self.get_client()
+            response = await client.get(self.finmind_url, params=params, timeout=10.0)
+            if response.status_code == 402:
+                DataFetcher._finmind_available = False
+                logger.warning("FinMind API quota exceeded, switching to TWSE")
+                return await self._fetch_twse_daily_openapi(trade_date)
+            response.raise_for_status()
+            data = response.json()
+            if data and data.get("status") == 200 and data.get("data"):
+                df = pd.DataFrame(data["data"])
+                cache_manager.set(cache_key, df.to_dict("records"), "daily")
+                return df
         except Exception as e:
             logger.warning(f"FinMind daily data failed: {e}")
 
@@ -175,10 +211,10 @@ class DataFetcher:
             # Use TWSE OpenAPI - returns today's data
             url = "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
 
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(url)
-                response.raise_for_status()
-                data = response.json()
+            client = await self.get_client()
+            response = await client.get(url)
+            response.raise_for_status()
+            data = response.json()
 
             if data:
                 stocks = []
@@ -278,20 +314,20 @@ class DataFetcher:
 
         # Try FinMind with only 1 attempt to fail fast
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(self.finmind_url, params=params)
-                if response.status_code == 402:
-                    # Mark FinMind as unavailable for this session
-                    DataFetcher._finmind_available = False
-                    logger.warning("FinMind API quota exceeded (402), switching to TWSE fallback for all requests")
-                    return await self._fetch_twse_historical(symbol, start_date, end_date)
-                response.raise_for_status()
-                data = response.json()
-                if data and data.get("status") == 200 and data.get("data"):
-                    df = pd.DataFrame(data["data"])
-                    if not df.empty:
-                        cache_manager.set(cache_key, df.to_dict("records"), "historical")
-                    return df
+            client = await self.get_client()
+            response = await client.get(self.finmind_url, params=params, timeout=10.0)
+            if response.status_code == 402:
+                # Mark FinMind as unavailable for this session
+                DataFetcher._finmind_available = False
+                logger.warning("FinMind API quota exceeded (402), switching to TWSE fallback for all requests")
+                return await self._fetch_twse_historical(symbol, start_date, end_date)
+            response.raise_for_status()
+            data = response.json()
+            if data and data.get("status") == 200 and data.get("data"):
+                df = pd.DataFrame(data["data"])
+                if not df.empty:
+                    cache_manager.set(cache_key, df.to_dict("records"), "historical")
+                return df
         except Exception as e:
             logger.warning(f"FinMind request failed: {e}")
 
@@ -467,53 +503,44 @@ class DataFetcher:
                 }
 
                 try:
-                    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True, headers=headers) as client:
-                        response = await client.get(url, params=params)
-                        if response.status_code == 307:
-                            consecutive_failures += 1
+                    client = await self.get_client()
+                    response = await client.get(url, params=params, timeout=15.0, follow_redirects=True)
+                    if response.status_code == 307:
+                        consecutive_failures += 1
+                        current = self._next_month(current)
+                        continue
+
+                    if response.status_code == 200:
+                        consecutive_failures = 0
+                        try:
+                            data = response.json()
+                        except:
                             current = self._next_month(current)
                             continue
 
-                        if response.status_code == 200:
-                            consecutive_failures = 0
-                            try:
-                                data = response.json()
-                            except:
-                                current = self._next_month(current)
-                                continue
+                        if data.get("stat") == "OK" and data.get("data"):
+                            for row in data["data"]:
+                                try:
+                                    date_parts = row[0].split("/")
+                                    if len(date_parts) == 3:
+                                        year = int(date_parts[0]) + 1911
+                                        month = int(date_parts[1])
+                                        day = int(date_parts[2])
+                                        row_date = date(year, month, day)
 
-                            if data.get("stat") == "OK" and data.get("data"):
-                                for row in data["data"]:
-                                    try:
-                                        date_parts = row[0].split("/")
-                                        if len(date_parts) == 3:
-                                            year = int(date_parts[0]) + 1911
-                                            month = int(date_parts[1])
-                                            day = int(date_parts[2])
-                                            row_date = date(year, month, day)
-
-                                            if start_dt.date() <= row_date <= end_dt.date():
-                                                def parse_val(val, to_float=False):
-                                                    if val == "--" or val == "" or val is None or val == "X":
-                                                        return None
-                                                    val_str = str(val).replace(",", "").replace("+", "").replace(" ", "")
-                                                    try:
-                                                        return float(val_str) if to_float else int(float(val_str))
-                                                    except:
-                                                        return None
-
-                                                all_data.append({
-                                                    "date": row_date.strftime("%Y-%m-%d"),
-                                                    "stock_id": symbol,
-                                                    "Trading_Volume": parse_val(row[1]),
-                                                    "open": parse_val(row[3], True),
-                                                    "max": parse_val(row[4], True),
-                                                    "min": parse_val(row[5], True),
-                                                    "close": parse_val(row[6], True),
-                                                    "spread": parse_val(row[7], True),
-                                                })
-                                    except (ValueError, IndexError):
-                                        continue
+                                        if start_dt.date() <= row_date <= end_dt.date():
+                                            all_data.append({
+                                                "date": row_date.strftime("%Y-%m-%d"),
+                                                "stock_id": symbol,
+                                                "Trading_Volume": parse_number(row[1]),
+                                                "open": parse_number(row[3], True),
+                                                "max": parse_number(row[4], True),
+                                                "min": parse_number(row[5], True),
+                                                "close": parse_number(row[6], True),
+                                                "spread": parse_number(row[7], True),
+                                            })
+                                except (ValueError, IndexError):
+                                    continue
                 except Exception as e:
                     logger.warning(f"TWSE fetch failed for {symbol} {current.strftime('%Y-%m')}: {e}")
                     consecutive_failures += 1
@@ -580,9 +607,9 @@ class DataFetcher:
                 "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
             }
 
-            async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
-                response = await client.get(url, params=params)
-                if response.status_code == 200:
+            client = await self.get_client()
+            response = await client.get(url, params=params)
+            if response.status_code == 200:
                     data = response.json()
                     result = data.get("chart", {}).get("result", [])
 
@@ -654,9 +681,9 @@ class DataFetcher:
             url = "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX"
             params = {"date": twse_date, "response": "json"}
             
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(url, params=params)
-                if response.status_code == 200:
+            client = await self.get_client()
+            response = await client.get(url, params=params, timeout=10.0)
+            if response.status_code == 200:
                     data = response.json()
                     # Check if there's actual trading data
                     if data.get("stat") == "OK":

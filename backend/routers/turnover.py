@@ -273,7 +273,7 @@ async def get_top20_limit_up_batch(
 ):
     """
     批次查詢多日資料，找出連續出現的股票
-    
+
     回傳：
     - 各日期符合條件的股票
     - 重複出現的股票統計
@@ -283,9 +283,117 @@ async def get_top20_limit_up_batch(
         end_date=end_date,
         min_occurrence=min_occurrence
     )
-    
+
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "查詢失敗"))
-    
+
+    return result
+
+
+# ===== 新增篩選功能 =====
+
+@router.get("/top200-limit-up")
+async def get_top200_limit_up(
+    start_date: Optional[str] = Query(None, description="開始日期 YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="結束日期 YYYY-MM-DD"),
+):
+    """
+    週轉率前200名且漲停股（支援日期區間）
+    """
+    result = await high_turnover_analyzer.get_top200_limit_up_range(
+        start_date=start_date,
+        end_date=end_date
+    )
+
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "查詢失敗"))
+
+    return result
+
+
+@router.get("/top200-change-range")
+async def get_top200_change_range(
+    start_date: Optional[str] = Query(None, description="開始日期 YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="結束日期 YYYY-MM-DD"),
+    change_min: Optional[float] = Query(None, description="漲幅下限(%)"),
+    change_max: Optional[float] = Query(None, description="漲幅上限(%)"),
+):
+    """
+    週轉率前200名且漲幅在指定區間（支援日期區間）
+
+    範例：change_min=1&change_max=3 取得漲幅1%~3%的股票
+    """
+    result = await high_turnover_analyzer.get_top200_change_range_batch(
+        start_date=start_date,
+        end_date=end_date,
+        change_min=change_min,
+        change_max=change_max
+    )
+
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "查詢失敗"))
+
+    return result
+
+
+@router.get("/top200-5day-high")
+async def get_top200_5day_high(
+    start_date: Optional[str] = Query(None, description="開始日期 YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="結束日期 YYYY-MM-DD"),
+):
+    """
+    週轉率前200名且收盤價五日內創新高（支援日期區間）
+    """
+    result = await high_turnover_analyzer.get_top200_5day_high_range(
+        start_date=start_date,
+        end_date=end_date
+    )
+
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "查詢失敗"))
+
+    return result
+
+
+@router.get("/top200-5day-low")
+async def get_top200_5day_low(
+    start_date: Optional[str] = Query(None, description="開始日期 YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="結束日期 YYYY-MM-DD"),
+):
+    """
+    週轉率前200名且收盤價五日內創新低（支援日期區間）
+    """
+    result = await high_turnover_analyzer.get_top200_5day_low_range(
+        start_date=start_date,
+        end_date=end_date
+    )
+
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "查詢失敗"))
+
+    return result
+
+
+@router.get("/ma-breakout")
+async def get_ma_breakout(
+    start_date: Optional[str] = Query(None, description="開始日期 YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="結束日期 YYYY-MM-DD"),
+    min_change: Optional[float] = Query(None, description="最低漲幅(%)"),
+):
+    """
+    突破糾結均線且漲幅高於指定值（支援日期區間）
+
+    糾結均線定義：5日、10日、20日均線在3%範圍內糾結，今日收盤突破
+    範例：min_change=3 取得漲幅>3%的突破股
+    """
+    result = await high_turnover_analyzer.get_ma_breakout_range(
+        start_date=start_date,
+        end_date=end_date,
+        min_change=min_change
+    )
+
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "查詢失敗"))
+
     return result
 

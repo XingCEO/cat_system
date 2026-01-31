@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { formatPercent, formatNumber, formatPrice, getChangeColor } from '@/utils/format';
@@ -29,6 +29,33 @@ export function StockTable({ stocks, total, page, pageSize, onPageChange, onStoc
             setSortOrder('desc');
         }
     };
+
+    // 實際排序邏輯
+    const sortedStocks = useMemo(() => {
+        if (!stocks || stocks.length === 0) return [];
+
+        return [...stocks].sort((a, b) => {
+            const aVal = a[sortField as keyof Stock];
+            const bVal = b[sortField as keyof Stock];
+
+            // 處理 null/undefined
+            if (aVal == null && bVal == null) return 0;
+            if (aVal == null) return sortOrder === 'asc' ? -1 : 1;
+            if (bVal == null) return sortOrder === 'asc' ? 1 : -1;
+
+            // 數值比較
+            if (typeof aVal === 'number' && typeof bVal === 'number') {
+                return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
+            }
+
+            // 字串比較
+            const aStr = String(aVal);
+            const bStr = String(bVal);
+            return sortOrder === 'asc'
+                ? aStr.localeCompare(bStr, 'zh-TW')
+                : bStr.localeCompare(aStr, 'zh-TW');
+        });
+    }, [stocks, sortField, sortOrder]);
 
     const SortHeader = ({ field, children }: { field: string; children: React.ReactNode }) => (
         <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider cursor-pointer hover:bg-muted/50"
@@ -86,7 +113,7 @@ export function StockTable({ stocks, total, page, pageSize, onPageChange, onStoc
                             </tr>
                         </thead>
                         <tbody className="divide-y">
-                            {stocks.map((stock, idx) => (
+                            {sortedStocks.map((stock, idx) => (
                                 <tr key={stock.symbol} className={`hover:bg-muted/30 ${idx % 2 === 0 ? '' : 'bg-muted/10'}`}>
                                     <td className="px-3 py-3 font-mono font-medium">{stock.symbol}</td>
                                     <td className="px-3 py-3">{stock.name}</td>
