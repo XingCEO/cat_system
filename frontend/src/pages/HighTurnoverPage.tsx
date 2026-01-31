@@ -120,19 +120,22 @@ export function HighTurnoverPage() {
     };
 
     return (
-        <div className="container mx-auto py-6 px-4">
+        <div className="container mx-auto py-8 px-4 max-w-7xl">
             {/* 頁首 */}
-            <div className="flex items-center gap-4 mb-6">
-                <Button variant="ghost" size="icon" asChild>
+            <div className="flex items-center gap-4 mb-8">
+                <Button variant="ghost" size="icon" asChild className="hover:bg-muted/80 transition-colors">
                     <Link to="/"><ChevronLeft className="w-5 h-5" /></Link>
                 </Button>
                 <div>
-                    <h1 className="text-2xl font-bold flex items-center gap-2">
-                        <Flame className="w-7 h-7 text-orange-500" />
+                    <h1 className="text-2xl font-bold flex items-center gap-3 tracking-tight">
+                        <div className="p-2 rounded-lg bg-orange-500/10">
+                            <Flame className="w-6 h-6 text-orange-500" />
+                        </div>
                         周轉率前200名漲停股分析
                     </h1>
-                    <p className="text-sm text-muted-foreground">
-                        顯示當日周轉率排名前200的股票中，達到漲停的股票（{queryDate}）
+                    <p className="text-sm text-muted-foreground mt-1">
+                        顯示當日周轉率排名前200的股票中，達到漲停的股票
+                        <span className="ml-2 font-mono text-xs bg-muted px-2 py-0.5 rounded-full">{queryDate}</span>
                     </p>
                 </div>
             </div>
@@ -140,52 +143,52 @@ export function HighTurnoverPage() {
             {/* 統計卡片 */}
             {stats && (
                 <div className="grid gap-4 md:grid-cols-4 mb-6">
-                    <Card>
+                    <Card className="border-border/50 shadow-sm hover:shadow-md transition-shadow duration-200">
                         <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium text-muted-foreground">周轉率前200名</CardTitle>
+                            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">周轉率前200名</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">{stats.top20_count} 檔</div>
+                            <div className="text-2xl font-bold">{stats.top20_count} <span className="text-base font-normal text-muted-foreground">檔</span></div>
                         </CardContent>
                     </Card>
-                    <Card className="border-orange-500/50">
+                    <Card className="border-l-4 border-orange-500 shadow-sm hover:shadow-md transition-shadow duration-200">
                         <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium text-orange-500">其中漲停股數</CardTitle>
+                            <CardTitle className="text-xs font-medium text-orange-500 uppercase tracking-wide">其中漲停股數</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold text-orange-500">{stats.limit_up_count} 檔</div>
+                            <div className="text-2xl font-bold text-orange-500">{stats.limit_up_count} <span className="text-base font-normal opacity-70">檔</span></div>
                         </CardContent>
                     </Card>
-                    <Card>
+                    <Card className="border-border/50 shadow-sm hover:shadow-md transition-shadow duration-200">
                         <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium text-muted-foreground">漲停佔比</CardTitle>
+                            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">漲停佔比</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">{stats.limit_up_count}/{stats.top20_count} = {stats.limit_up_ratio}%</div>
+                            <div className="text-2xl font-bold font-mono">{stats.limit_up_count}/{stats.top20_count} = {stats.limit_up_ratio}%</div>
                         </CardContent>
                     </Card>
-                    <Card>
+                    <Card className="border-border/50 shadow-sm hover:shadow-md transition-shadow duration-200">
                         <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium text-muted-foreground">平均周轉率</CardTitle>
+                            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">平均周轉率</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">{stats.avg_turnover_rate}%</div>
+                            <div className="text-2xl font-bold font-mono">{stats.avg_turnover_rate}%</div>
                         </CardContent>
                     </Card>
                 </div>
             )}
 
             {/* 控制面板 */}
-            <Card className="mb-6">
+            <Card className="mb-6 border-border/50 shadow-sm">
                 <CardContent className="pt-6">
                     <div className="flex flex-wrap gap-4 items-end">
-                        <div className="space-y-2">
-                            <Label>查詢日期</Label>
+                        <div className="space-y-1.5">
+                            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">查詢日期</Label>
                             <Input
                                 type="date"
                                 value={queryDate}
                                 onChange={(e) => setQueryDate(e.target.value)}
-                                className="w-40"
+                                className="w-44 font-mono text-sm"
                             />
                         </div>
 
@@ -193,39 +196,41 @@ export function HighTurnoverPage() {
                             <Button
                                 variant={viewMode === 'limit_up' ? 'default' : 'outline'}
                                 onClick={() => setViewMode('limit_up')}
+                                className="transition-all duration-200"
                             >
-                                <Flame className="w-4 h-4 mr-1" /> 漲停股
+                                <Flame className="w-4 h-4 mr-1.5" /> 漲停股
                             </Button>
                             <Button
                                 variant={viewMode === 'top20' ? 'default' : 'outline'}
                                 onClick={() => setViewMode('top20')}
+                                className="transition-all duration-200"
                             >
-                                <BarChart2 className="w-4 h-4 mr-1" /> Top200完整
+                                <BarChart2 className="w-4 h-4 mr-1.5" /> Top200完整
                             </Button>
                         </div>
 
-                        <Button variant="outline" onClick={() => setShowFilters(!showFilters)}>
-                            <Filter className="w-4 h-4 mr-1" /> 篩選
+                        <Button variant="outline" onClick={() => setShowFilters(!showFilters)} className="transition-all duration-200">
+                            <Filter className="w-4 h-4 mr-1.5" /> 篩選
                         </Button>
 
-                        <Button onClick={() => refetchLimitUp()}>
-                            <Activity className="w-4 h-4 mr-1" /> 重新查詢
+                        <Button onClick={() => refetchLimitUp()} className="shadow-sm hover:shadow-md transition-all duration-200">
+                            <Activity className="w-4 h-4 mr-1.5" /> 重新查詢
                         </Button>
                     </div>
 
                     {/* 快速預設 */}
-                    <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t">
-                        <span className="text-sm text-muted-foreground flex items-center gap-1">
+                    <div className="flex flex-wrap gap-2 mt-5 pt-5 border-t border-border/50">
+                        <span className="text-xs text-muted-foreground flex items-center gap-1.5 uppercase tracking-wide">
                             <Zap className="w-4 h-4" /> 快速預設：
                         </span>
-                        <Button variant="outline" size="sm" onClick={() => handlePreset('strong_retail')}>
-                            🔥 超強游資股
+                        <Button variant="outline" size="sm" onClick={() => handlePreset('strong_retail')} className="text-orange-500 hover:bg-orange-500/10 transition-colors">
+                            超強游資股
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => handlePreset('low_price')}>
-                            💰 低價飆股
+                        <Button variant="outline" size="sm" onClick={() => handlePreset('low_price')} className="text-amber-500 hover:bg-amber-500/10 transition-colors">
+                            低價飆股
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => handlePreset('big_player')}>
-                            🐋 大戶進場
+                        <Button variant="outline" size="sm" onClick={() => handlePreset('big_player')} className="text-blue-500 hover:bg-blue-500/10 transition-colors">
+                            大戶進場
                         </Button>
                     </div>
 
@@ -268,24 +273,27 @@ export function HighTurnoverPage() {
             {stocks.length > 0 && <TurnoverCharts stocks={stocks} />}
 
             {/* 結果表格 */}
-            <Card>
-                <CardHeader className="pb-2">
+            <Card className="border-border/50 shadow-sm overflow-hidden">
+                <CardHeader className="pb-3 border-b border-border/50">
                     <CardTitle className="text-lg flex items-center justify-between">
                         <span className="flex items-center gap-2">
                             {viewMode === 'limit_up' ? (
-                                <><Flame className="w-5 h-5 text-orange-500" /> 高周轉漲停股</>
+                                <><div className="p-1.5 rounded-md bg-orange-500/10"><Flame className="w-5 h-5 text-orange-500" /></div> 高周轉漲停股</>
                             ) : (
-                                <><Award className="w-5 h-5" /> 周轉率前200完整名單</>
+                                <><div className="p-1.5 rounded-md bg-muted"><Award className="w-5 h-5" /></div> 周轉率前200完整名單</>
                             )}
                         </span>
-                        <span className="text-sm font-normal text-muted-foreground">
+                        <span className="text-sm font-normal text-muted-foreground bg-muted/50 px-3 py-1 rounded-full">
                             共 {stocks.length} 檔
                         </span>
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
                     {isLoading ? (
-                        <div className="py-20 text-center text-muted-foreground animate-pulse">載入中...</div>
+                        <div className="py-20 text-center text-muted-foreground">
+                            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-3"></div>
+                            <p>載入中...</p>
+                        </div>
                     ) : stocks.length === 0 ? (
                         <div className="py-20 text-center text-muted-foreground">
                             {viewMode === 'limit_up' ? '今日周轉率前20名中無漲停股票' : '查無資料'}
@@ -293,72 +301,72 @@ export function HighTurnoverPage() {
                     ) : (
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm">
-                                <thead className="bg-muted/50 border-y">
+                                <thead className="bg-muted/30 border-b border-border/50 sticky top-0">
                                     <tr>
-                                        <th className="px-3 py-3 text-left text-xs font-medium">排名</th>
-                                        <th className="px-3 py-3 text-left text-xs font-medium">代號</th>
-                                        <th className="px-3 py-3 text-left text-xs font-medium">名稱</th>
-                                        <th className="px-3 py-3 text-left text-xs font-medium">產業</th>
-                                        <th className="px-3 py-3 text-left text-xs font-medium">收盤價</th>
-                                        <th className="px-3 py-3 text-left text-xs font-medium">漲幅</th>
-                                        <th className="px-3 py-3 text-left text-xs font-medium">周轉率</th>
-                                        <th className="px-3 py-3 text-left text-xs font-medium">成交量</th>
-                                        <th className="px-3 py-3 text-left text-xs font-medium">流通股數</th>
-                                        <th className="px-3 py-3 text-left text-xs font-medium">漲停類型</th>
-                                        <th className="px-3 py-3 text-left text-xs font-medium">封單量</th>
-                                        <th className="px-3 py-3 text-left text-xs font-medium">連漲</th>
-                                        <th className="px-3 py-3 text-left text-xs font-medium">操作</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">排名</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">代號</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">名稱</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">產業</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">收盤價</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">漲幅</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">周轉率</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">成交量</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">流通股數</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">漲停類型</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">封單量</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">連漲</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">操作</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y">
+                                <tbody className="divide-y divide-border/30">
                                     {stocks.map((stock) => (
                                         <tr
                                             key={stock.symbol}
-                                            className={`hover:bg-muted/30 ${stock.is_limit_up ? 'bg-orange-500/5' : ''} ${stock.turnover_rank <= 10 ? 'font-medium' : ''}`}
+                                            className={`hover:bg-muted/40 transition-colors duration-150 ${stock.is_limit_up ? 'bg-orange-500/5' : ''} ${stock.turnover_rank <= 10 ? 'font-medium bg-amber-500/5' : ''}`}
                                         >
-                                            <td className="px-3 py-3">
-                                                <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs ${stock.turnover_rank <= 10 ? 'bg-yellow-500 text-white' : 'bg-muted'}`}>
+                                            <td className="px-4 py-3">
+                                                <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold ${stock.turnover_rank <= 10 ? 'bg-amber-500 text-white shadow-sm' : 'bg-muted text-muted-foreground'}`}>
                                                     {stock.turnover_rank}
                                                 </span>
                                             </td>
-                                            <td className="px-3 py-3 font-mono">{stock.symbol}</td>
-                                            <td className="px-3 py-3">
-                                                {stock.name}
-                                                {stock.is_limit_up && <span className="ml-1">🔥</span>}
+                                            <td className="px-4 py-3 font-mono font-medium text-primary">{stock.symbol}</td>
+                                            <td className="px-4 py-3">
+                                                <span className="font-medium">{stock.name}</span>
+                                                {stock.is_limit_up && <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-orange-500/10 text-orange-500">漲停</span>}
                                             </td>
-                                            <td className="px-3 py-3 text-muted-foreground text-xs">{stock.industry || '-'}</td>
-                                            <td className="px-3 py-3 font-mono">{formatPrice(stock.close_price)}</td>
-                                            <td className={`px-3 py-3 font-mono font-semibold ${getChangeColor(stock.change_percent)}`}>
+                                            <td className="px-4 py-3 text-muted-foreground text-xs">{stock.industry || '-'}</td>
+                                            <td className="px-4 py-3 font-mono tabular-nums">{formatPrice(stock.close_price)}</td>
+                                            <td className={`px-4 py-3 font-mono font-semibold tabular-nums ${getChangeColor(stock.change_percent)}`}>
                                                 {formatPercent(stock.change_percent)}
                                             </td>
-                                            <td className="px-3 py-3 font-mono font-semibold text-blue-500">
+                                            <td className="px-4 py-3 font-mono font-semibold tabular-nums text-sky-500">
                                                 {stock.turnover_rate?.toFixed(1)}%
                                             </td>
-                                            <td className="px-3 py-3 font-mono">{formatNumber(stock.volume)}</td>
-                                            <td className="px-3 py-3 font-mono text-xs">{stock.float_shares?.toFixed(0)}萬</td>
-                                            <td className="px-3 py-3">
+                                            <td className="px-4 py-3 font-mono tabular-nums text-muted-foreground">{formatNumber(stock.volume)}</td>
+                                            <td className="px-4 py-3 font-mono text-xs tabular-nums">{stock.float_shares?.toFixed(0)}萬</td>
+                                            <td className="px-4 py-3">
                                                 {stock.limit_up_type && (
-                                                    <span className={`px-2 py-0.5 rounded text-xs ${stock.limit_up_type === '一字板' ? 'bg-red-500 text-white font-bold' : 'bg-muted'}`}>
+                                                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${stock.limit_up_type === '一字板' ? 'bg-red-500 text-white' : 'bg-muted'}`}>
                                                         {stock.limit_up_type}
                                                     </span>
                                                 )}
                                             </td>
-                                            <td className="px-3 py-3 font-mono">
+                                            <td className="px-4 py-3 font-mono tabular-nums">
                                                 {stock.seal_volume ? formatNumber(stock.seal_volume) : '-'}
                                             </td>
-                                            <td className="px-3 py-3">
+                                            <td className="px-4 py-3">
                                                 {stock.consecutive_up_days && stock.consecutive_up_days > 0 ? (
-                                                    <span className="px-2 py-0.5 rounded-full text-xs bg-red-500/10 text-red-500">
+                                                    <span className="px-2 py-0.5 rounded-full text-xs bg-red-500/10 text-red-500 font-medium">
                                                         {stock.consecutive_up_days}天
                                                     </span>
                                                 ) : '-'}
                                             </td>
-                                            <td className="px-3 py-3">
+                                            <td className="px-4 py-3">
                                                 <Button
                                                     variant="ghost"
                                                     size="sm"
                                                     onClick={() => openChartDialog(stock.symbol, stock.name)}
-                                                    className="h-8 w-8 p-0"
+                                                    className="h-8 w-8 p-0 hover:bg-primary/10 hover:text-primary transition-colors cursor-pointer"
                                                     title="查看K線圖"
                                                 >
                                                     <LineChart className="h-4 w-4" />

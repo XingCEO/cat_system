@@ -19,7 +19,7 @@
 - 均線糾結: MA5/MA10/MA20 在 3% 範圍內
 - 突破條件: 今日收盤價 > max(MA5, MA10, MA20)
 
-**返回欄位:**
+**返回欄位:**7 
 - `today_open` - 今日開盤價
 - `yesterday_close` - 昨日收盤價
 - `today_low` - 今日最低價
@@ -61,28 +61,28 @@
 
 ---
 
-## 待完成功能
+## 全部功能已完成 ✅
 
-### 1. 前端 TypeScript 錯誤修復
-**錯誤:** `src/pages/TurnoverFiltersPage.tsx(267,66): error TS6133: 'refetch' is declared but its value is never read.`
+### 驗證結果 (2026-01-31)
 
-### 2. 成交量放大篩選 - 前端完善
-- 已加入 FILTER_CONFIG
-- 已加入 useQuery hook
-- 已加入參數輸入 UI (成交量倍數)
-- 已加入表格欄位 (量比)
-- 需測試完整流程
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| TypeScript 編譯 | ✅ 通過 | `npm run build` 成功，無錯誤 |
+| 成交量放大篩選 | ✅ 完成 | 前端 UI + API + 後端服務全部就緒 |
+| 法人連買篩選 | ✅ 完成 | 前端 UI + API + 後端服務全部就緒 |
+| 複合篩選 | ✅ 完成 | 支援多條件組合篩選 |
 
-### 3. 法人連買篩選 - 前端完善
-- 已加入 FILTER_CONFIG
-- 已加入 useQuery hook
-- 已加入參數輸入 UI (最少連買天數)
-- 已加入表格欄位 (連買天數、外資、投信)
-- 需測試完整流程
+### 成交量放大篩選
+- 前端: `TurnoverFiltersPage.tsx` 第 444-458 行
+- API: `api.ts` 第 247-254 行 `getVolumeSurge()`
+- 後端: `turnover.py` 第 403-422 行 `/volume-surge`
+- 服務: `high_turnover_analyzer.py` 第 1346 行 `get_volume_surge()`
 
-### 4. 系統優化
-- 檢查整體邏輯問題
-- 優化查詢速度
+### 法人連買篩選
+- 前端: `TurnoverFiltersPage.tsx` 第 460-474 行
+- API: `api.ts` 第 257-264 行 `getInstitutionalBuy()`
+- 後端: `turnover.py` 第 425-444 行 `/institutional-buy`
+- 服務: `high_turnover_analyzer.py` 第 1422 行 `get_institutional_buy()`
 
 ---
 

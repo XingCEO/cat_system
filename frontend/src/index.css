@@ -1,3 +1,6 @@
+/* Fira Code + Fira Sans for Dashboard/Analytics */
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -62,9 +65,15 @@
 
   body {
     @apply bg-background text-foreground;
+    font-family: 'Fira Sans', system-ui, sans-serif;
     /* 確保 body 可以正確縮放 */
     min-height: 100vh;
     min-height: 100dvh; /* 動態視窗高度，支援行動裝置 */
+  }
+
+  /* 數據表格使用等寬字體 */
+  .font-mono, code, pre, table td.font-mono {
+    font-family: 'Fira Code', ui-monospace, monospace;
   }
 }
 

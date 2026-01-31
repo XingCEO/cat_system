@@ -323,27 +323,29 @@ export function TurnoverFiltersPage() {
     };
 
     return (
-        <div className="container mx-auto py-6 px-4">
+        <div className="container mx-auto py-8 px-4 max-w-7xl">
             {/* 頁首 */}
-            <div className="flex items-center gap-4 mb-6">
-                <Button variant="ghost" size="icon" asChild>
+            <div className="flex items-center gap-4 mb-8">
+                <Button variant="ghost" size="icon" asChild className="hover:bg-muted/80 transition-colors">
                     <Link to="/"><ChevronLeft className="w-5 h-5" /></Link>
                 </Button>
                 <div>
-                    <h1 className="text-2xl font-bold flex items-center gap-2">
-                        <Activity className="w-7 h-7 text-blue-500" />
+                    <h1 className="text-2xl font-bold flex items-center gap-3 tracking-tight">
+                        <div className="p-2 rounded-lg bg-blue-500/10">
+                            <Activity className="w-6 h-6 text-blue-500" />
+                        </div>
                         周轉率前200名篩選器
                     </h1>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-sm text-muted-foreground mt-1">
                         多種篩選條件快速找到目標股票
                     </p>
                 </div>
             </div>
 
             {/* 篩選條件按鈕 */}
-            <Card className="mb-6">
+            <Card className="mb-6 border-border/50 shadow-sm">
                 <CardContent className="pt-6">
-                    <div className="flex flex-wrap gap-3 mb-4">
+                    <div className="flex flex-wrap gap-2 mb-5">
                         {(Object.keys(FILTER_CONFIG) as FilterType[]).map((key) => {
                             const cfg = FILTER_CONFIG[key];
                             return (
@@ -351,7 +353,7 @@ export function TurnoverFiltersPage() {
                                     key={key}
                                     variant={activeFilter === key ? 'default' : 'outline'}
                                     onClick={() => setActiveFilter(key)}
-                                    className={activeFilter === key ? '' : cfg.color}
+                                    className={`transition-all duration-200 ${activeFilter === key ? 'shadow-md' : `${cfg.color} hover:${cfg.bgColor} border-border/50`}`}
                                 >
                                     {cfg.icon}
                                     <span className="ml-2">{cfg.label}</span>
@@ -361,27 +363,27 @@ export function TurnoverFiltersPage() {
                     </div>
 
                     {/* 日期區間選擇 */}
-                    <div className="flex flex-wrap gap-4 items-end pt-4 border-t">
-                        <div className="space-y-2">
-                            <Label className="flex items-center gap-1">
-                                <Calendar className="w-3 h-3" /> 開始日期
+                    <div className="flex flex-wrap gap-4 items-end pt-5 border-t border-border/50">
+                        <div className="space-y-1.5">
+                            <Label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                <Calendar className="w-3.5 h-3.5" /> 開始日期
                             </Label>
                             <Input
                                 type="date"
                                 value={startDate}
                                 onChange={(e) => setStartDate(e.target.value)}
-                                className="w-44"
+                                className="w-44 font-mono text-sm"
                             />
                         </div>
-                        <div className="space-y-2">
-                            <Label className="flex items-center gap-1">
-                                <Calendar className="w-3 h-3" /> 結束日期
+                        <div className="space-y-1.5">
+                            <Label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                <Calendar className="w-3.5 h-3.5" /> 結束日期
                             </Label>
                             <Input
                                 type="date"
                                 value={endDate}
                                 onChange={(e) => setEndDate(e.target.value)}
-                                className="w-44"
+                                className="w-44 font-mono text-sm"
                             />
                         </div>
 
@@ -567,7 +569,7 @@ export function TurnoverFiltersPage() {
                             </>
                         )}
 
-                        <Button onClick={handleSearch} className="gap-1">
+                        <Button onClick={handleSearch} className="gap-2 shadow-sm hover:shadow-md transition-all duration-200">
                             <Search className="w-4 h-4" /> 查詢
                         </Button>
                     </div>
@@ -576,160 +578,167 @@ export function TurnoverFiltersPage() {
 
             {/* 統計卡片 */}
             <div className="grid gap-4 md:grid-cols-4 mb-6">
-                <Card>
+                <Card className="border-border/50 shadow-sm hover:shadow-md transition-shadow duration-200">
                     <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">查詢日期</CardTitle>
+                        <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">查詢日期</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-lg font-semibold">{formatDateDisplay()}</div>
-                        {isDateRange && <div className="text-xs text-muted-foreground">共 {totalDays} 天</div>}
+                        <div className="text-lg font-semibold font-mono">{formatDateDisplay()}</div>
+                        {isDateRange && <div className="text-xs text-muted-foreground mt-1">共 {totalDays} 天</div>}
                     </CardContent>
                 </Card>
-                <Card>
+                <Card className="border-border/50 shadow-sm hover:shadow-md transition-shadow duration-200">
                     <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">周轉率前200名</CardTitle>
+                        <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">周轉率前200名</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">200 檔</div>
+                        <div className="text-2xl font-bold text-primary">200 <span className="text-base font-normal text-muted-foreground">檔</span></div>
                     </CardContent>
                 </Card>
-                <Card className={`border-l-4 ${config.borderColor}`}>
+                <Card className={`border-l-4 ${config.borderColor} shadow-sm hover:shadow-md transition-shadow duration-200`}>
                     <CardHeader className="pb-2">
-                        <CardTitle className={`text-sm font-medium ${config.color}`}>
+                        <CardTitle className={`text-xs font-medium uppercase tracking-wide ${config.color}`}>
                             {config.label}
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className={`text-2xl font-bold ${config.color}`}>{count} 檔</div>
+                        <div className={`text-2xl font-bold ${config.color}`}>{count} <span className="text-base font-normal opacity-70">檔</span></div>
                     </CardContent>
                 </Card>
-                <Card>
+                <Card className="border-border/50 shadow-sm hover:shadow-md transition-shadow duration-200">
                     <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">篩選說明</CardTitle>
+                        <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">篩選說明</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-sm">{config.description}</div>
+                        <div className="text-sm leading-relaxed">{config.description}</div>
                     </CardContent>
                 </Card>
             </div>
 
             {/* 結果表格 */}
-            <Card>
-                <CardHeader className="pb-2">
+            <Card className="border-border/50 shadow-sm overflow-hidden">
+                <CardHeader className="pb-3 border-b border-border/50">
                     <CardTitle className="text-lg flex items-center justify-between">
                         <span className={`flex items-center gap-2 ${config.color}`}>
-                            {config.icon} {config.label}
+                            <div className={`p-1.5 rounded-md ${config.bgColor}`}>
+                                {config.icon}
+                            </div>
+                            {config.label}
                         </span>
-                        <span className="text-sm font-normal text-muted-foreground">
+                        <span className="text-sm font-normal text-muted-foreground bg-muted/50 px-3 py-1 rounded-full">
                             共 {stocks.length} 筆
                         </span>
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
                     {isLoading ? (
-                        <div className="py-20 text-center text-muted-foreground animate-pulse">載入中...</div>
+                        <div className="py-20 text-center text-muted-foreground">
+                            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-3"></div>
+                            <p>載入中...</p>
+                        </div>
                     ) : stocks.length === 0 ? (
                         <div className="py-20 text-center text-muted-foreground">
-                            無符合條件的股票，請調整篩選條件後點擊「查詢」
+                            <Search className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                            <p>無符合條件的股票，請調整篩選條件後點擊「查詢」</p>
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm">
-                                <thead className="bg-muted/50 border-y">
+                                <thead className="bg-muted/30 border-b border-border/50 sticky top-0">
                                     <tr>
-                                        {isDateRange && <th className="px-3 py-3 text-left text-xs font-medium">日期</th>}
-                                        <th className="px-3 py-3 text-left text-xs font-medium">排名</th>
-                                        <th className="px-3 py-3 text-left text-xs font-medium">代號</th>
-                                        <th className="px-3 py-3 text-left text-xs font-medium">名稱</th>
-                                        <th className="px-3 py-3 text-left text-xs font-medium">產業</th>
-                                        <th className="px-3 py-3 text-left text-xs font-medium">收盤價</th>
-                                        <th className="px-3 py-3 text-left text-xs font-medium">漲幅</th>
-                                        <th className="px-3 py-3 text-left text-xs font-medium">周轉率</th>
-                                        <th className="px-3 py-3 text-left text-xs font-medium">成交量</th>
+                                        {isDateRange && <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">日期</th>}
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">排名</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">代號</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">名稱</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">產業</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">收盤價</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">漲幅</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">周轉率</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">成交量</th>
                                         {activeFilter === 'ma_breakout' && (
                                             <>
-                                                <th className="px-3 py-3 text-left text-xs font-medium">MA5</th>
-                                                <th className="px-3 py-3 text-left text-xs font-medium">MA10</th>
-                                                <th className="px-3 py-3 text-left text-xs font-medium">MA20</th>
+                                                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">MA5</th>
+                                                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">MA10</th>
+                                                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">MA20</th>
                                             </>
                                         )}
                                         {activeFilter === 'volume_surge' && (
-                                            <th className="px-3 py-3 text-left text-xs font-medium">量比</th>
+                                            <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">量比</th>
                                         )}
                                         {activeFilter === 'institutional_buy' && (
                                             <>
-                                                <th className="px-3 py-3 text-left text-xs font-medium">連買天數</th>
-                                                <th className="px-3 py-3 text-left text-xs font-medium">外資</th>
-                                                <th className="px-3 py-3 text-left text-xs font-medium">投信</th>
+                                                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">連買天數</th>
+                                                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">外資</th>
+                                                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">投信</th>
                                             </>
                                         )}
-                                        <th className="px-3 py-3 text-left text-xs font-medium">操作</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">操作</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y">
+                                <tbody className="divide-y divide-border/30">
                                     {stocks.map((stock: TurnoverStock, index: number) => (
                                         <tr
                                             key={`${stock.symbol}-${stock.query_date || index}`}
-                                            className={`hover:bg-muted/30 ${stock.turnover_rank <= 10 ? 'font-medium' : ''}`}
+                                            className={`hover:bg-muted/40 transition-colors duration-150 ${stock.turnover_rank <= 10 ? 'font-medium bg-amber-500/5' : ''}`}
                                         >
                                             {isDateRange && (
-                                                <td className="px-3 py-3 text-xs text-muted-foreground">
+                                                <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
                                                     {stock.query_date || '-'}
                                                 </td>
                                             )}
-                                            <td className="px-3 py-3">
-                                                <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs ${stock.turnover_rank <= 10 ? 'bg-yellow-500 text-white' : 'bg-muted'}`}>
+                                            <td className="px-4 py-3">
+                                                <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold ${stock.turnover_rank <= 10 ? 'bg-amber-500 text-white shadow-sm' : 'bg-muted text-muted-foreground'}`}>
                                                     {stock.turnover_rank || '-'}
                                                 </span>
                                             </td>
-                                            <td className="px-3 py-3 font-mono">{stock.symbol}</td>
-                                            <td className="px-3 py-3">
-                                                {stock.name}
-                                                {stock.is_limit_up && <span className="ml-1">🔥</span>}
-                                                {stock.is_5day_high && <span className="ml-1">📈</span>}
-                                                {stock.is_5day_low && <span className="ml-1">📉</span>}
-                                                {stock.is_breakout && <span className="ml-1">⚡</span>}
+                                            <td className="px-4 py-3 font-mono font-medium text-primary">{stock.symbol}</td>
+                                            <td className="px-4 py-3">
+                                                <span className="font-medium">{stock.name}</span>
+                                                {stock.is_limit_up && <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-orange-500/10 text-orange-500">漲停</span>}
+                                                {stock.is_5day_high && <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-emerald-500/10 text-emerald-500">新高</span>}
+                                                {stock.is_5day_low && <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-rose-500/10 text-rose-500">新低</span>}
+                                                {stock.is_breakout && <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-violet-500/10 text-violet-500">突破</span>}
                                             </td>
-                                            <td className="px-3 py-3 text-muted-foreground text-xs">{stock.industry || '-'}</td>
-                                            <td className="px-3 py-3 font-mono">{formatPrice(stock.close_price)}</td>
-                                            <td className={`px-3 py-3 font-mono font-semibold ${getChangeColor(stock.change_percent)}`}>
+                                            <td className="px-4 py-3 text-muted-foreground text-xs">{stock.industry || '-'}</td>
+                                            <td className="px-4 py-3 font-mono tabular-nums">{formatPrice(stock.close_price)}</td>
+                                            <td className={`px-4 py-3 font-mono font-semibold tabular-nums ${getChangeColor(stock.change_percent)}`}>
                                                 {formatPercent(stock.change_percent)}
                                             </td>
-                                            <td className="px-3 py-3 font-mono font-semibold text-sky-400">
+                                            <td className="px-4 py-3 font-mono font-semibold tabular-nums text-sky-500">
                                                 {stock.turnover_rate?.toFixed(1) || '-'}%
                                             </td>
-                                            <td className="px-3 py-3 font-mono">{formatNumber(stock.volume)}</td>
+                                            <td className="px-4 py-3 font-mono tabular-nums text-muted-foreground">{formatNumber(stock.volume)}</td>
                                             {activeFilter === 'ma_breakout' && (
                                                 <>
-                                                    <td className="px-3 py-3 font-mono text-xs">{stock.ma5?.toFixed(2) || '-'}</td>
-                                                    <td className="px-3 py-3 font-mono text-xs">{stock.ma10?.toFixed(2) || '-'}</td>
-                                                    <td className="px-3 py-3 font-mono text-xs">{stock.ma20?.toFixed(2) || '-'}</td>
+                                                    <td className="px-4 py-3 font-mono text-xs tabular-nums">{stock.ma5?.toFixed(2) || '-'}</td>
+                                                    <td className="px-4 py-3 font-mono text-xs tabular-nums">{stock.ma10?.toFixed(2) || '-'}</td>
+                                                    <td className="px-4 py-3 font-mono text-xs tabular-nums">{stock.ma20?.toFixed(2) || '-'}</td>
                                                 </>
                                             )}
                                             {activeFilter === 'volume_surge' && (
-                                                <td className="px-3 py-3 font-mono font-semibold text-amber-400">
+                                                <td className="px-4 py-3 font-mono font-semibold tabular-nums text-amber-500">
                                                     {stock.volume_ratio_calc?.toFixed(1) || '-'}x
                                                 </td>
                                             )}
                                             {activeFilter === 'institutional_buy' && (
                                                 <>
-                                                    <td className="px-3 py-3 font-mono font-semibold text-cyan-400">
+                                                    <td className="px-4 py-3 font-mono font-semibold tabular-nums text-cyan-500">
                                                         {stock.consecutive_buy_days || '-'} 日
                                                     </td>
-                                                    <td className="px-3 py-3 font-mono text-xs">
+                                                    <td className="px-4 py-3 font-mono text-xs tabular-nums">
                                                         {stock.foreign_buy ? formatNumber(stock.foreign_buy) : '-'}
                                                     </td>
-                                                    <td className="px-3 py-3 font-mono text-xs">
+                                                    <td className="px-4 py-3 font-mono text-xs tabular-nums">
                                                         {stock.trust_buy ? formatNumber(stock.trust_buy) : '-'}
                                                     </td>
                                                 </>
                                             )}
-                                            <td className="px-3 py-3">
+                                            <td className="px-4 py-3">
                                                 <Button
                                                     variant="ghost"
                                                     size="sm"
                                                     onClick={() => openChartDialog(stock.symbol, stock.name)}
-                                                    className="h-8 w-8 p-0"
+                                                    className="h-8 w-8 p-0 hover:bg-primary/10 hover:text-primary transition-colors cursor-pointer"
                                                     title="查看K線圖"
                                                 >
                                                     <LineChart className="h-4 w-4" />

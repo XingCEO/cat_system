@@ -1,21 +1,37 @@
-import { useEffect } from 'react';
+import { useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { HomePage } from '@/pages/HomePage';
-import { BacktestPage, WatchlistPage, HistoryPage, BatchComparePage } from '@/pages/OtherPages';
-import { HighTurnoverPage } from '@/pages/HighTurnoverPage';
-import { Top20TurnoverLimitUpPage } from '@/pages/Top20TurnoverLimitUpPage';
-import { TurnoverFiltersPage } from '@/pages/TurnoverFiltersPage';
-import { MaBreakoutPage } from '@/pages/MaBreakoutPage';
 import { Button } from '@/components/ui/button';
 import { useStore } from '@/store/store';
-import { Moon, Sun, TrendingUp, Flame, Trophy, Activity, Zap } from 'lucide-react';
+import { Moon, Sun, TrendingUp, Flame, Trophy, Activity, Zap, Loader2 } from 'lucide-react';
+
+// Lazy load pages for code splitting
+const HomePage = lazy(() => import('@/pages/HomePage').then(m => ({ default: m.HomePage })));
+const HighTurnoverPage = lazy(() => import('@/pages/HighTurnoverPage').then(m => ({ default: m.HighTurnoverPage })));
+const Top20TurnoverLimitUpPage = lazy(() => import('@/pages/Top20TurnoverLimitUpPage').then(m => ({ default: m.Top20TurnoverLimitUpPage })));
+const TurnoverFiltersPage = lazy(() => import('@/pages/TurnoverFiltersPage').then(m => ({ default: m.TurnoverFiltersPage })));
+const MaBreakoutPage = lazy(() => import('@/pages/MaBreakoutPage').then(m => ({ default: m.MaBreakoutPage })));
+
+// Lazy load OtherPages components individually
+const BacktestPage = lazy(() => import('@/pages/OtherPages').then(m => ({ default: m.BacktestPage })));
+const WatchlistPage = lazy(() => import('@/pages/OtherPages').then(m => ({ default: m.WatchlistPage })));
+const HistoryPage = lazy(() => import('@/pages/OtherPages').then(m => ({ default: m.HistoryPage })));
+const BatchComparePage = lazy(() => import('@/pages/OtherPages').then(m => ({ default: m.BatchComparePage })));
 
 const queryClient = new QueryClient({
     defaultOptions: {
         queries: { retry: 2, staleTime: 60000 },
     },
 });
+
+// Loading fallback component
+function PageLoader() {
+    return (
+        <div className="flex items-center justify-center min-h-[50vh]">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+    );
+}
 
 function NavBar() {
     const { theme, toggleTheme } = useStore();
@@ -72,17 +88,19 @@ function AppContent() {
     return (
         <div className="min-h-screen bg-background">
             <NavBar />
-            <Routes>
-                <Route path="/" element={<HomePage />} />
-                <Route path="/top20-limit-up" element={<Top20TurnoverLimitUpPage />} />
-                <Route path="/turnover-filters" element={<TurnoverFiltersPage />} />
-                <Route path="/ma-breakout" element={<MaBreakoutPage />} />
-                <Route path="/turnover" element={<HighTurnoverPage />} />
-                <Route path="/batch" element={<BatchComparePage />} />
-                <Route path="/backtest" element={<BacktestPage />} />
-                <Route path="/watchlist" element={<WatchlistPage />} />
-                <Route path="/history" element={<HistoryPage />} />
-            </Routes>
+            <Suspense fallback={<PageLoader />}>
+                <Routes>
+                    <Route path="/" element={<HomePage />} />
+                    <Route path="/top20-limit-up" element={<Top20TurnoverLimitUpPage />} />
+                    <Route path="/turnover-filters" element={<TurnoverFiltersPage />} />
+                    <Route path="/ma-breakout" element={<MaBreakoutPage />} />
+                    <Route path="/turnover" element={<HighTurnoverPage />} />
+                    <Route path="/batch" element={<BatchComparePage />} />
+                    <Route path="/backtest" element={<BacktestPage />} />
+                    <Route path="/watchlist" element={<WatchlistPage />} />
+                    <Route path="/history" element={<HistoryPage />} />
+                </Routes>
+            </Suspense>
         </div>
     );
 }
@@ -96,4 +114,3 @@ export default function App() {
         </QueryClientProvider>
     );
 }
-

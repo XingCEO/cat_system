@@ -18,4 +18,37 @@ export default defineConfig({
             },
         },
     },
+    build: {
+        rollupOptions: {
+            output: {
+                manualChunks: {
+                    // React 核心
+                    'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+                    // 圖表庫
+                    'vendor-charts': ['recharts', 'lightweight-charts'],
+                    // UI 元件
+                    'vendor-radix': [
+                        '@radix-ui/react-alert-dialog',
+                        '@radix-ui/react-checkbox',
+                        '@radix-ui/react-dialog',
+                        '@radix-ui/react-dropdown-menu',
+                        '@radix-ui/react-label',
+                        '@radix-ui/react-popover',
+                        '@radix-ui/react-select',
+                        '@radix-ui/react-slider',
+                        '@radix-ui/react-slot',
+                        '@radix-ui/react-switch',
+                        '@radix-ui/react-tabs',
+                        '@radix-ui/react-toast',
+                        '@radix-ui/react-tooltip',
+                    ],
+                    // 資料處理
+                    'vendor-data': ['@tanstack/react-query', '@tanstack/react-table', 'axios', 'zustand'],
+                    // 工具庫
+                    'vendor-utils': ['date-fns', 'clsx', 'tailwind-merge', 'class-variance-authority', 'lucide-react'],
+                },
+            },
+        },
+        chunkSizeWarningLimit: 600,
+    },
 })

@@ -58,23 +58,27 @@ export function HomePage() {
     };
 
     return (
-        <div className="container mx-auto py-6 px-4">
-            <div className="mb-6">
-                <h1 className="text-2xl font-bold">TWSE 漲幅區間篩選器</h1>
-                <p className="text-muted-foreground">
-                    查詢日期: {queryDate || '載入中...'}
-                    {tradingDateData && !tradingDateData.is_today_trading && ' (今日非交易日)'}
+        <div className="container mx-auto py-8 px-4 max-w-7xl">
+            <div className="mb-8">
+                <h1 className="text-2xl font-bold tracking-tight">TWSE 漲幅區間篩選器</h1>
+                <p className="text-muted-foreground mt-1">
+                    <span className="font-mono">{queryDate || '載入中...'}</span>
+                    {tradingDateData && !tradingDateData.is_today_trading && (
+                        <span className="ml-2 text-xs bg-muted px-2 py-0.5 rounded-full">今日非交易日</span>
+                    )}
                 </p>
                 {/* 顯示警告訊息 */}
                 {data?.warning && (
-                    <div className="mt-2 p-2 bg-yellow-500/10 border border-yellow-500/30 rounded text-yellow-600 dark:text-yellow-400 text-sm">
-                        ⚠️ {data.warning}
+                    <div className="mt-3 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-600 dark:text-amber-400 text-sm flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center text-xs">!</span>
+                        {data.warning}
                     </div>
                 )}
                 {/* 顯示錯誤訊息 */}
                 {data?.message && !data.is_trading_day && (
-                    <div className="mt-2 p-2 bg-blue-500/10 border border-blue-500/30 rounded text-blue-600 dark:text-blue-400 text-sm">
-                        ℹ️ {data.message}
+                    <div className="mt-3 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg text-blue-600 dark:text-blue-400 text-sm flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-blue-500/20 flex items-center justify-center text-xs">i</span>
+                        {data.message}
                     </div>
                 )}
             </div>
