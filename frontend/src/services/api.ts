@@ -9,6 +9,28 @@ const api = axios.create({
     timeout: 120000,  // 增加超時時間至 120 秒（5 年資料需要較長時間）
 });
 
+// 統一錯誤處理 interceptor
+api.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        const message = error.response?.data?.detail
+            || error.response?.data?.error
+            || error.message
+            || '請求失敗，請稍後再試';
+
+        // 根據錯誤類型處理
+        if (error.code === 'ECONNABORTED') {
+            console.error('API 請求超時:', error.config?.url);
+        } else if (error.response?.status === 400) {
+            console.warn('API 請求參數錯誤:', message);
+        } else if (error.response?.status >= 500) {
+            console.error('伺服器錯誤:', message);
+        }
+
+        return Promise.reject(new Error(message));
+    }
+);
+
 // Stocks
 export async function filterStocks(params: Partial<FilterParams>): Promise<PaginatedResponse<Stock>> {
     const queryParams = new URLSearchParams();
@@ -210,13 +232,62 @@ export async function getTop200_5DayLow(startDate?: string, endDate?: string): P
     return data;
 }
 
-// 突破糾結均線（支援日期區間）
-export async function getMaBreakout(startDate?: string, endDate?: string, minChange?: number): Promise<any> {
+// 突破糾結均線（支援日期區間和漲幅區間）
+export async function getMaBreakout(startDate?: string, endDate?: string, minChange?: number, maxChange?: number): Promise<any> {
     const params = new URLSearchParams();
     if (startDate) params.set('start_date', startDate);
     if (endDate) params.set('end_date', endDate);
     if (minChange !== undefined) params.set('min_change', String(minChange));
+    if (maxChange !== undefined) params.set('max_change', String(maxChange));
     const { data } = await api.get<any>(`/turnover/ma-breakout?${params}`);
+    return data;
+}
+
+// 成交量放大篩選（成交量 >= 昨日 * 倍數）
+export async function getVolumeSurge(startDate?: string, endDate?: string, volumeRatio?: number): Promise<any> {
+    const params = new URLSearchParams();
+    if (startDate) params.set('start_date', startDate);
+    if (endDate) params.set('end_date', endDate);
+    if (volumeRatio !== undefined) params.set('volume_ratio', String(volumeRatio));
+    const { data } = await api.get<any>(`/turnover/volume-surge?${params}`);
+    return data;
+}
+
+// 法人連買篩選（法人連續買超N日以上）
+export async function getInstitutionalBuy(startDate?: string, endDate?: string, minDays?: number): Promise<any> {
+    const params = new URLSearchParams();
+    if (startDate) params.set('start_date', startDate);
+    if (endDate) params.set('end_date', endDate);
+    if (minDays !== undefined) params.set('min_days', String(minDays));
+    const { data } = await api.get<any>(`/turnover/institutional-buy?${params}`);
+    return data;
+}
+
+// 複合篩選（週轉率前200名 + 多條件組合）
+export async function getComboFilter(
+    startDate?: string,
+    endDate?: string,
+    turnoverMin?: number,
+    turnoverMax?: number,
+    changeMin?: number,
+    changeMax?: number,
+    minBuyDays?: number,
+    volumeRatio?: number,
+    is5dayHigh?: boolean,
+    is5dayLow?: boolean
+): Promise<any> {
+    const params = new URLSearchParams();
+    if (startDate) params.set('start_date', startDate);
+    if (endDate) params.set('end_date', endDate);
+    if (turnoverMin !== undefined) params.set('turnover_min', String(turnoverMin));
+    if (turnoverMax !== undefined) params.set('turnover_max', String(turnoverMax));
+    if (changeMin !== undefined) params.set('change_min', String(changeMin));
+    if (changeMax !== undefined) params.set('change_max', String(changeMax));
+    if (minBuyDays !== undefined) params.set('min_buy_days', String(minBuyDays));
+    if (volumeRatio !== undefined) params.set('volume_ratio', String(volumeRatio));
+    if (is5dayHigh !== undefined) params.set('is_5day_high', String(is5dayHigh));
+    if (is5dayLow !== undefined) params.set('is_5day_low', String(is5dayLow));
+    const { data } = await api.get<any>(`/turnover/combo-filter?${params}`);
     return data;
 }
 

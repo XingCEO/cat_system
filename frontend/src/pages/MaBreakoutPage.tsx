@@ -34,6 +34,7 @@ export function MaBreakoutPage() {
     const [startDate, setStartDate] = useState<string>('');
     const [endDate, setEndDate] = useState<string>('');
     const [minChange, setMinChange] = useState<string>('');
+    const [maxChange, setMaxChange] = useState<string>('');
     const [selectedStock, setSelectedStock] = useState<{ symbol: string; name?: string } | null>(null);
     const [isChartDialogOpen, setIsChartDialogOpen] = useState(false);
 
@@ -59,10 +60,10 @@ export function MaBreakoutPage() {
         setQueryKey(prev => prev + 1);
     };
 
-    // 突破糾結均線（支援日期區間）
+    // 突破糾結均線（支援日期區間和漲幅區間）
     const { data: breakoutData, isLoading } = useQuery({
-        queryKey: ['maBreakoutPage', startDate, endDate, minChange, queryKey],
-        queryFn: () => getMaBreakout(startDate, endDate, minChange ? parseFloat(minChange) : undefined),
+        queryKey: ['maBreakoutPage', startDate, endDate, minChange, maxChange, queryKey],
+        queryFn: () => getMaBreakout(startDate, endDate, minChange ? parseFloat(minChange) : undefined, maxChange ? parseFloat(maxChange) : undefined),
         enabled: !!startDate && !!endDate,
     });
 
@@ -135,12 +136,24 @@ export function MaBreakoutPage() {
                         </div>
 
                         <div className="space-y-2">
-                            <Label>最低漲幅 (%)</Label>
+                            <Label>漲幅下限 (%)</Label>
                             <Input
                                 type="number"
                                 step="0.1"
                                 value={minChange}
                                 onChange={(e) => setMinChange(e.target.value)}
+                                className="w-28"
+                                placeholder="不限"
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>漲幅上限 (%)</Label>
+                            <Input
+                                type="number"
+                                step="0.1"
+                                value={maxChange}
+                                onChange={(e) => setMaxChange(e.target.value)}
                                 className="w-28"
                                 placeholder="不限"
                             />
@@ -204,7 +217,13 @@ export function MaBreakoutPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-sm">
-                            {minChange ? `漲幅 ≥ ${minChange}%` : '無漲幅限制'}
+                            {minChange && maxChange
+                                ? `漲幅 ${minChange}% ~ ${maxChange}%`
+                                : minChange
+                                    ? `漲幅 ≥ ${minChange}%`
+                                    : maxChange
+                                        ? `漲幅 ≤ ${maxChange}%`
+                                        : '無漲幅限制'}
                         </div>
                     </CardContent>
                 </Card>

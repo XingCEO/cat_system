@@ -379,17 +379,101 @@ async def get_ma_breakout(
     start_date: Optional[str] = Query(None, description="開始日期 YYYY-MM-DD"),
     end_date: Optional[str] = Query(None, description="結束日期 YYYY-MM-DD"),
     min_change: Optional[float] = Query(None, description="最低漲幅(%)"),
+    max_change: Optional[float] = Query(None, description="最高漲幅(%)"),
 ):
     """
-    突破糾結均線且漲幅高於指定值（支援日期區間）
+    突破糾結均線且漲幅在指定區間（支援日期區間）
 
     糾結均線定義：5日、10日、20日均線在3%範圍內糾結，今日收盤突破
-    範例：min_change=3 取得漲幅>3%的突破股
+    範例：min_change=1&max_change=5 取得漲幅1%~5%的突破股
     """
     result = await high_turnover_analyzer.get_ma_breakout_range(
         start_date=start_date,
         end_date=end_date,
-        min_change=min_change
+        min_change=min_change,
+        max_change=max_change
+    )
+
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "查詢失敗"))
+
+    return result
+
+
+@router.get("/volume-surge")
+async def get_volume_surge(
+    start_date: Optional[str] = Query(None, description="開始日期 YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="結束日期 YYYY-MM-DD"),
+    volume_ratio: float = Query(1.5, description="成交量倍數(預設1.5倍)", ge=1.0),
+):
+    """
+    成交量放大篩選（週轉率前200名且成交量 >= 昨日成交量 * 倍數）
+
+    範例：volume_ratio=1.5 取得成交量>=昨日1.5倍的股票
+    """
+    result = await high_turnover_analyzer.get_volume_surge(
+        date=start_date,
+        volume_ratio=volume_ratio
+    )
+
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "查詢失敗"))
+
+    return result
+
+
+@router.get("/institutional-buy")
+async def get_institutional_buy(
+    start_date: Optional[str] = Query(None, description="開始日期 YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="結束日期 YYYY-MM-DD"),
+    min_days: int = Query(3, description="最少連買天數(預設3天)", ge=1),
+):
+    """
+    法人連買篩選（週轉率前200名且法人連續買超N日以上）
+
+    範例：min_days=3 取得法人連續買超3天以上的股票
+    """
+    result = await high_turnover_analyzer.get_institutional_buy(
+        date=start_date,
+        min_consecutive_days=min_days
+    )
+
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "查詢失敗"))
+
+    return result
+
+
+@router.get("/combo-filter")
+async def get_combo_filter(
+    start_date: Optional[str] = Query(None, description="開始日期 YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="結束日期 YYYY-MM-DD"),
+    turnover_min: Optional[float] = Query(None, description="周轉率下限(%)"),
+    turnover_max: Optional[float] = Query(None, description="周轉率上限(%)"),
+    change_min: Optional[float] = Query(None, description="漲幅下限(%)"),
+    change_max: Optional[float] = Query(None, description="漲幅上限(%)"),
+    min_buy_days: Optional[int] = Query(None, description="法人連買最少天數"),
+    volume_ratio: Optional[float] = Query(None, description="成交量倍數(相對昨日)"),
+    is_5day_high: Optional[bool] = Query(None, description="五日創新高"),
+    is_5day_low: Optional[bool] = Query(None, description="五日創新低"),
+):
+    """
+    複合篩選（週轉率前200名 + 多條件組合）
+
+    範例：turnover_min=1&turnover_max=3&min_buy_days=3&volume_ratio=1.5&is_5day_high=true
+    取得週轉率1~3%、法人連買3日、成交量>昨日1.5倍、五日創新高的股票
+    """
+    result = await high_turnover_analyzer.get_combo_filter(
+        start_date=start_date,
+        end_date=end_date,
+        turnover_min=turnover_min,
+        turnover_max=turnover_max,
+        change_min=change_min,
+        change_max=change_max,
+        min_buy_days=min_buy_days,
+        volume_ratio=volume_ratio,
+        is_5day_high=is_5day_high,
+        is_5day_low=is_5day_low
     )
 
     if not result.get("success"):

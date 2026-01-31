@@ -117,6 +117,24 @@
   margin: 10mm;
 }
 
+/* 日期選擇器樣式修復 - 確保在深色模式下可見 */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  cursor: pointer;
+}
+
+input[type="date"] {
+  color-scheme: dark;
+}
+
+.dark input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+}
+
+.dark input[type="date"] {
+  color-scheme: dark;
+}
+
 @media print {
   .no-print {
     display: none !important;
