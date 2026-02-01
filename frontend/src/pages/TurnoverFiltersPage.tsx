@@ -137,14 +137,15 @@ export function TurnoverFiltersPage() {
     const [volumeRatio, setVolumeRatio] = useState<string>('1.5');
     const [minBuyDays, setMinBuyDays] = useState<string>('3');
     // 複合篩選專用狀態
-    const [comboTurnoverMin, setComboTurnoverMin] = useState<string>('1');
-    const [comboTurnoverMax, setComboTurnoverMax] = useState<string>('3');
+    const [comboTurnoverMin, setComboTurnoverMin] = useState<string>('');
+    const [comboTurnoverMax, setComboTurnoverMax] = useState<string>('');
     const [comboChangeMin, setComboChangeMin] = useState<string>('');
     const [comboChangeMax, setComboChangeMax] = useState<string>('');
     const [comboMinBuyDays, setComboMinBuyDays] = useState<string>('3');
     const [comboVolumeRatio, setComboVolumeRatio] = useState<string>('1.5');
     const [combo5dayHigh, setCombo5dayHigh] = useState<boolean>(false);
     const [combo5dayLow, setCombo5dayLow] = useState<boolean>(false);
+    const [comboMa20Uptrend, setComboMa20Uptrend] = useState<boolean>(false);
     const [selectedStock, setSelectedStock] = useState<{ symbol: string; name?: string } | null>(null);
     const [isChartDialogOpen, setIsChartDialogOpen] = useState(false);
 
@@ -221,7 +222,7 @@ export function TurnoverFiltersPage() {
 
     // 複合篩選
     const { data: comboData, isLoading: loadingCombo } = useQuery({
-        queryKey: ['comboFilter', startDate, endDate, comboTurnoverMin, comboTurnoverMax, comboChangeMin, comboChangeMax, comboMinBuyDays, comboVolumeRatio, queryKey],
+        queryKey: ['comboFilter', startDate, endDate, comboTurnoverMin, comboTurnoverMax, comboChangeMin, comboChangeMax, comboMinBuyDays, comboVolumeRatio, combo5dayHigh, combo5dayLow, comboMa20Uptrend, queryKey],
         queryFn: () => getComboFilter(
             startDate,
             endDate,
@@ -231,8 +232,9 @@ export function TurnoverFiltersPage() {
             comboChangeMax ? parseFloat(comboChangeMax) : undefined,
             comboMinBuyDays ? parseInt(comboMinBuyDays) : undefined,
             comboVolumeRatio ? parseFloat(comboVolumeRatio) : undefined,
-            combo5dayHigh || undefined,
-            combo5dayLow || undefined
+            combo5dayHigh ? true : undefined,
+            combo5dayLow ? true : undefined,
+            comboMa20Uptrend ? true : undefined
         ),
         enabled: !!startDate && !!endDate && activeFilter === 'combo',
     });
@@ -552,9 +554,9 @@ export function TurnoverFiltersPage() {
                                         id="combo5dayHigh"
                                         checked={combo5dayHigh}
                                         onChange={(e) => setCombo5dayHigh(e.target.checked)}
-                                        className="w-4 h-4"
+                                        className="w-4 h-4 rounded border-border bg-background text-primary focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background cursor-pointer"
                                     />
-                                    <Label htmlFor="combo5dayHigh">五日創新高</Label>
+                                    <Label htmlFor="combo5dayHigh" className="cursor-pointer">五日創新高</Label>
                                 </div>
                                 <div className="flex items-center space-x-2">
                                     <input
@@ -562,9 +564,19 @@ export function TurnoverFiltersPage() {
                                         id="combo5dayLow"
                                         checked={combo5dayLow}
                                         onChange={(e) => setCombo5dayLow(e.target.checked)}
-                                        className="w-4 h-4"
+                                        className="w-4 h-4 rounded border-border bg-background text-primary focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background cursor-pointer"
                                     />
-                                    <Label htmlFor="combo5dayLow">五日創新低</Label>
+                                    <Label htmlFor="combo5dayLow" className="cursor-pointer">五日創新低</Label>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <input
+                                        type="checkbox"
+                                        id="comboMa20Uptrend"
+                                        checked={comboMa20Uptrend}
+                                        onChange={(e) => setComboMa20Uptrend(e.target.checked)}
+                                        className="w-4 h-4 rounded border-border bg-background text-primary focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background cursor-pointer"
+                                    />
+                                    <Label htmlFor="comboMa20Uptrend" className="cursor-pointer">股價≥MA20且MA20↑</Label>
                                 </div>
                             </>
                         )}

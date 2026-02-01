@@ -296,7 +296,7 @@ export function HighTurnoverPage() {
                         </div>
                     ) : stocks.length === 0 ? (
                         <div className="py-20 text-center text-muted-foreground">
-                            {viewMode === 'limit_up' ? '今日周轉率前20名中無漲停股票' : '查無資料'}
+                            {viewMode === 'limit_up' ? '今日周轉率前200名中無漲停股票' : '查無資料'}
                         </div>
                     ) : (
                         <div className="overflow-x-auto">

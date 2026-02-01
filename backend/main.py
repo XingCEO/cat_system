@@ -3,12 +3,12 @@ TWSE Stock Filter API - Main Application
 """
 import os
 import sys
-from fastapi import FastAPI, Request
+from pathlib import Path
+from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
-import logging
 
 from config import get_settings
 from database import init_db, close_db
@@ -16,13 +16,18 @@ from routers import (
     stocks_router, analysis_router, backtest_router,
     watchlist_router, history_router, export_router, turnover_router
 )
+from routers.realtime import router as realtime_router
+from middleware.auth import require_admin_key
+from middleware.request_logging import RequestLoggingMiddleware
+from utils.logging_config import setup_logging, get_logger
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+# Setup logging with rotation
+setup_logging(
+    log_level="INFO",
+    log_dir="logs",
+    app_name="twse-filter"
 )
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 settings = get_settings()
 
@@ -77,15 +82,18 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Configure CORS
+# Configure CORS - 限制允許的方法和標頭
 origins = settings.cors_origins.split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-Admin-Key"],
 )
+
+# Add request logging middleware
+app.add_middleware(RequestLoggingMiddleware)
 
 
 # Global exception handler
@@ -110,24 +118,26 @@ app.include_router(watchlist_router)
 app.include_router(history_router)
 app.include_router(export_router)
 app.include_router(turnover_router)
+app.include_router(realtime_router)
 
 
 @app.get("/api/status")
 async def api_status():
-    return {"name": settings.app_name, "version": settings.app_version, "status": "running"}
+    return {"success": True, "data": {"name": settings.app_name, "version": settings.app_version, "status": "running"}}
 
 
 @app.get("/api/health")
 async def health_check():
-    return {"status": "healthy"}
+    return {"success": True, "data": {"status": "healthy"}}
 
 
-@app.get("/api/cache/clear")
+@app.delete("/api/cache/clear", dependencies=[Depends(require_admin_key)])
 async def clear_cache():
+    """清除快取（管理員操作）"""
     from services.cache_manager import cache_manager
     stats_before = cache_manager.get_stats()
     cache_manager.clear()
-    return {"success": True, "message": "快取已清除", "stats_before": stats_before}
+    return {"success": True, "message": "快取已清除", "data": {"stats_before": stats_before}}
 
 
 @app.get("/api/cache/stats")
@@ -159,10 +169,20 @@ if FRONTEND_DIR:
         if path.startswith("api/"):
             return JSONResponse(status_code=404, content={"error": "Not found"})
 
+        # 安全性檢查：防止路徑穿越攻擊
+        frontend_path = Path(FRONTEND_DIR).resolve()
+        try:
+            requested_path = (frontend_path / path).resolve()
+            # 確保請求的路徑在 FRONTEND_DIR 內
+            if not str(requested_path).startswith(str(frontend_path)):
+                logger.warning(f"Path traversal attempt blocked: {path}")
+                return JSONResponse(status_code=403, content={"error": "Forbidden"})
+        except (ValueError, OSError):
+            return JSONResponse(status_code=400, content={"error": "Invalid path"})
+
         # Try to serve exact file
-        file_path = os.path.join(FRONTEND_DIR, path)
-        if os.path.isfile(file_path):
-            return FileResponse(file_path)
+        if requested_path.is_file():
+            return FileResponse(str(requested_path))
 
         # Fallback to index.html for SPA routing
         return FileResponse(INDEX_HTML_PATH, media_type="text/html")

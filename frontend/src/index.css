@@ -7,48 +7,90 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Fintech Professional Light Theme */
+    --background: 210 20% 98%;
+    --foreground: 222 47% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 222 47% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 221 83% 53%;
     --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 38 92% 50%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 221 83% 53%;
+    --radius: 0.75rem;
+
+    /* Fintech 專用色彩 */
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --info: 199 89% 48%;
+    --info-foreground: 0 0% 100%;
+    --up: 142 71% 45%;
+    --down: 0 84% 60%;
+    --chart-1: 221 83% 53%;
+    --chart-2: 142 76% 36%;
+    --chart-3: 38 92% 50%;
+    --chart-4: 262 83% 58%;
+    --chart-5: 199 89% 48%;
+
+    /* Premium Effects */
+    --glow-primary: 221 83% 53%;
+    --glow-success: 142 71% 45%;
+    --glow-warning: 38 92% 50%;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
+    /* Fintech Professional Dark Theme - 深藍科技風 */
+    --background: 224 71% 4%;
+    --foreground: 213 31% 91%;
+    --card: 224 71% 6%;
+    --card-foreground: 213 31% 91%;
+    --popover: 224 71% 6%;
+    --popover-foreground: 213 31% 91%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 222 47% 11%;
+    --secondary: 217 33% 17%;
     --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 38 92% 50%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 63% 31%;
     --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    --border: 217 33% 17%;
+    --input: 217 33% 17%;
+    --ring: 224 76% 48%;
+
+    /* Fintech 專用色彩 - Dark */
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 0%;
+    --info: 199 89% 48%;
+    --info-foreground: 0 0% 100%;
+    --up: 142 71% 45%;
+    --down: 0 72% 51%;
+    --chart-1: 217 91% 60%;
+    --chart-2: 142 71% 45%;
+    --chart-3: 38 92% 50%;
+    --chart-4: 262 83% 58%;
+    --chart-5: 199 89% 48%;
+
+    /* Premium Effects - Dark */
+    --glow-primary: 217 91% 60%;
+    --glow-success: 142 71% 45%;
+    --glow-warning: 38 92% 50%;
   }
 }
 
@@ -58,35 +100,61 @@
   }
 
   html {
-    /* 防止內容被擠壓，設定最小寬度 */
     min-width: 320px;
     overflow-x: auto;
+    scroll-behavior: smooth;
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
     font-family: 'Fira Sans', system-ui, sans-serif;
-    /* 確保 body 可以正確縮放 */
     min-height: 100vh;
-    min-height: 100dvh; /* 動態視窗高度，支援行動裝置 */
+    min-height: 100dvh;
+  }
+
+  /* Premium 背景漸層 */
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background:
+      radial-gradient(ellipse 80% 50% at 50% -20%, hsl(var(--primary) / 0.15), transparent),
+      radial-gradient(ellipse 60% 40% at 100% 100%, hsl(var(--chart-4) / 0.1), transparent);
+    pointer-events: none;
+    z-index: -1;
+  }
+
+  .dark body::before {
+    background:
+      radial-gradient(ellipse 80% 50% at 50% -20%, hsl(var(--primary) / 0.2), transparent),
+      radial-gradient(ellipse 60% 40% at 100% 100%, hsl(var(--chart-4) / 0.15), transparent),
+      radial-gradient(ellipse 40% 30% at 0% 100%, hsl(var(--chart-5) / 0.1), transparent);
   }
 
   /* 數據表格使用等寬字體 */
   .font-mono, code, pre, table td.font-mono {
     font-family: 'Fira Code', ui-monospace, monospace;
   }
+
+  /* 增強焦點狀態可見性 */
+  :focus-visible {
+    @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-background;
+  }
 }
 
-/* 響應式容器 - 確保內容不會被擠壓 */
+/* 響應式容器 */
 @layer components {
   .responsive-container {
     @apply w-full max-w-full;
-    min-width: 0; /* 允許 flex 子元素縮小 */
+    min-width: 0;
   }
 
   /* 表格響應式包裝 */
   .table-responsive {
-    @apply w-full overflow-x-auto;
+    @apply w-full overflow-x-auto rounded-lg;
     -webkit-overflow-scrolling: touch;
   }
 
@@ -98,13 +166,216 @@
 
   /* 彈性按鈕組 */
   .button-group {
-    @apply flex flex-wrap gap-1;
+    @apply flex flex-wrap gap-2;
   }
 
   /* 防止文字溢出 */
   .text-truncate {
     @apply truncate;
     min-width: 0;
+  }
+
+  /* 玻璃態卡片效果 */
+  .glass-card {
+    @apply bg-card/80 backdrop-blur-xl border border-white/20 shadow-lg;
+    background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+  }
+
+  .dark .glass-card {
+    @apply bg-card/40 border-white/10;
+    background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%);
+  }
+
+  /* Premium 發光卡片 */
+  .glow-card {
+    @apply relative rounded-xl overflow-hidden;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .glow-card::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    background: linear-gradient(135deg, hsl(var(--primary) / 0.5), hsl(var(--chart-4) / 0.3), hsl(var(--chart-5) / 0.5));
+    border-radius: inherit;
+    z-index: -1;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  .glow-card:hover::before {
+    opacity: 1;
+  }
+
+  .glow-card:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      0 20px 25px -5px rgba(0, 0, 0, 0.1),
+      0 10px 10px -5px rgba(0, 0, 0, 0.04),
+      0 0 40px -10px hsl(var(--primary) / 0.3);
+  }
+
+  /* Premium 漸層邊框 */
+  .gradient-border {
+    position: relative;
+    background: hsl(var(--card));
+    border-radius: var(--radius);
+  }
+
+  .gradient-border::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    padding: 1px;
+    background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--chart-4)), hsl(var(--chart-5)));
+    border-radius: inherit;
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+  }
+
+  /* Premium Shimmer 載入效果 */
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--muted)) 0%,
+      hsl(var(--muted-foreground) / 0.1) 50%,
+      hsl(var(--muted)) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+
+  /* 漸層文字 */
+  .gradient-text {
+    background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--chart-4)));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Premium 數據卡片 - 帶發光 */
+  .premium-stat-card {
+    @apply relative p-5 rounded-xl border border-border/30 overflow-hidden;
+    background: linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--card) / 0.8) 100%);
+    backdrop-filter: blur(10px);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .premium-stat-card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, hsl(var(--primary) / 0.5), transparent);
+  }
+
+  .premium-stat-card:hover {
+    border-color: hsl(var(--primary) / 0.3);
+    box-shadow:
+      0 4px 20px hsl(var(--primary) / 0.1),
+      inset 0 1px 0 hsl(var(--primary) / 0.1);
+  }
+
+  /* 漲停發光效果 */
+  .limit-up-glow {
+    box-shadow: 0 0 20px hsl(var(--down) / 0.3);
+    animation: limit-up-pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes limit-up-pulse {
+    0%, 100% { box-shadow: 0 0 20px hsl(var(--down) / 0.3); }
+    50% { box-shadow: 0 0 30px hsl(var(--down) / 0.5); }
+  }
+
+  /* 上漲發光效果 */
+  .up-glow {
+    text-shadow: 0 0 10px hsl(var(--up) / 0.5);
+  }
+
+  /* 下跌發光效果 */
+  .down-glow {
+    text-shadow: 0 0 10px hsl(var(--down) / 0.5);
+  }
+
+  /* 漸層背景 */
+  .gradient-bg {
+    @apply bg-gradient-to-br from-background via-background to-muted/30;
+  }
+
+  /* 數據高亮 - 漲 */
+  .text-up {
+    @apply text-emerald-600 dark:text-emerald-400;
+  }
+
+  /* 數據高亮 - 跌 */
+  .text-down {
+    @apply text-red-600 dark:text-red-400;
+  }
+
+  /* 懸浮卡片效果 */
+  .hover-card {
+    @apply transition-all duration-200 ease-out;
+  }
+
+  .hover-card:hover {
+    @apply shadow-xl -translate-y-0.5;
+  }
+
+  /* 脈衝動畫 - 用於即時數據 */
+  .pulse-dot {
+    @apply relative;
+  }
+
+  .pulse-dot::before {
+    content: '';
+    @apply absolute -left-3 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-emerald-500;
+    animation: pulse-ring 2s ease-out infinite;
+  }
+
+  @keyframes pulse-ring {
+    0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+    70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+  }
+
+  /* 數據表格行懸浮 */
+  .data-row {
+    @apply transition-colors duration-150;
+  }
+
+  .data-row:hover {
+    @apply bg-muted/50;
+  }
+
+  /* 統計卡片 */
+  .stat-card {
+    @apply p-4 rounded-xl bg-card border border-border/50 shadow-sm transition-all duration-200;
+  }
+
+  .stat-card:hover {
+    @apply shadow-md border-primary/20;
+  }
+
+  /* 導航項目 */
+  .nav-item {
+    @apply relative px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200;
+  }
+
+  .nav-item:hover {
+    @apply bg-muted text-foreground;
+  }
+
+  .nav-item.active {
+    @apply bg-primary/10 text-primary;
+  }
+
+  .nav-item.active::after {
+    content: '';
+    @apply absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-primary;
   }
 }
 
@@ -118,12 +389,6 @@
   .responsive-text {
     font-size: clamp(0.75rem, 2.5vw, 1rem);
   }
-}
-
-/* 列印樣式 - A4 橫幅單頁 */
-@page {
-  size: A4 landscape;
-  margin: 10mm;
 }
 
 /* 日期選擇器樣式修復 - 確保在深色模式下可見 */
@@ -144,53 +409,3 @@ input[type="date"] {
   color-scheme: dark;
 }
 
-@media print {
-  .no-print {
-    display: none !important;
-  }
-
-  html, body {
-    width: 100%;
-    height: 100%;
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-
-  /* 強制單頁 */
-  body {
-    page-break-after: avoid;
-    page-break-before: avoid;
-  }
-
-  /* 縮小內容以適應單頁 */
-  .print-container, main, #root {
-    transform: scale(0.85);
-    transform-origin: top left;
-    width: 117%;
-    max-height: 100vh;
-    overflow: hidden;
-  }
-
-  /* 隱藏導航和不需要的元素 */
-  nav, header, footer, aside, .sidebar, .navigation {
-    display: none !important;
-  }
-
-  /* 表格縮小字體 */
-  table {
-    font-size: 10px !important;
-    page-break-inside: avoid;
-  }
-
-  th, td {
-    padding: 2px 4px !important;
-  }
-
-  /* 防止分頁 */
-  .card, .table-responsive, table, tr {
-    page-break-inside: avoid;
-  }
-}

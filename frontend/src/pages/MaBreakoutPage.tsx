@@ -8,7 +8,7 @@ import { StockAnalysisDialog } from '@/components/StockAnalysisDialog';
 import { formatPercent, formatNumber, formatPrice, getChangeColor } from '@/utils/format';
 import { getMaBreakout, getTradingDate } from '@/services/api';
 import {
-    Zap, ChevronLeft, LineChart, TrendingUp, Search, Calendar
+    Zap, ChevronLeft, LineChart, TrendingUp, Search, Calendar, Sparkles
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -282,7 +282,7 @@ export function MaBreakoutPage() {
                                             <td className="px-3 py-3 font-mono">{stock.symbol}</td>
                                             <td className="px-3 py-3">
                                                 {stock.name}
-                                                <span className="ml-1">⚡</span>
+                                                <Sparkles className="w-3 h-3 text-violet-400 inline ml-1" />
                                             </td>
                                             <td className="px-3 py-3 text-muted-foreground text-xs">{stock.industry || '-'}</td>
                                             <td className="px-3 py-3 font-mono">{formatPrice(stock.close_price)}</td>

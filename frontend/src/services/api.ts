@@ -44,57 +44,75 @@ export async function filterStocks(params: Partial<FilterParams>): Promise<Pagin
         }
     });
     const { data } = await api.get<APIResponse<PaginatedResponse<Stock>>>(`/stocks/filter?${queryParams}`);
-    return data.data!;
+    if (!data.data) {
+        throw new Error('API 回應格式錯誤：缺少 data 欄位');
+    }
+    return data.data;
 }
 
 export async function getStockDetail(symbol: string): Promise<StockDetail> {
     const { data } = await api.get<APIResponse<StockDetail>>(`/stocks/${symbol}`);
-    return data.data!;
+    if (!data.data) {
+        throw new Error('API 回應格式錯誤：缺少 data 欄位');
+    }
+    return data.data;
 }
 
 export async function getStockHistory(symbol: string, days = 60): Promise<any[]> {
     const { data } = await api.get<APIResponse<any[]>>(`/stocks/${symbol}/history?days=${days}`);
-    return data.data!;
+    return data.data ?? [];
 }
 
 // Technical indicators
 export async function getIndicators(symbol: string): Promise<TechnicalIndicators> {
     const { data } = await api.get<APIResponse<TechnicalIndicators>>(`/stocks/${symbol}/indicators`);
-    return data.data!;
+    if (!data.data) {
+        throw new Error('API 回應格式錯誤：缺少 data 欄位');
+    }
+    return data.data;
 }
 
 // Industries
 export async function getIndustries(): Promise<string[]> {
     const { data } = await api.get<APIResponse<string[]>>('/industries');
-    return data.data!;
+    return data.data ?? [];
 }
 
 // Trading date
 export async function getTradingDate(): Promise<{ today: string; latest_trading_day: string; is_today_trading: boolean }> {
     const { data } = await api.get<APIResponse<any>>('/trading-date');
-    return data.data!;
+    if (!data.data) {
+        throw new Error('API 回應格式錯誤：缺少 data 欄位');
+    }
+    return data.data;
 }
 
 // Backtest
 export async function runBacktest(request: BacktestRequest): Promise<BacktestResult> {
     const { data } = await api.post<APIResponse<BacktestResult>>('/backtest/run', request);
-    return data.data!;
+    if (!data.data) {
+        throw new Error('API 回應格式錯誤：缺少 data 欄位');
+    }
+    return data.data;
 }
 
 // Watchlist
 export async function getWatchlists(): Promise<Watchlist[]> {
     const { data } = await api.get<APIResponse<Watchlist[]>>('/watchlist');
-    return data.data!;
+    return data.data ?? [];
 }
 
 export async function createWatchlist(name: string): Promise<Watchlist> {
     const { data } = await api.post<APIResponse<Watchlist>>('/watchlist', { name });
-    return data.data!;
+    if (!data.data) {
+        throw new Error('API 回應格式錯誤：缺少 data 欄位');
+    }
+    return data.data;
 }
 
 export async function addWatchlistItem(watchlistId: number, symbol: string, conditions?: any): Promise<any> {
     const { data } = await api.post<APIResponse<any>>(`/watchlist/${watchlistId}/items`, { symbol, conditions });
-    return data.data!;
+    return data.data ?? {};
 }
 
 export async function deleteWatchlistItem(itemId: number): Promise<void> {
@@ -104,12 +122,15 @@ export async function deleteWatchlistItem(itemId: number): Promise<void> {
 // Favorites
 export async function getFavorites(): Promise<Favorite[]> {
     const { data } = await api.get<APIResponse<Favorite[]>>('/favorites');
-    return data.data!;
+    return data.data ?? [];
 }
 
 export async function createFavorite(name: string, conditions: any): Promise<Favorite> {
     const { data } = await api.post<APIResponse<Favorite>>('/favorites', { name, conditions });
-    return data.data!;
+    if (!data.data) {
+        throw new Error('API 回應格式錯誤：缺少 data 欄位');
+    }
+    return data.data;
 }
 
 export async function deleteFavorite(id: number): Promise<void> {
@@ -121,7 +142,7 @@ export async function batchCompare(dates: string[], filterParams: any, minOccurr
     const { data } = await api.post<APIResponse<{ items: BatchCompareItem[] }>>('/stocks/batch-compare', {
         dates, filter_params: filterParams, min_occurrence: minOccurrence
     });
-    return data.data!.items;
+    return data.data?.items ?? [];
 }
 
 // Export
@@ -274,7 +295,8 @@ export async function getComboFilter(
     minBuyDays?: number,
     volumeRatio?: number,
     is5dayHigh?: boolean,
-    is5dayLow?: boolean
+    is5dayLow?: boolean,
+    isMa20Uptrend?: boolean
 ): Promise<any> {
     const params = new URLSearchParams();
     if (startDate) params.set('start_date', startDate);
@@ -287,8 +309,29 @@ export async function getComboFilter(
     if (volumeRatio !== undefined) params.set('volume_ratio', String(volumeRatio));
     if (is5dayHigh !== undefined) params.set('is_5day_high', String(is5dayHigh));
     if (is5dayLow !== undefined) params.set('is_5day_low', String(is5dayLow));
+    if (isMa20Uptrend !== undefined) params.set('is_ma20_uptrend', String(isMa20Uptrend));
     const { data } = await api.get<any>(`/turnover/combo-filter?${params}`);
     return data;
+}
+
+// 股價 >= MA20 且 MA20 向上趨勢篩選
+export async function getAboveMa20Uptrend(date?: string): Promise<any> {
+    const params = date ? `?date=${date}` : '';
+    const { data } = await api.get<any>(`/turnover/above-ma20-uptrend${params}`);
+    return data;
+}
+
+// CSV 值跳脫函數：處理引號和特殊字元
+function escapeCsvValue(value: unknown): string {
+    if (value === null || value === undefined) {
+        return '""';
+    }
+    const str = String(value);
+    // 如果包含引號、逗號、換行，需要用引號包裹並將內部引號變成雙引號
+    if (str.includes('"') || str.includes(',') || str.includes('\n') || str.includes('\r')) {
+        return `"${str.replace(/"/g, '""')}"`;
+    }
+    return `"${str}"`;
 }
 
 // Export data as file download
@@ -299,7 +342,7 @@ export function downloadExportFile(format: 'csv' | 'excel' | 'json', data: any[]
 
     if (format === 'csv') {
         const headers = Object.keys(data[0] || {}).join(',');
-        const rows = data.map(row => Object.values(row).map(v => `"${v}"`).join(','));
+        const rows = data.map(row => Object.values(row).map(v => escapeCsvValue(v)).join(','));
         content = [headers, ...rows].join('\n');
         mimeType = 'text/csv';
         extension = 'csv';
@@ -308,12 +351,12 @@ export function downloadExportFile(format: 'csv' | 'excel' | 'json', data: any[]
         mimeType = 'application/json';
         extension = 'json';
     } else {
-        // Excel format - use CSV for simplicity
+        // Excel format - use CSV with .xlsx extension for Excel compatibility
         const headers = Object.keys(data[0] || {}).join(',');
-        const rows = data.map(row => Object.values(row).map(v => `"${v}"`).join(','));
+        const rows = data.map(row => Object.values(row).map(v => escapeCsvValue(v)).join(','));
         content = [headers, ...rows].join('\n');
-        mimeType = 'text/csv';
-        extension = 'csv';
+        mimeType = 'application/vnd.ms-excel';
+        extension = 'xls';
     }
 
     const blob = new Blob(['\ufeff' + content], { type: `${mimeType};charset=utf-8` });
@@ -389,7 +432,10 @@ export async function getKLineData(
     }
 
     const { data } = await api.get<APIResponse<KLineResponse>>(`/stocks/${symbol}/kline?${params}`);
-    return data.data!;
+    if (!data.data) {
+        throw new Error('API 回應格式錯誤：缺少 K 線資料');
+    }
+    return data.data;
 }
 
 /**
@@ -397,12 +443,12 @@ export async function getKLineData(
  */
 export async function clearKLineCache(symbol: string): Promise<{ message: string }> {
     const { data } = await api.delete<APIResponse<{ message: string }>>(`/stocks/${symbol}/kline/cache`);
-    return data.data!;
+    return data.data ?? { message: '快取已清除' };
 }
 
 // ===== Cache API =====
 
 export async function clearCache(): Promise<{ success: boolean; message: string }> {
-    const { data } = await api.get<any>('/cache/clear');
+    const { data } = await api.delete<any>('/cache/clear');
     return data;
 }

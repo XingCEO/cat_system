@@ -58,11 +58,11 @@ export function StockTable({ stocks, total, page, pageSize, onPageChange, onStoc
     }, [stocks, sortField, sortOrder]);
 
     const SortHeader = ({ field, children }: { field: string; children: React.ReactNode }) => (
-        <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider cursor-pointer hover:bg-muted/50"
+        <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider cursor-pointer hover:bg-muted/50 transition-colors"
             onClick={() => handleSort(field)}>
             <div className="flex items-center gap-1">
                 {children}
-                <ArrowUpDown className={`w-3 h-3 ${sortField === field ? 'opacity-100' : 'opacity-30'}`} />
+                <ArrowUpDown className={`w-3 h-3 transition-opacity ${sortField === field ? 'opacity-100 text-primary' : 'opacity-30'}`} />
             </div>
         </th>
     );
@@ -98,7 +98,7 @@ export function StockTable({ stocks, total, page, pageSize, onPageChange, onStoc
             <CardContent className="p-0">
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                        <thead className="bg-muted/50 border-y">
+                        <thead className="bg-muted/30 border-y border-border/50">
                             <tr>
                                 <SortHeader field="symbol">代號</SortHeader>
                                 <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider">名稱</th>
@@ -112,28 +112,28 @@ export function StockTable({ stocks, total, page, pageSize, onPageChange, onStoc
                                 <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider">操作</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y">
+                        <tbody className="divide-y divide-border/50">
                             {sortedStocks.map((stock, idx) => (
-                                <tr key={stock.symbol} className={`hover:bg-muted/30 ${idx % 2 === 0 ? '' : 'bg-muted/10'}`}>
-                                    <td className="px-3 py-3 font-mono font-medium">{stock.symbol}</td>
-                                    <td className="px-3 py-3">{stock.name}</td>
+                                <tr key={stock.symbol} className={`hover:bg-primary/5 cursor-pointer transition-colors duration-150 ${idx % 2 === 0 ? '' : 'bg-muted/30'}`} onClick={() => onStockClick(stock)}>
+                                    <td className="px-3 py-3 font-mono font-medium text-primary">{stock.symbol}</td>
+                                    <td className="px-3 py-3 font-medium">{stock.name}</td>
                                     <td className="px-3 py-3 text-muted-foreground text-xs">{stock.industry || '-'}</td>
                                     <td className="px-3 py-3 font-mono">{formatPrice(stock.close_price)}</td>
                                     <td className={`px-3 py-3 font-mono font-semibold ${getChangeColor(stock.change_percent)}`}>
                                         {formatPercent(stock.change_percent)}
                                     </td>
-                                    <td className="px-3 py-3 font-mono">{formatNumber(stock.volume)}</td>
+                                    <td className="px-3 py-3 font-mono text-muted-foreground">{formatNumber(stock.volume)}</td>
                                     <td className="px-3 py-3">
                                         {stock.consecutive_up_days && stock.consecutive_up_days > 0 ? (
-                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/10 text-red-500">
+                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
                                                 {stock.consecutive_up_days}天
                                             </span>
                                         ) : '-'}
                                     </td>
-                                    <td className="px-3 py-3 font-mono">{stock.amplitude ? `${stock.amplitude.toFixed(1)}%` : '-'}</td>
-                                    <td className="px-3 py-3 font-mono">{stock.volume_ratio ? stock.volume_ratio.toFixed(2) : '-'}</td>
+                                    <td className="px-3 py-3 font-mono text-muted-foreground">{stock.amplitude ? `${stock.amplitude.toFixed(1)}%` : '-'}</td>
+                                    <td className="px-3 py-3 font-mono text-muted-foreground">{stock.volume_ratio ? stock.volume_ratio.toFixed(2) : '-'}</td>
                                     <td className="px-3 py-3">
-                                        <Button variant="ghost" size="sm" onClick={() => onStockClick(stock)}>
+                                        <Button variant="ghost" size="sm" className="hover:bg-primary/10 hover:text-primary" onClick={(e) => { e.stopPropagation(); onStockClick(stock); }}>
                                             <LineChart className="w-4 h-4" />
                                         </Button>
                                     </td>

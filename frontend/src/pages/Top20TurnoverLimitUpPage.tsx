@@ -21,7 +21,8 @@ import { getTop20LimitUp, downloadExportFile, getTradingDate } from '@/services/
 import { useStore } from '@/store/store';
 import {
     ChevronLeft, ChevronRight, Flame, Trophy, Search,
-    Download, Calendar, ArrowUpDown, AlertCircle, BarChart2, LineChart
+    Download, Calendar, ArrowUpDown, AlertCircle, BarChart2, LineChart,
+    Medal, Star, FileText
 } from 'lucide-react';
 
 interface TurnoverStock {
@@ -51,20 +52,26 @@ interface Stats {
     total_amount_limit_up: number;
 }
 
-// Medal icons for top 3
-function getMedalIcon(rank: number): string {
-    if (rank === 1) return '🥇';
-    if (rank === 2) return '🥈';
-    if (rank === 3) return '🥉';
-    return '';
+// Medal icons for top 3 (using Lucide icons instead of emojis)
+function getMedalIcon(rank: number): React.ReactNode {
+    if (rank === 1) return <Medal className="w-4 h-4 text-yellow-500" />;
+    if (rank === 2) return <Medal className="w-4 h-4 text-gray-400" />;
+    if (rank === 3) return <Medal className="w-4 h-4 text-amber-600" />;
+    return null;
 }
 
-// Special annotations
-function getStockAnnotations(stock: TurnoverStock): string[] {
-    const annotations: string[] = [];
-    if (stock.limit_up_type === '一字板') annotations.push('🔥');
+// Special annotations (using Lucide icons)
+function getStockAnnotations(stock: TurnoverStock): React.ReactNode[] {
+    const annotations: React.ReactNode[] = [];
+    if (stock.limit_up_type === '一字板') annotations.push(<Flame key="flame" className="w-3 h-3 text-red-500" />);
     if (stock.consecutive_up_days && stock.consecutive_up_days >= 2) {
-        annotations.push('⭐'.repeat(Math.min(stock.consecutive_up_days, 5)));
+        annotations.push(
+            <span key="stars" className="flex items-center">
+                {Array.from({ length: Math.min(stock.consecutive_up_days, 5) }).map((_, i) => (
+                    <Star key={i} className="w-3 h-3 text-amber-500 fill-amber-500" />
+                ))}
+            </span>
+        );
     }
     return annotations;
 }
@@ -179,7 +186,7 @@ export function Top20TurnoverLimitUpPage() {
                             }`}>
                             {rank}
                         </span>
-                        {medal && <span className="text-lg">{medal}</span>}
+                        {medal && <span className="ml-1">{medal}</span>}
                     </div>
                 );
             },
@@ -351,10 +358,10 @@ export function Top20TurnoverLimitUpPage() {
                     <div>
                         <h1 className="text-2xl font-bold flex items-center gap-2">
                             <Trophy className="w-7 h-7 text-yellow-500" />
-                            前100周轉漲停榜
+                            前200周轉漲停榜
                         </h1>
                         <p className="text-sm text-muted-foreground">
-                            當日周轉率排名前100名且達到漲停（≥9.9%）的股票
+                            當日周轉率排名前200名且達到漲停（≥9.9%）的股票
                         </p>
                     </div>
                 </div>
@@ -384,17 +391,17 @@ export function Top20TurnoverLimitUpPage() {
                 <div className="grid gap-4 grid-cols-2 md:grid-cols-5">
                     <Card>
                         <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium text-muted-foreground">周轉率前100名</CardTitle>
+                            <CardTitle className="text-sm font-medium text-muted-foreground">周轉率前200名</CardTitle>
                         </CardHeader>
                         <CardContent>
                             <div className="text-2xl font-bold">{stats.top20_count} 檔</div>
-                            <p className="text-xs text-muted-foreground mt-1">當日周轉率排名前100的股票</p>
+                            <p className="text-xs text-muted-foreground mt-1">當日周轉率排名前200的股票</p>
                         </CardContent>
                     </Card>
 
                     <Card className="border-red-500/50 bg-red-500/5">
                         <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium text-red-500">前100中漲停股</CardTitle>
+                            <CardTitle className="text-sm font-medium text-red-500">前200中漲停股</CardTitle>
                         </CardHeader>
                         <CardContent>
                             <div className="text-2xl font-bold text-red-500">{stats.limit_up_count} 檔</div>
@@ -506,14 +513,16 @@ export function Top20TurnoverLimitUpPage() {
                     ) : stocks.length === 0 ? (
                         /* Empty State */
                         <div className="py-16 px-8 text-center">
-                            <div className="text-6xl mb-4">📊</div>
-                            <h3 className="text-lg font-semibold mb-2">今日周轉率前100名中無漲停股票</h3>
+                            <div className="flex items-center justify-center text-6xl mb-4 text-muted-foreground">
+                                <BarChart2 className="w-16 h-16" />
+                            </div>
+                            <h3 className="text-lg font-semibold mb-2">今日周轉率前200名中無漲停股票</h3>
                             <div className="text-sm text-muted-foreground space-y-4 max-w-md mx-auto">
                                 <div>
                                     <p className="font-medium mb-2">可能原因：</p>
                                     <ul className="list-disc list-inside text-left">
                                         <li>今日盤勢較弱，高周轉股票未達漲停</li>
-                                        <li>前100名股票多為下跌或小漲</li>
+                                        <li>前200名股票多為下跌或小漲</li>
                                         <li>資料尚未更新完成</li>
                                     </ul>
                                 </div>
@@ -521,14 +530,14 @@ export function Top20TurnoverLimitUpPage() {
                                     <p className="font-medium mb-2">建議：</p>
                                     <ul className="list-disc list-inside text-left">
                                         <li>查詢其他日期</li>
-                                        <li>展開查看完整前100名名單</li>
+                                        <li>展開查看完整前200名名單</li>
                                         <li>前往「高周轉漲停」頁面查看更多資料</li>
                                     </ul>
                                 </div>
                             </div>
                             <div className="flex justify-center gap-2 mt-6">
                                 <Button variant="outline" onClick={() => setShowTop20Full(true)}>
-                                    <BarChart2 className="w-4 h-4 mr-1" /> 查看完整前100名
+                                    <BarChart2 className="w-4 h-4 mr-1" /> 查看完整前200名
                                 </Button>
                                 <Button asChild>
                                     <Link to="/turnover">前往高周轉漲停</Link>
@@ -600,8 +609,8 @@ export function Top20TurnoverLimitUpPage() {
                 open={showTop20Full}
                 onToggle={(e) => setShowTop20Full((e.target as HTMLDetailsElement).open)}
             >
-                <summary className="p-4 cursor-pointer hover:bg-muted/50 font-medium">
-                    📋 查看完整周轉率前100名名單（包含未漲停）
+                <summary className="p-4 cursor-pointer hover:bg-muted/50 font-medium flex items-center gap-2">
+                    <FileText className="w-4 h-4" /> 查看完整周轉率前200名名單（包含未漲停）
                 </summary>
                 <div className="p-4 pt-0 overflow-x-auto">
                     <table className="w-full text-sm">
@@ -641,7 +650,9 @@ export function Top20TurnoverLimitUpPage() {
                                     <td className="px-3 py-2 font-mono text-blue-500">{stock.turnover_rate?.toFixed(2)}%</td>
                                     <td className="px-3 py-2">
                                         {stock.is_limit_up ? (
-                                            <span className="px-2 py-0.5 rounded bg-red-500 text-white text-xs">漲停 🔥</span>
+                                            <span className="px-2 py-0.5 rounded bg-red-500 text-white text-xs inline-flex items-center gap-1">
+                                                漲停 <Flame className="w-3 h-3" />
+                                            </span>
                                         ) : (
                                             <span className="text-muted-foreground text-xs">-</span>
                                         )}

@@ -8,7 +8,8 @@ interface DashboardChartsProps {
     stocks: Stock[];
 }
 
-const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
+// Fintech 設計系統色彩
+const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
 
 export function DashboardCharts({ stocks }: DashboardChartsProps) {
     // 產業分布
@@ -62,10 +63,10 @@ export function DashboardCharts({ stocks }: DashboardChartsProps) {
     return (
         <div className="grid gap-4 md:grid-cols-3 mb-6">
             {/* 產業分布 */}
-            <Card>
+            <Card className="hover:shadow-lg transition-shadow duration-200">
                 <CardHeader className="pb-2">
                     <CardTitle className="text-sm flex items-center gap-2">
-                        <BarChart3 className="w-4 h-4" /> 產業分布
+                        <BarChart3 className="w-4 h-4 text-primary" /> 產業分布
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -76,7 +77,15 @@ export function DashboardCharts({ stocks }: DashboardChartsProps) {
                                 labelLine={false} fontSize={10}>
                                 {industryData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                             </Pie>
-                            <Tooltip formatter={(value: number, name: string) => [`${value} 檔`, name]} />
+                            <Tooltip
+                                formatter={(value: number, name: string) => [`${value} 檔`, name]}
+                                contentStyle={{
+                                    backgroundColor: 'hsl(var(--card))',
+                                    border: '1px solid hsl(var(--border))',
+                                    borderRadius: '8px',
+                                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
+                                }}
+                            />
                             <Legend
                                 layout="horizontal"
                                 verticalAlign="bottom"
@@ -90,16 +99,22 @@ export function DashboardCharts({ stocks }: DashboardChartsProps) {
             </Card>
 
             {/* 漲幅分布 */}
-            <Card>
+            <Card className="hover:shadow-lg transition-shadow duration-200">
                 <CardHeader className="pb-2">
                     <CardTitle className="text-sm">漲幅分布</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <ResponsiveContainer width="100%" height={220}>
                         <BarChart data={changeDistribution} margin={{ bottom: 10 }}>
-                            <XAxis dataKey="range" tick={{ fontSize: 12 }} />
-                            <YAxis tick={{ fontSize: 12 }} />
-                            <Tooltip />
+                            <XAxis dataKey="range" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
+                            <YAxis tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
+                            <Tooltip
+                                contentStyle={{
+                                    backgroundColor: 'hsl(var(--card))',
+                                    border: '1px solid hsl(var(--border))',
+                                    borderRadius: '8px'
+                                }}
+                            />
                             <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                         </BarChart>
                     </ResponsiveContainer>
@@ -107,17 +122,23 @@ export function DashboardCharts({ stocks }: DashboardChartsProps) {
             </Card>
 
             {/* 連漲天數分布 */}
-            <Card>
+            <Card className="hover:shadow-lg transition-shadow duration-200">
                 <CardHeader className="pb-2">
                     <CardTitle className="text-sm">連續上漲天數</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <ResponsiveContainer width="100%" height={220}>
                         <BarChart data={upDaysDistribution} margin={{ bottom: 10 }}>
-                            <XAxis dataKey="days" tick={{ fontSize: 12 }} />
-                            <YAxis tick={{ fontSize: 12 }} />
-                            <Tooltip />
-                            <Bar dataKey="count" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                            <XAxis dataKey="days" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
+                            <YAxis tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
+                            <Tooltip
+                                contentStyle={{
+                                    backgroundColor: 'hsl(var(--card))',
+                                    border: '1px solid hsl(var(--border))',
+                                    borderRadius: '8px'
+                                }}
+                            />
+                            <Bar dataKey="count" fill="#10b981" radius={[4, 4, 0, 0]} />
                         </BarChart>
                     </ResponsiveContainer>
                 </CardContent>

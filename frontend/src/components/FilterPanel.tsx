@@ -35,10 +35,13 @@ export function FilterPanel({ onSearch, isLoading, queryDate, onDateChange }: Fi
     };
 
     return (
-        <Card className="mb-6">
+        <Card className="mb-6 border-border/50 shadow-sm">
             <CardHeader className="pb-4">
-                <CardTitle className="text-lg flex items-center gap-2">
-                    <Search className="w-5 h-5" /> 篩選條件
+                <CardTitle className="text-lg flex items-center gap-3 tracking-tight">
+                    <div className="p-2 rounded-lg bg-primary/10">
+                        <Search className="w-5 h-5 text-primary" />
+                    </div>
+                    篩選條件
                 </CardTitle>
             </CardHeader>
             <CardContent>

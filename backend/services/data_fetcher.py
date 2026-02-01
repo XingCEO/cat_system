@@ -1,6 +1,7 @@
 """
 Data Fetcher - FinMind API + TWSE Open Data
 """
+import json
 import httpx
 import pandas as pd
 from datetime import datetime, date, timedelta
@@ -121,7 +122,7 @@ class DataFetcher:
                     shares_str = item.get("已發行普通股數或TDR原股發行股數", "0")
                     try:
                         float_shares = int(shares_str.replace(",", "")) // 1000  # Convert to 張(lots)
-                    except:
+                    except (ValueError, TypeError):
                         float_shares = 0
                     
                     industry_code = item.get("產業別", "")
@@ -233,7 +234,7 @@ class DataFetcher:
                             val_str = str(val).replace(",", "")
                             try:
                                 return float(val_str) if to_float else int(float(val_str))
-                            except:
+                            except (ValueError, TypeError):
                                 return None
 
                         volume = parse_num(item.get("TradeVolume"))
@@ -420,7 +421,7 @@ class DataFetcher:
                     val_str = str(val).replace(",", "").replace("+", "").replace(" ", "")
                     try:
                         return float(val_str) if to_float else int(float(val_str))
-                    except:
+                    except (ValueError, TypeError):
                         return None
 
                 for row in rows:
@@ -514,7 +515,7 @@ class DataFetcher:
                         consecutive_failures = 0
                         try:
                             data = response.json()
-                        except:
+                        except (ValueError, json.JSONDecodeError):
                             current = self._next_month(current)
                             continue
 
@@ -650,7 +651,7 @@ class DataFetcher:
                                             "close": close_val,
                                             "Trading_Volume": vol_val,
                                         })
-                                except:
+                                except (ValueError, IndexError, TypeError):
                                     continue
 
                             if records:

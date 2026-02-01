@@ -4,7 +4,7 @@ import {
     PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip,
     ResponsiveContainer, ScatterChart, Scatter, CartesianGrid, Legend, ReferenceLine
 } from 'recharts';
-import { BarChart2, PieChart as PieChartIcon, TrendingUp, DollarSign, Clock } from 'lucide-react';
+import { BarChart2, PieChart as PieChartIcon, TrendingUp, DollarSign, Clock, Flame, Medal } from 'lucide-react';
 
 interface TurnoverStock {
     turnover_rank: number;
@@ -252,7 +252,7 @@ export function Top20Charts({ stocks, top20Full = [] }: Top20ChartsProps) {
                                                 <div className="font-bold">{d.symbol} {d.name}</div>
                                                 <div>周轉率: {d.turnover_rate?.toFixed(2)}%</div>
                                                 <div>漲幅: {d.change_percent?.toFixed(2)}%</div>
-                                                <div>{d.is_limit_up ? '🔥 漲停' : ''}</div>
+                                                <div>{d.is_limit_up ? '漲停' : ''}</div>
                                             </div>
                                         );
                                     }
@@ -296,10 +296,12 @@ export function Top20Charts({ stocks, top20Full = [] }: Top20ChartsProps) {
                                     if (payload && payload.length) {
                                         const d = payload[0].payload;
                                         const idx = amountData.length - amountData.indexOf(d) - 1;
-                                        const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '';
                                         return (
                                             <div className="bg-popover p-2 rounded shadow text-xs border">
-                                                <div className="font-bold">{medal} {d.symbol}</div>
+                                                <div className="font-bold flex items-center gap-1">
+                                                    {idx <= 2 && <Medal className={`w-3 h-3 ${idx === 0 ? 'text-yellow-500' : idx === 1 ? 'text-gray-400' : 'text-amber-600'}`} />}
+                                                    {d.symbol}
+                                                </div>
                                                 <div>成交金額: {d.amount?.toFixed(2)} 億元</div>
                                             </div>
                                         );
@@ -357,7 +359,7 @@ export function Top20Charts({ stocks, top20Full = [] }: Top20ChartsProps) {
             <Card>
                 <CardHeader className="pb-2">
                     <CardTitle className="text-sm flex items-center gap-2">
-                        🔥 漲停類型
+                        <Flame className="w-4 h-4 text-red-500" /> 漲停類型
                     </CardTitle>
                 </CardHeader>
                 <CardContent>

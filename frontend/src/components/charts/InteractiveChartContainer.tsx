@@ -131,37 +131,58 @@ export const InteractiveChartContainer = forwardRef<InteractiveChartContainerRef
         series: ISeriesApi<'Candlestick'> | null;
     }>({ chart: null, series: null });
 
-    // Expose capture method - 支援截斷到指定日期
+    // Expose capture method - 根據圖表寬度計算 K 線數量，精確填滿不留空白
     useImperativeHandle(ref, () => ({
         captureCharts: async (endDate?: string) => {
             const charts = [mainChartRef.current, volumeChartRef.current, indicatorChartRef.current];
 
-            // 如果有指定結束日期，先調整圖表範圍
+            // 保存原始範圍以便還原
             let originalRange: { from: number; to: number } | null = null;
-            if (endDate && mainChartRef.current && data.length > 0) {
-                // 找到結束日期的索引
-                const endIdx = data.findIndex(d => d.date === endDate);
+            if (mainChartRef.current) {
+                const currentRange = mainChartRef.current.timeScale().getVisibleLogicalRange();
+                if (currentRange) {
+                    originalRange = { from: currentRange.from, to: currentRange.to };
+                }
+            }
+
+            // 列印時：根據圖表寬度和 bar spacing 計算需要多少根 K 線填滿
+            if (mainChartRef.current && data.length > 0) {
+                const endIdx = endDate
+                    ? data.findIndex(d => d.date === endDate)
+                    : data.length - 1;
+
                 if (endIdx >= 0) {
-                    // 保存原始範圍
-                    const currentRange = mainChartRef.current.timeScale().getVisibleLogicalRange();
-                    if (currentRange) {
-                        originalRange = { from: currentRange.from, to: currentRange.to };
-                    }
+                    // 獲取圖表實際寬度（像素）
+                    const chartWidth = mainChartRef.current.timeScale().width();
 
-                    // 設定新範圍：精準截止到選中日期
-                    const visibleWidth = originalRange ? originalRange.to - originalRange.from : 60;
-                    const newFrom = Math.max(0, endIdx - visibleWidth + 5);
-                    const newTo = endIdx;  // 精準截止
+                    // 獲取當前每根 K 線的間距（固定不變）
+                    const timeScaleOptions = mainChartRef.current.timeScale().options();
+                    const barSpacing = timeScaleOptions.barSpacing || 6;
 
-                    // 同步所有圖表到新範圍
+                    // 精確計算：需要多少根 K 線才能填滿圖表寬度
+                    // 考慮右側邊距（約 50px 給價格軸）
+                    const availableWidth = chartWidth - 50;
+                    const barsNeeded = Math.ceil(availableWidth / barSpacing);
+
+                    // 設定範圍：右邊緊貼結束日期，左邊往過去延伸
+                    // LogicalRange: from 是起始索引，to 是結束索引+1（不包含）
+                    const newTo = endIdx + 1;  // 包含結束日期
+                    const newFrom = Math.max(0, endIdx - barsNeeded + 1);
+
+                    // 禁止 lightweight-charts 自動調整 barSpacing
                     charts.forEach(chart => {
                         if (chart) {
+                            // 鎖定 barSpacing 不被自動調整
+                            chart.timeScale().applyOptions({
+                                barSpacing: barSpacing,
+                                rightOffset: 0,  // 右側無空白
+                            });
                             chart.timeScale().setVisibleLogicalRange({ from: newFrom, to: newTo });
                         }
                     });
 
                     // 等待圖表重繪
-                    await new Promise(resolve => setTimeout(resolve, 150));
+                    await new Promise(resolve => setTimeout(resolve, 250));
                 }
             }
 

@@ -444,6 +444,27 @@ async def get_institutional_buy(
     return result
 
 
+@router.get("/above-ma20-uptrend")
+async def get_above_ma20_uptrend(
+    date: Optional[str] = Query(None, description="查詢日期 YYYY-MM-DD"),
+):
+    """
+    股價 >= MA20 且 MA20 向上趨勢篩選
+
+    條件：
+    1. 當日收盤價 >= 20日均線
+    2. MA20 向上趨勢（今日 MA20 > 昨日 MA20）
+
+    從週轉率前200名中篩選
+    """
+    result = await high_turnover_analyzer.get_above_ma20_uptrend(date=date)
+
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "查詢失敗"))
+
+    return result
+
+
 @router.get("/combo-filter")
 async def get_combo_filter(
     start_date: Optional[str] = Query(None, description="開始日期 YYYY-MM-DD"),
@@ -456,6 +477,7 @@ async def get_combo_filter(
     volume_ratio: Optional[float] = Query(None, description="成交量倍數(相對昨日)"),
     is_5day_high: Optional[bool] = Query(None, description="五日創新高"),
     is_5day_low: Optional[bool] = Query(None, description="五日創新低"),
+    is_ma20_uptrend: Optional[bool] = Query(None, description="股價>=MA20且MA20向上"),
 ):
     """
     複合篩選（週轉率前200名 + 多條件組合）
@@ -473,7 +495,8 @@ async def get_combo_filter(
         min_buy_days=min_buy_days,
         volume_ratio=volume_ratio,
         is_5day_high=is_5day_high,
-        is_5day_low=is_5day_low
+        is_5day_low=is_5day_low,
+        is_ma20_uptrend=is_ma20_uptrend
     )
 
     if not result.get("success"):
