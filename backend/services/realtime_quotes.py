@@ -133,12 +133,29 @@ class RealtimeQuotesService:
 
         price = safe_float(item.get("z"))  # 成交價
         prev_close = safe_float(item.get("y"))  # 昨收
+        open_price = safe_float(item.get("o"))  # 開盤價
+
+        # 如果沒有成交價，嘗試使用買一價或賣一價作為參考
+        if price is None:
+            bid_prices_raw = item.get("b", "").split("_")
+            ask_prices_raw = item.get("a", "").split("_")
+            # 優先使用賣一價（較接近實際成交可能）
+            if ask_prices_raw and ask_prices_raw[0]:
+                price = safe_float(ask_prices_raw[0])
+            elif bid_prices_raw and bid_prices_raw[0]:
+                price = safe_float(bid_prices_raw[0])
 
         change = None
         change_pct = None
         if price is not None and prev_close is not None and prev_close > 0:
             change = round(price - prev_close, 2)
             change_pct = round((change / prev_close) * 100, 2)
+        elif open_price is not None and prev_close is not None and prev_close > 0:
+            # 使用開盤價計算
+            change = round(open_price - prev_close, 2)
+            change_pct = round((change / prev_close) * 100, 2)
+            if price is None:
+                price = open_price
 
         # 解析五檔（取第一檔）
         bid_prices = item.get("b", "").split("_")
@@ -152,11 +169,11 @@ class RealtimeQuotesService:
             price=price,
             change=change,
             change_pct=change_pct,
-            open_price=safe_float(item.get("o")),
+            open_price=open_price,
             high_price=safe_float(item.get("h")),
             low_price=safe_float(item.get("l")),
             prev_close=prev_close,
-            volume=safe_int(item.get("v")),
+            volume=safe_int(item.get("v")),  # 成交量（張）
             bid_price=bid_price,
             ask_price=ask_price,
             update_time=item.get("t"),
@@ -167,19 +184,55 @@ class RealtimeQuotesService:
         """從證交所抓取一批報價"""
         results = []
 
-        # 建立查詢字串
-        ex_ch_list = []
-        for symbol in symbols:
-            # 判斷上市(tse)或上櫃(otc)
-            if symbol.startswith("6") or symbol.startswith("3") or symbol.startswith("4"):
-                # 可能是上櫃，但也可能是上市，這裡簡化處理
-                ex_ch_list.append(f"tse_{symbol}.tw")
-                ex_ch_list.append(f"otc_{symbol}.tw")
-            else:
-                ex_ch_list.append(f"tse_{symbol}.tw")
+        # 建立查詢字串 - 分開上市和上櫃
+        tse_symbols = []
+        otc_symbols = []
 
+        for symbol in symbols:
+            # 上櫃股票代號特徵：4開頭四碼、5開頭部分、6開頭四碼、8開頭四碼
+            if len(symbol) == 4 and symbol[0] in ('4', '5', '6', '8'):
+                otc_symbols.append(symbol)
+            else:
+                tse_symbols.append(symbol)
+
+        # 先查上市
+        if tse_symbols:
+            tse_results = await self._fetch_twse_single_market(tse_symbols, "tse", session)
+            results.extend(tse_results)
+
+        # 再查上櫃（如果上市沒找到，也會嘗試）
+        if otc_symbols:
+            await asyncio.sleep(0.5)  # 間隔避免限流
+            otc_results = await self._fetch_twse_single_market(otc_symbols, "otc", session)
+            results.extend(otc_results)
+
+        # 找出還沒取得的股票，嘗試另一個市場
+        fetched = {q.symbol for q in results}
+        missing_tse = [s for s in tse_symbols if s not in fetched]
+        missing_otc = [s for s in otc_symbols if s not in fetched]
+
+        if missing_tse:
+            await asyncio.sleep(0.5)
+            extra = await self._fetch_twse_single_market(missing_tse, "otc", session)
+            results.extend(extra)
+
+        if missing_otc:
+            await asyncio.sleep(0.5)
+            extra = await self._fetch_twse_single_market(missing_otc, "tse", session)
+            results.extend(extra)
+
+        return results
+
+    async def _fetch_twse_single_market(self, symbols: List[str], market: str, session: aiohttp.ClientSession) -> List[QuoteData]:
+        """從證交所抓取單一市場的報價"""
+        results = []
+
+        ex_ch_list = [f"{market}_{s}.tw" for s in symbols]
         ex_ch = "|".join(ex_ch_list)
-        url = f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch={ex_ch}"
+
+        # 使用 yarl.URL 並禁用編碼，保持 | 符號不被編碼
+        from yarl import URL
+        url = URL(f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch={ex_ch}", encoded=True)
 
         try:
             await self._throttle()
@@ -192,7 +245,16 @@ class RealtimeQuotesService:
                 if resp.status != 200:
                     raise Exception(f"HTTP {resp.status}")
 
-                data = await resp.json()
+                # 證交所 API 有時返回 text/html 但內容實際是 JSON
+                text = await resp.text()
+                text = text.strip()  # 移除前後空白
+
+                # 檢查是否為 JSON 格式
+                if not text.startswith("{"):
+                    raise Exception("Received non-JSON response, API may be rate-limited")
+
+                import json
+                data = json.loads(text)
                 msg_array = data.get("msgArray", [])
 
                 # 用 symbol 去重（因為可能同時查 tse 和 otc）
@@ -200,13 +262,11 @@ class RealtimeQuotesService:
                 for item in msg_array:
                     symbol = item.get("c", "")
                     if symbol and symbol not in seen:
-                        # 只保留有成交價的
-                        if item.get("z") and item.get("z") != "-":
-                            seen.add(symbol)
-                            quote = self._parse_twse_quote(item)
-                            results.append(quote)
-                            # 加入快取
-                            self._cache[symbol] = quote
+                        seen.add(symbol)
+                        quote = self._parse_twse_quote(item)
+                        results.append(quote)
+                        # 加入快取
+                        self._cache[symbol] = quote
 
                 # 標記來源健康
                 self._sources["twse"].is_healthy = True
