@@ -83,6 +83,11 @@ app = FastAPI(
 )
 
 # Configure CORS - 限制允許的方法和標頭
+from fastapi.middleware.gzip import GZipMiddleware
+
+# ...
+
+# Configure CORS - 限制允許的方法和標頭
 origins = settings.cors_origins.split(",")
 app.add_middleware(
     CORSMiddleware,
@@ -91,6 +96,9 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-Admin-Key"],
 )
+
+# Enable GZip Compression - 壓縮回應提升速度
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Add request logging middleware
 app.add_middleware(RequestLoggingMiddleware)

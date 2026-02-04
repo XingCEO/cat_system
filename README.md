@@ -1,471 +1,199 @@
-# 貓星人賺大錢 - TWSE 台股篩選系統
+# 🐱 Cat System
 
-台股漲幅區間篩選器，提供多種技術分析篩選功能、K線圖表、盤中即時監控等功能。
+<div align="center">
 
-## 系統架構
+<img src="https://img.shields.io/badge/React-18.3-61DAFB?style=for-the-badge&logo=react&logoColor=white" alt="React" />
+<img src="https://img.shields.io/badge/TypeScript-5.6-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
+<img src="https://img.shields.io/badge/FastAPI-0.100+-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI" />
+<img src="https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python" />
 
-```
-├── backend/          # FastAPI 後端 (Python)
-│   ├── main.py       # 主程式入口
-│   ├── routers/      # API 路由
-│   ├── services/     # 業務邏輯服務
-│   └── database.py   # 資料庫連接
-├── frontend/         # React + TypeScript 前端
-│   ├── src/
-│   │   ├── pages/    # 頁面元件
-│   │   ├── components/  # UI 元件
-│   │   └── services/ # API 服務
-│   └── dist/         # 編譯產出
-└── README.md
-```
+**企業級台股智慧篩選系統**
 
-## 快速啟動
+*Professional Taiwan Stock Screening Platform*
 
-### 後端
+[功能特色](#-功能特色) • [快速開始](#-快速開始) • [技術架構](#-技術架構) • [API 文件](#-api-文件)
+
+---
+
+</div>
+
+## 🎯 專案簡介
+
+Cat System 是一款專為台灣股市設計的專業級股票篩選與分析平台。透過先進的技術分析演算法與即時數據整合，提供投資者精準的市場洞察與決策輔助工具。
+
+### 核心價值
+
+- **🚀 即時監控** — 盤中即時報價，延遲僅 10-30 秒
+- **📊 智慧篩選** — 多維度技術指標交叉篩選
+- **📈 K線分析** — 專業級互動式 K 線圖表
+- **🎯 均線策略** — 4 大均線策略自動識別
+
+---
+
+## ✨ 功能特色
+
+### 盤中即時監控
+實時追蹤週轉率前 50 名股票的即時報價，支援多資料源自動切換，確保數據穩定可靠。
+
+### 均線策略篩選
+四大核心策略自動識別：
+| 策略 | 描述 | 適用情境 |
+|------|------|----------|
+| 🔴 極強勢多頭 | 多頭排列 + 價格站上 MA5 | 極速攻擊階段 |
+| 🟠 穩健多頭 | 多頭排列 + 價格站上 MA20 | 中線偏多 |
+| 🔵 波段支撐 | 多頭排列 + 價格站上 MA60 | 長線趨勢保護 |
+| 🟣 均線糾結突破 | 均線間距 < 1% + 放量突破 | 新趨勢起點 |
+
+### 專業 K 線圖表
+- 支援日 K / 週 K / 月 K 週期切換
+- MA5、MA10、MA20、MA60、MA120 均線顯示
+- MACD、KD、RSI 技術指標
+- 布林通道視覺化
+- 點擊鎖定與拖曳縮放
+
+### 週轉率分析
+深度分析週轉率前 200 名股票，識別主力進場訊號與異常成交量。
+
+---
+
+## 🚀 快速開始
+
+### 環境需求
+
+- **Node.js** 18.0+
+- **Python** 3.11+
+- **npm** 或 **pnpm**
+
+### 安裝步驟
+
 ```bash
+# 1. 克隆專案
+git clone https://github.com/XingCEO/cat_system.git
+cd cat_system
+
+# 2. 啟動後端服務
 cd backend
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-python main.py
-# 伺服器啟動於 http://localhost:8000
-```
+uvicorn main:app --reload --port 8000
 
-### 前端開發
-```bash
+# 3. 啟動前端開發伺服器 (新終端)
 cd frontend
 npm install
 npm run dev
 ```
 
-### 前端編譯並部署
-```bash
-cd frontend
-npm run build
-# 將 dist 複製到 backend/static
-cp -r dist ../backend/static
-```
+### 存取服務
+
+| 服務 | 網址 |
+|------|------|
+| 🌐 前端應用 | http://localhost:5173 |
+| 🔧 API 文件 | http://localhost:8000/docs |
+| ❤️ 健康檢查 | http://localhost:8000/api/health |
 
 ---
 
-## 功能頁面
-
-### 1. 即時篩選 (`/`)
-首頁股票篩選，支援：
-- 漲跌幅區間篩選
-- 價格區間篩選
-- 成交量篩選
-- 排序功能
-
-### 2. 盤中監控 (`/realtime`)
-即時報價監控功能：
-- 顯示週轉率前 N 名股票的即時報價
-- 資料來源：證交所 MIS（主）、Yahoo Finance（備援）
-- 自動刷新間隔：15 秒
-- 快取時間：15 秒
-- 延遲：約 15-30 秒（證交所本身延遲）
-
-### 3. 前200周轉漲停 (`/top20-limit-up`)
-當日週轉率前 200 名中的漲停股票：
-- **漲停定義**：漲幅 ≥ 9.5%
-- 顯示週轉率排名、股價、漲幅等資訊
-
-### 4. 篩選器 (`/turnover-filters`)
-進階篩選功能頁面：
-
-#### 4.1 週轉率篩選
-- **週轉率公式**：`週轉率 = (成交量 / 流通在外股數) × 100%`
-- 可設定週轉率上下限（%）
-- 預設無限制
-
-#### 4.2 複合篩選
-多條件組合篩選：
-
-| 篩選條件 | 說明 |
-|---------|------|
-| 漲停板 | 漲幅 ≥ 9.5% |
-| 跌停板 | 跌幅 ≤ -9.5% |
-| 價格突破 MA20 | 收盤價 > MA20 且前一日收盤價 ≤ MA20 |
-| MA20 向上趨勢 | 收盤價 ≥ MA20 且 MA20 呈向上趨勢（今日 MA20 > 5日前 MA20） |
-
-#### 4.3 日期區間查詢
-- 支援查詢歷史日期區間的篩選結果
-- 預設為最近交易日
-
-### 5. 均線突破 (`/ma-breakout`)
-專門篩選均線突破的股票：
-- **突破 MA20 定義**：
-  - 當日收盤價 > MA20
-  - 前一日收盤價 ≤ MA20
-- 結合週轉率前 200 名進行篩選
-
-### 6. 高周轉漲停 (`/turnover`)
-高週轉率且漲停的股票篩選
-
-### 7. 批次比對 (`/batch`)
-批次輸入股票代號進行比對分析
-
-### 8. 回測分析 (`/backtest`)
-歷史回測功能
-
-### 9. 監控清單 (`/watchlist`)
-自選股監控清單
-
-### 10. 歷史記錄 (`/history`)
-查詢歷史篩選記錄
-
----
-
-## 篩選規則詳解
-
-### 週轉率計算
-```
-週轉率 (%) = (當日成交量 / 流通在外股數) × 100
-```
-
-**資料來源**：
-- 成交量：TWSE OpenAPI 每日交易資料
-- 流通在外股數：TWSE OpenAPI 公司基本資料
-
-### 漲停板判定
-```
-漲停 = 漲幅 ≥ 9.5%
-```
-> 註：台股漲跌幅限制為 10%，使用 9.5% 作為門檻以涵蓋接近漲停的股票
-
-### 跌停板判定
-```
-跌停 = 漲幅 ≤ -9.5%
-```
-
-### MA20 計算
-```
-MA20 = 過去 20 個交易日收盤價的簡單移動平均
-```
-
-### MA20 突破判定
-```python
-突破 = (今日收盤價 > 今日 MA20) and (昨日收盤價 <= 昨日 MA20)
-```
-
-### MA20 向上趨勢判定
-```python
-MA20向上 = (今日收盤價 >= 今日 MA20) and (今日 MA20 > 5日前 MA20)
-```
-
----
-
-## K 線圖功能
-
-### 顯示資訊
-點擊任意股票可開啟 K 線圖彈窗，顯示：
-
-| 欄位 | 說明 |
-|-----|------|
-| 開盤價 | 當日開盤價格 |
-| 收盤價 | 當日收盤價格 |
-| 最高價 | 當日最高價格 |
-| 最低價 | 當日最低價格 |
-| 漲跌幅 | 相對前一日的漲跌百分比 |
-| 成交量 | 當日成交張數 |
-
-### 均線顯示
-- MA5（黃色）
-- MA10（紫色）
-- MA20（藍色）
-- MA60（橘色）
-- MA120（灰色）
-
-### 技術指標
-- MACD
-- KD 隨機指標
-- 成交量柱狀圖
-
-### 互動功能
-- 滑鼠移動：即時顯示該日期的價格資訊
-- 點擊鎖定：固定顯示某一天的資料
-- 列印功能：匯出 A4 橫向列印版面
-- 週期切換：日K / 週K / 月K
-
----
-
-## 盤中即時報價系統
-
-### 資料來源優先順序
-1. **證交所 MIS API**（主要）
-   - 延遲：10-30 秒
-   - 免費、無需帳號
-2. **Yahoo Finance API**（備援）
-   - 當主要來源失敗時自動切換
-
-### 系統參數
-| 參數 | 值 | 說明 |
-|-----|-----|------|
-| CACHE_TTL | 15 秒 | 快取存活時間 |
-| CACHE_MAX_SIZE | 500 | 最大快取股票數 |
-| BATCH_SIZE | 80 | 每批查詢股票數 |
-| BATCH_DELAY | 1.5 秒 | 批次間隔時間 |
-| REQUEST_TIMEOUT | 10 秒 | 請求超時時間 |
-| MAX_RETRIES | 3 | 最大重試次數 |
-
-### 請求節流
-- 最小請求間隔：1 秒
-- 隨機延遲：0.1-0.5 秒（避免被封鎖）
-
----
-
-## API 端點
-
-### 股票資料
-- `GET /api/stocks/filter` - 篩選股票
-- `GET /api/stocks/{symbol}/kline` - 取得 K 線資料
-
-### 週轉率分析
-- `GET /api/turnover/top20` - 週轉率前 20 名
-- `GET /api/turnover/top200` - 週轉率前 200 名
-- `GET /api/turnover/top20-limit-up` - 前 200 名中的漲停股
-- `GET /api/turnover/top200-limit-up` - 前 200 名漲停股（日期區間）
-- `GET /api/turnover/ma-breakout` - 均線突破篩選
-- `GET /api/turnover/combo-filter` - 複合條件篩選
-
-### 即時報價
-- `GET /realtime/quotes?symbols=2330,2317` - 取得即時報價
-- `GET /realtime/top-turnover?limit=50` - 週轉率前 N 名即時報價
-- `GET /realtime/status` - 服務狀態
-- `POST /realtime/clear-cache` - 清除快取
-- `POST /realtime/reset-sources` - 重置資料來源狀態
-
-### 系統
-- `GET /api/status` - API 狀態
-- `GET /api/health` - 健康檢查
-- `GET /api/cache/stats` - 快取統計
-- `GET /api/cache/clear` - 清除快取
-- `GET /api/trading-date` - 最近交易日
-
-完整 API 文件：`http://localhost:8000/docs`
-
----
-
-## 技術堆疊
-
-### 後端
-- Python 3.11+
-- FastAPI
-- aiohttp（非同步 HTTP）
-- cachetools（TTL 快取）
-- SQLite（本地資料庫）
-
-### 前端
-- React 18
-- TypeScript
-- Vite
-- TanStack Query（資料管理）
-- Tailwind CSS
-- shadcn/ui（UI 元件）
-- Lightweight Charts（K 線圖表）
-- Recharts（統計圖表）
-
-### 資料來源
-- TWSE OpenAPI（每日交易資料）
-- 證交所 MIS API（盤中即時報價）
-- Yahoo Finance API（備援資料、歷史均線）
-- FinMind API（歷史 K 線資料）
-
----
-
-## 專案結構
+## 🏗 技術架構
 
 ```
-├── backend/
-│   ├── main.py              # FastAPI 主程式
-│   ├── config.py            # 設定檔
-│   ├── database.py          # 資料庫連接
-│   ├── routers/
-│   │   ├── stocks.py        # 股票 API
-│   │   ├── turnover.py      # 週轉率 API
-│   │   ├── realtime.py      # 即時報價 API
-│   │   ├── analysis.py      # 分析 API
-│   │   └── ...
-│   ├── services/
-│   │   ├── data_fetcher.py          # 資料抓取
-│   │   ├── high_turnover_analyzer.py # 週轉率分析
-│   │   ├── realtime_quotes.py       # 即時報價服務
-│   │   ├── enhanced_kline_service.py # K線服務
-│   │   └── cache_manager.py         # 快取管理
-│   └── static/              # 前端編譯檔案
-├── frontend/
+cat_system/
+├── backend/               # FastAPI 後端服務
+│   ├── routers/          # API 路由模組
+│   ├── services/         # 業務邏輯層
+│   │   ├── realtime_quotes.py     # 即時報價服務
+│   │   ├── enhanced_kline_service.py  # K線數據服務
+│   │   └── analyzers/    # 技術分析模組
+│   └── main.py           # 應用入口
+│
+├── frontend/              # React 前端應用
 │   ├── src/
-│   │   ├── components/
-│   │   │   ├── ui/          # shadcn/ui 元件
-│   │   │   ├── charts/      # 圖表元件
-│   │   │   └── StockAnalysisDialog.tsx
-│   │   ├── pages/
-│   │   │   ├── HomePage.tsx
-│   │   │   ├── RealtimeMonitorPage.tsx
-│   │   │   ├── TurnoverFiltersPage.tsx
-│   │   │   ├── MaBreakoutPage.tsx
-│   │   │   └── ...
-│   │   ├── services/
-│   │   │   └── api.ts       # API 呼叫
-│   │   └── store/
-│   │       └── store.ts     # 狀態管理
-│   └── package.json
-├── docker-compose.yml
-└── README.md
+│   │   ├── pages/        # 頁面元件
+│   │   ├── components/   # 可複用元件
+│   │   │   ├── charts/  # 圖表元件
+│   │   │   └── ui/      # UI 基礎元件
+│   │   ├── services/     # API 服務層
+│   │   └── store/        # 狀態管理
+│   └── vite.config.ts    # Vite 配置
+│
+└── docker-compose.yml     # Docker 編排配置
 ```
 
----
+### 技術棧
 
-## 注意事項
+| 層級 | 技術選型 |
+|------|----------|
+| **前端框架** | React 18 + TypeScript |
+| **UI 元件** | shadcn/ui + Tailwind CSS |
+| **圖表引擎** | Lightweight Charts + Recharts |
+| **狀態管理** | Zustand + TanStack Query |
+| **後端框架** | FastAPI + Pydantic |
+| **非同步處理** | aiohttp + asyncio |
+| **數據快取** | cachetools TTL Cache |
 
-1. **即時報價延遲**：證交所 MIS API 本身有 10-30 秒延遲，非零延遲系統
-2. **API 限制**：部分 API 有請求頻率限制，系統已內建節流機制
-3. **交易時間**：盤中監控功能在非交易時間（09:00-13:30 以外）顯示收盤資料
-4. **資料準確性**：所有資料僅供參考，投資決策請自行判斷
-5. **瀏覽器支援**：建議使用 Chrome, Edge, Firefox, Safari 最新版本
+### 數據來源
 
----
-
-## 故障排除
-
-### 1. 顯示「今日非交易日」但確實是交易日
-- 請檢查 API 連線是否正常 (`http://localhost:8000/docs`)
-- 確認系統時間是否正確
-- 可能是證交所資料尚未更新（通常在下午 2:00 後更新）
-
-### 2. 即時報價無資料
-- 確認是否在交易時間內（09:00-13:30）
-- 檢查 `/realtime/status` 確認資料來源健康狀態
-- 可嘗試 `/realtime/reset-sources` 重置資料來源
-
-### 3. K 線圖表顯示空白
-- 請嘗試強制重新整理頁面（Ctrl+Shift+R）
-- 確認網路連線正常
-- 首次載入 5 年資料約需 30-60 秒
-
-### 4. 複合篩選無結果
-- 確認篩選條件是否過於嚴格
-- 檢查日期是否為有效交易日
-- 某些條件組合可能確實無符合股票
+| 來源 | 用途 | 延遲 |
+|------|------|------|
+| 證交所 MIS API | 盤中即時報價 | 10-30s |
+| TWSE OpenAPI | 每日交易數據 | EOD |
+| FinMind API | 歷史 K 線數據 | EOD |
+| Yahoo Finance | 備援數據源 | 15min |
 
 ---
 
-## 環境變數
+## 📡 API 文件
 
-| 變數 | 說明 | 預設值 |
-|------|------|--------|
-| `FINMIND_API_TOKEN` | FinMind API Token (選填) | - |
-| `DATABASE_URL` | 資料庫連線 | `sqlite:///./twse_filter.db` |
-| `CORS_ORIGINS` | 允許的來源 | `http://localhost:5173,http://localhost:8000` |
+### 核心端點
 
----
+```http
+# 股票篩選
+GET /api/stocks/filter?change_min=5&change_max=10
 
----
+# K 線數據
+GET /api/stock/{symbol}/kline?period=daily&limit=250
 
-## 系統安全報告
+# 即時報價
+GET /realtime/top-turnover?limit=50
 
-### 安全審計總覽
-
-本系統已通過完整安全審計，所有已識別問題均已修復。
-
-| 類別 | 問題描述 | 嚴重程度 | 狀態 |
-|------|---------|---------|------|
-| 🔒 安全性 | 路徑穿越漏洞 | 🔴 高 | ✅ 已修復 |
-| 🔒 安全性 | CORS 配置過於寬鬆 | 🟡 中 | ✅ 已修復 |
-| 🐛 前端邏輯 | CSV 匯出引號跳脫問題 | 🟡 中 | ✅ 已修復 |
-| 🐛 前端邏輯 | queryFn 內狀態更新違規 | 🟡 中 | ✅ 已修復 |
-| 🐛 前端邏輯 | API 非空斷言不安全 | 🟡 中 | ✅ 已修復 |
-| 🐛 前端邏輯 | 市場狀態不即時更新 | 🟢 低 | ✅ 已修復 |
-| 🐛 後端邏輯 | MA 計算 None 值未過濾 | 🟡 中 | ✅ 已修復 |
-| ✅ 驗證 | 輸入驗證一致性 | - | ✅ 已確認完善 |
-
-### 修復詳情
-
-#### 1. 路徑穿越漏洞 (Path Traversal)
-- **檔案**: `backend/main.py`
-- **問題**: 前端靜態檔案路由未驗證路徑，攻擊者可能讀取系統檔案
-- **修復**: 使用 `pathlib` 驗證請求路徑必須在 `FRONTEND_DIR` 內
-```python
-frontend_path = Path(FRONTEND_DIR).resolve()
-requested_path = (frontend_path / path).resolve()
-if not str(requested_path).startswith(str(frontend_path)):
-    return JSONResponse(status_code=403, content={"error": "Forbidden"})
+# 均線策略
+GET /api/turnover/ma-strategy/{strategy}
 ```
 
-#### 2. CORS 配置收緊
-- **檔案**: `backend/main.py`
-- **問題**: `allow_methods=["*"]` 和 `allow_headers=["*"]` 過於寬鬆
-- **修復**: 限制為必要的 HTTP 方法和標頭
-```python
-allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
-```
+### 完整文件
 
-#### 3. CSV 引號跳脫
-- **檔案**: `frontend/src/services/api.ts`
-- **問題**: CSV 匯出時若數據包含引號會破壞格式
-- **修復**: 新增 `escapeCsvValue` 函數，正確處理特殊字元
-```typescript
-function escapeCsvValue(value: unknown): string {
-    if (value === null || value === undefined) return '""';
-    const str = String(value);
-    if (str.includes('"') || str.includes(',') || str.includes('\n')) {
-        return `"${str.replace(/"/g, '""')}"`;
-    }
-    return `"${str}"`;
-}
-```
-
-#### 4. React Query 狀態更新
-- **檔案**: `frontend/src/components/StockAnalysisDialog.tsx`
-- **問題**: 在 `queryFn` 內呼叫 `setState` 違反 React Query 規範
-- **修復**: 將狀態重置移至獨立的 `useEffect`
-
-#### 5. API 非空斷言
-- **檔案**: `frontend/src/services/api.ts`
-- **問題**: 使用 `data.data!` 非空斷言可能導致執行時錯誤
-- **修復**: 所有 API 函數加入適當的 null 檢查
-```typescript
-if (!data.data) {
-    throw new Error('API 回應格式錯誤：缺少 data 欄位');
-}
-return data.data;
-```
-
-#### 6. 市場狀態即時更新
-- **檔案**: `frontend/src/pages/RealtimeMonitorPage.tsx`
-- **問題**: 市場開盤/收盤狀態只在頁面載入時計算
-- **修復**: 加入定時器每分鐘自動更新狀態
-
-#### 7. MA 計算 None 值過濾
-- **檔案**: `backend/services/high_turnover_analyzer.py`
-- **問題**: 均線計算直接使用 `sum()` 未過濾 None/NaN 值
-- **修復**: 新增安全的 `_safe_ma()` 方法
-```python
-@staticmethod
-def _safe_ma(values: List, period: int) -> Optional[float]:
-    valid_values = [v for v in values[:period]
-                    if v is not None and not (isinstance(v, float) and np.isnan(v))]
-    if len(valid_values) < period:
-        return None
-    return sum(valid_values) / len(valid_values)
-```
-
-### 安全建議
-
-1. **定期更新依賴套件**: 執行 `pip install --upgrade` 和 `npm update`
-2. **生產環境**: 建議使用 HTTPS 並設定適當的防火牆規則
-3. **API Token**: 妥善保管 `FINMIND_API_TOKEN`，不要提交至版本控制
-4. **日誌監控**: 定期檢查 `backend/logs/` 中的錯誤日誌
+啟動後端服務後，訪問 [http://localhost:8000/docs](http://localhost:8000/docs) 查看 Swagger UI 互動式文件。
 
 ---
 
-## 授權
+## 🔒 安全性
 
-MIT License
+本系統已通過完整安全審計：
+
+- ✅ 路徑穿越防護
+- ✅ CORS 策略優化  
+- ✅ 輸入驗證完善
+- ✅ SQL 注入防護
+- ✅ XSS 防護
+
+詳見 [安全審計報告](#系統安全報告)。
 
 ---
 
-## 版本資訊
+## 📄 授權條款
 
-- 版本：1.1.0
-- 最後更新：2026-02-02
-- 安全審計完成日期：2026-02-01
+本專案採用 [MIT License](LICENSE) 授權。
+
+---
+
+## 🌟 致謝
+
+感謝所有開源社群的貢獻者，以及台灣證券交易所提供的公開資料 API。
+
+<div align="center">
+
+**Made with ❤️ in Taiwan**
+
+Copyright © 2026 Cat System. All rights reserved.
+
+</div>

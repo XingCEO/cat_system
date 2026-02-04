@@ -17,10 +17,10 @@ class TechnicalAnalyzerMixin:
     """技術分析混入類 - 均線突破篩選"""
 
     async def _fetch_yahoo_history_for_ma(self, symbol: str) -> pd.DataFrame:
-        """從 Yahoo Finance 獲取最近 30 天歷史資料"""
+        """從 Yahoo Finance 獲取最近 3 個月歷史資料（支援 MA60 計算）"""
         yahoo_symbol = f"{symbol}.TW"
         url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_symbol}"
-        params = {"interval": "1d", "range": "1mo"}
+        params = {"interval": "1d", "range": "3mo"}  # 3 個月資料以支援 MA60
 
         client = await self.data_fetcher.get_client()
 
@@ -87,7 +87,7 @@ class TechnicalAnalyzerMixin:
         min_change: Optional[float] = None,
         max_change: Optional[float] = None
     ) -> Dict[str, Any]:
-        """突破糾結均線篩選（週轉率前200名）"""
+        """突破糾結均線篩選（週轉率前200名）- 優化版本使用並行處理"""
         if date is None:
             from utils.date_utils import get_latest_trading_day
             date = get_latest_trading_day()
@@ -100,100 +100,116 @@ class TechnicalAnalyzerMixin:
         if not stocks_to_check:
             return {"success": False, "error": "無有效資料"}
 
-        breakout_stocks = []
-        processed = 0
-        total = len(stocks_to_check)
-
-        logger.info(f"MA Breakout: Processing {total} stocks for {date}")
-
+        # 先過濾漲跌幅條件的股票
+        filtered_stocks = []
         for stock in stocks_to_check:
-            symbol = stock["symbol"]
-            current_close = stock.get("close_price", 0) or 0
             change_pct = stock.get("change_percent", 0) or 0
-
+            current_close = stock.get("close_price", 0) or 0
+            if current_close <= 0:
+                continue
             if min_change is not None and change_pct < min_change:
                 continue
             if max_change is not None and change_pct > max_change:
                 continue
+            filtered_stocks.append(stock)
 
-            if current_close <= 0:
-                continue
+        total = len(filtered_stocks)
+        logger.info(f"MA Breakout: Processing {total} stocks for {date}")
 
-            try:
-                history_df = await self._fetch_yahoo_history_for_ma(symbol)
+        # 使用 semaphore 控制並發數量（最多 10 個並行請求）
+        semaphore = asyncio.Semaphore(10)
+        breakout_stocks = []
 
-                if history_df.empty or len(history_df) < 20:
-                    continue
+        async def check_single_stock(stock):
+            """檢查單支股票是否符合突破條件"""
+            async with semaphore:
+                symbol = stock["symbol"]
+                current_close = stock.get("close_price", 0) or 0
 
-                closes = history_df["close"].tolist()[:25]
-                opens = history_df["open"].tolist()[:25] if "open" in history_df.columns else []
-                lows = history_df["low"].tolist()[:25] if "low" in history_df.columns else []
+                try:
+                    history_df = await self._fetch_yahoo_history_for_ma(symbol)
 
-                if len(closes) < 20:
-                    continue
+                    if history_df.empty or len(history_df) < 20:
+                        return None
 
-                today_open = opens[0] if len(opens) > 0 and opens[0] is not None else None
-                today_close = closes[0] if len(closes) > 0 and closes[0] is not None else None
-                today_low = lows[0] if len(lows) > 0 and lows[0] is not None else None
-                yesterday_close = closes[1] if len(closes) > 1 and closes[1] is not None else None
+                    closes = history_df["close"].tolist()[:25]
+                    opens = history_df["open"].tolist()[:25] if "open" in history_df.columns else []
+                    lows = history_df["low"].tolist()[:25] if "low" in history_df.columns else []
 
-                if today_open is None or yesterday_close is None:
-                    continue
-                if today_open < yesterday_close:
-                    continue
+                    if len(closes) < 20:
+                        return None
 
-                if len(closes) < 6:
-                    continue
-                five_days_ago_close = closes[5]
-                if five_days_ago_close is None or today_close < five_days_ago_close:
-                    continue
+                    today_open = opens[0] if len(opens) > 0 and opens[0] is not None else None
+                    today_close = closes[0] if len(closes) > 0 and closes[0] is not None else None
+                    today_low = lows[0] if len(lows) > 0 and lows[0] is not None else None
+                    yesterday_close = closes[1] if len(closes) > 1 and closes[1] is not None else None
 
-                if len(lows) < 6 or today_low is None:
-                    continue
-                five_days_ago_low = lows[5]
-                if five_days_ago_low is None or today_low < five_days_ago_low:
-                    continue
+                    if today_open is None or yesterday_close is None:
+                        return None
+                    if today_open < yesterday_close:
+                        return None
 
-                ma5 = self._safe_ma(closes, 5)
-                ma10 = self._safe_ma(closes, 10)
-                ma20 = self._safe_ma(closes, 20)
+                    if len(closes) < 6:
+                        return None
+                    five_days_ago_close = closes[5]
+                    if five_days_ago_close is None or today_close < five_days_ago_close:
+                        return None
 
-                if ma5 is None or ma10 is None or ma20 is None:
-                    continue
+                    if len(lows) < 6 or today_low is None:
+                        return None
+                    five_days_ago_low = lows[5]
+                    if five_days_ago_low is None or today_low < five_days_ago_low:
+                        return None
 
-                if len(closes) >= 21:
-                    yesterday_closes = closes[1:21]
-                    yesterday_ma5 = self._safe_ma(yesterday_closes, 5)
-                    yesterday_ma10 = self._safe_ma(yesterday_closes, 10)
-                    yesterday_ma20 = self._safe_ma(yesterday_closes, 20)
+                    ma5 = self._safe_ma(closes, 5)
+                    ma10 = self._safe_ma(closes, 10)
+                    ma20 = self._safe_ma(closes, 20)
 
-                    if yesterday_ma5 is None or yesterday_ma10 is None or yesterday_ma20 is None:
-                        continue
+                    if ma5 is None or ma10 is None or ma20 is None:
+                        return None
 
-                    ma_values = [yesterday_ma5, yesterday_ma10, yesterday_ma20]
-                    ma_avg = sum(ma_values) / 3
-                    if ma_avg > 0:
-                        ma_range = (max(ma_values) - min(ma_values)) / ma_avg * 100
+                    if len(closes) >= 21:
+                        yesterday_closes = closes[1:21]
+                        yesterday_ma5 = self._safe_ma(yesterday_closes, 5)
+                        yesterday_ma10 = self._safe_ma(yesterday_closes, 10)
+                        yesterday_ma20 = self._safe_ma(yesterday_closes, 20)
 
-                        if ma_range <= 3.0 and current_close > max(ma5, ma10, ma20):
-                            stock["ma5"] = round(ma5, 2)
-                            stock["ma10"] = round(ma10, 2)
-                            stock["ma20"] = round(ma20, 2)
-                            stock["ma_range"] = round(ma_range, 2)
-                            stock["today_open"] = round(today_open, 2) if today_open else 0
-                            stock["yesterday_close"] = round(yesterday_close, 2) if yesterday_close else 0
-                            stock["is_breakout"] = True
-                            breakout_stocks.append(stock)
+                        if yesterday_ma5 is None or yesterday_ma10 is None or yesterday_ma20 is None:
+                            return None
 
-            except Exception as e:
-                logger.debug(f"Error processing {symbol}: {e}")
-                continue
+                        ma_values = [yesterday_ma5, yesterday_ma10, yesterday_ma20]
+                        ma_avg = sum(ma_values) / 3
+                        if ma_avg > 0:
+                            ma_range = (max(ma_values) - min(ma_values)) / ma_avg * 100
 
-            processed += 1
-            if processed % 10 == 0:
-                await asyncio.sleep(0.1)
-            if processed % 50 == 0:
-                logger.info(f"MA Breakout progress: {processed}/{total}, found {len(breakout_stocks)}")
+                            if ma_range <= 3.0 and current_close > max(ma5, ma10, ma20):
+                                result_stock = stock.copy()
+                                result_stock["ma5"] = round(ma5, 2)
+                                result_stock["ma10"] = round(ma10, 2)
+                                result_stock["ma20"] = round(ma20, 2)
+                                result_stock["ma_range"] = round(ma_range, 2)
+                                result_stock["today_open"] = round(today_open, 2) if today_open else 0
+                                result_stock["yesterday_close"] = round(yesterday_close, 2) if yesterday_close else 0
+                                result_stock["is_breakout"] = True
+                                return result_stock
+
+                except Exception as e:
+                    logger.debug(f"Error processing {symbol}: {e}")
+
+                return None
+
+        # 批量並行處理
+        batch_size = 20
+        for i in range(0, total, batch_size):
+            batch = filtered_stocks[i:i + batch_size]
+            results = await asyncio.gather(*[check_single_stock(s) for s in batch])
+
+            for result in results:
+                if result is not None:
+                    breakout_stocks.append(result)
+
+            if i + batch_size < total:
+                logger.info(f"MA Breakout progress: {min(i + batch_size, total)}/{total}, found {len(breakout_stocks)}")
 
         breakout_stocks.sort(key=lambda x: x.get("change_percent", 0), reverse=True)
 
@@ -358,3 +374,266 @@ class TechnicalAnalyzerMixin:
 
         cache_manager.set(cache_key, result, "daily")
         return result
+
+    # ============ 均線策略篩選 ============
+
+    async def _check_bullish_alignment(self, symbol: str, current_close: float) -> Dict[str, Any]:
+        """
+        檢查多頭排列：MA5 > MA20 > MA60 且各均線向上
+        回傳均線資料和是否符合多頭排列
+        """
+        try:
+            history_df = await self._fetch_yahoo_history_for_ma(symbol)
+
+            if history_df.empty or len(history_df) < 65:
+                return {"valid": False}
+
+            closes = history_df["close"].tolist()[:70]
+
+            if len(closes) < 65:
+                return {"valid": False}
+
+            # 計算今日均線
+            ma5 = self._safe_ma(closes, 5)
+            ma10 = self._safe_ma(closes, 10)
+            ma20 = self._safe_ma(closes, 20)
+            ma60 = self._safe_ma(closes, 60)
+
+            if None in (ma5, ma10, ma20, ma60):
+                return {"valid": False}
+
+            # 計算昨日均線（用於判斷趨勢向上）
+            yesterday_closes = closes[1:]
+            ma5_prev = self._safe_ma(yesterday_closes, 5)
+            ma10_prev = self._safe_ma(yesterday_closes, 10)
+            ma20_prev = self._safe_ma(yesterday_closes, 20)
+            ma60_prev = self._safe_ma(yesterday_closes, 60)
+
+            if None in (ma5_prev, ma10_prev, ma20_prev, ma60_prev):
+                return {"valid": False}
+
+            # 多頭排列：MA5 > MA20 > MA60
+            is_bullish_order = (ma5 > ma20 > ma60)
+
+            # 均線向上：今日 > 昨日
+            ma5_up = ma5 > ma5_prev
+            ma20_up = ma20 > ma20_prev
+            ma60_up = ma60 > ma60_prev
+
+            is_bullish = is_bullish_order and ma5_up and ma20_up and ma60_up
+
+            return {
+                "valid": True,
+                "is_bullish": is_bullish,
+                "is_bullish_order": is_bullish_order,
+                "ma5": round(ma5, 2),
+                "ma10": round(ma10, 2),
+                "ma20": round(ma20, 2),
+                "ma60": round(ma60, 2),
+                "ma5_up": ma5_up,
+                "ma20_up": ma20_up,
+                "ma60_up": ma60_up,
+            }
+
+        except Exception as e:
+            logger.debug(f"Error checking bullish alignment for {symbol}: {e}")
+            return {"valid": False}
+
+    async def get_ma_strategy(
+        self,
+        strategy: str,
+        date: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        均線策略篩選（週轉率前200名）
+
+        策略類型：
+        - extreme: 極強勢多頭 (多頭排列 + 均線向上 + Close > MA5)
+        - steady: 穩健多頭 (多頭排列 + 均線向上 + Close > MA20)
+        - support: 波段支撐 (多頭排列 + 均線向上 + Close > MA60)
+        - tangled: 均線糾結突破 (均線間距 < 1% + Close > max(MA))
+        """
+        if date is None:
+            from utils.date_utils import get_latest_trading_day
+            date = get_latest_trading_day()
+
+        strategy_names = {
+            "extreme": "極強勢多頭",
+            "steady": "穩健多頭",
+            "support": "波段支撐",
+            "tangled": "均線糾結突破",
+        }
+
+        if strategy not in strategy_names:
+            return {"success": False, "error": f"未知策略: {strategy}"}
+
+        cache_key = f"ma_strategy_{strategy}_{date}"
+        cached = cache_manager.get(cache_key, "daily")
+        if cached is not None:
+            return cached
+
+        top200_result = await self.get_top20_turnover(date)
+        if not top200_result.get("success"):
+            return {"success": False, "error": "無法取得週轉率資料"}
+
+        stocks_to_check = top200_result.get("items", [])
+        if not stocks_to_check:
+            return {"success": False, "error": "無有效資料"}
+
+        # 使用 semaphore 控制並發
+        semaphore = asyncio.Semaphore(10)
+        matched_stocks = []
+        total = len(stocks_to_check)
+
+        logger.info(f"MA Strategy [{strategy}]: Processing {total} stocks for {date}")
+
+        async def check_single_stock(stock):
+            async with semaphore:
+                symbol = stock["symbol"]
+                current_close = stock.get("close_price", 0) or 0
+
+                if current_close <= 0:
+                    return None
+
+                try:
+                    history_df = await self._fetch_yahoo_history_for_ma(symbol)
+
+                    if history_df.empty or len(history_df) < 65:
+                        return None
+
+                    # 取得歷史收盤價（從舊到新）
+                    history_closes = history_df["close"].tolist()
+
+                    if len(history_closes) < 65:
+                        return None
+
+                    # 將今日收盤價加入最前面（最新資料）
+                    # 這樣計算的 MA 值就會包含今日價格
+                    closes = [current_close] + history_closes[:69]
+
+                    # 計算均線（使用包含今日的資料）
+                    ma5 = self._safe_ma(closes, 5)
+                    ma20 = self._safe_ma(closes, 20)
+                    ma60 = self._safe_ma(closes, 60)
+
+                    if None in (ma5, ma20, ma60):
+                        return None
+
+                    # 計算昨日均線
+                    yesterday_closes = closes[1:]
+                    ma5_prev = self._safe_ma(yesterday_closes, 5)
+                    ma20_prev = self._safe_ma(yesterday_closes, 20)
+                    ma60_prev = self._safe_ma(yesterday_closes, 60)
+
+                    if None in (ma5_prev, ma20_prev, ma60_prev):
+                        return None
+
+                    matched = False
+                    strategy_detail = ""
+
+                    if strategy == "tangled":
+                        # 均線糾結突破：均線間距 < 1% + Close > max(MA)
+                        ma_list = [ma5, ma20, ma60]
+                        ma_max = max(ma_list)
+                        ma_min = min(ma_list)
+                        if ma_min > 0:
+                            spread_pct = (ma_max - ma_min) / ma_min * 100
+                            is_tangled = spread_pct <= 1.0
+                            is_breakout = current_close > ma_max
+                            matched = is_tangled and is_breakout
+                            strategy_detail = f"糾結度: {spread_pct:.2f}%"
+                    else:
+                        # 多頭排列策略
+                        is_bullish_order = (ma5 > ma20 > ma60)
+                        ma5_up = ma5 > ma5_prev
+                        ma20_up = ma20 > ma20_prev
+                        ma60_up = ma60 > ma60_prev
+                        is_bullish = is_bullish_order and ma5_up and ma20_up and ma60_up
+
+                        if strategy == "extreme":
+                            # 極強勢多頭：Close > MA5
+                            matched = is_bullish and (current_close > ma5)
+                            strategy_detail = "價格站上MA5"
+                        elif strategy == "steady":
+                            # 穩健多頭：Close > MA20
+                            matched = is_bullish and (current_close > ma20)
+                            strategy_detail = "價格站上MA20"
+                        elif strategy == "support":
+                            # 波段支撐：Close > MA60
+                            matched = is_bullish and (current_close > ma60)
+                            strategy_detail = "價格站上MA60"
+
+                    if matched:
+                        result_stock = stock.copy()
+                        result_stock["ma5"] = round(ma5, 2)
+                        result_stock["ma20"] = round(ma20, 2)
+                        result_stock["ma60"] = round(ma60, 2)
+                        result_stock["strategy"] = strategy
+                        result_stock["strategy_name"] = strategy_names[strategy]
+                        result_stock["strategy_detail"] = strategy_detail
+                        return result_stock
+
+                except Exception as e:
+                    logger.debug(f"Error processing {symbol}: {e}")
+
+                return None
+
+        # 批量並行處理
+        batch_size = 20
+        for i in range(0, total, batch_size):
+            batch = stocks_to_check[i:i + batch_size]
+            results = await asyncio.gather(*[check_single_stock(s) for s in batch])
+
+            for result in results:
+                if result is not None:
+                    matched_stocks.append(result)
+
+            if i + batch_size < total:
+                logger.info(f"MA Strategy [{strategy}] progress: {min(i + batch_size, total)}/{total}, found {len(matched_stocks)}")
+
+        matched_stocks.sort(key=lambda x: x.get("change_percent", 0), reverse=True)
+
+        logger.info(f"MA Strategy [{strategy}] completed: {len(matched_stocks)} stocks found")
+
+        result = {
+            "success": True,
+            "query_date": date,
+            "strategy": strategy,
+            "strategy_name": strategy_names[strategy],
+            "matched_count": len(matched_stocks),
+            "items": matched_stocks,
+        }
+
+        cache_manager.set(cache_key, result, "daily")
+        return result
+
+    async def get_all_ma_strategies(self, date: Optional[str] = None) -> Dict[str, Any]:
+        """
+        取得所有均線策略的結果
+        """
+        if date is None:
+            from utils.date_utils import get_latest_trading_day
+            date = get_latest_trading_day()
+
+        strategies = ["extreme", "steady", "support", "tangled"]
+        results = {}
+
+        for strategy in strategies:
+            result = await self.get_ma_strategy(strategy, date)
+            results[strategy] = {
+                "strategy_name": result.get("strategy_name", ""),
+                "matched_count": result.get("matched_count", 0),
+                "items": result.get("items", []),
+            }
+
+        return {
+            "success": True,
+            "query_date": date,
+            "strategies": results,
+            "total_unique": len(set(
+                item["symbol"]
+                for data in results.values()
+                for item in data.get("items", [])
+            )),
+        }
+

@@ -531,7 +531,10 @@ export function StockAnalysisDialog({ open, onClose, symbol, name }: StockAnalys
 
     return (
         <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-            <DialogContent className={`${chartHeights.dialogWidth} max-h-[95vh] overflow-y-auto transition-all duration-300 ease-in-out`}>
+            <DialogContent
+                className={`${chartHeights.dialogWidth} max-h-[95vh] overflow-y-auto transition-all duration-300 ease-in-out`}
+                onOpenAutoFocus={(e) => e.preventDefault()}
+            >
                 <DialogHeader className="no-print">
                     <DialogTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pr-8">
                         <div className="flex items-center gap-3">

@@ -504,3 +504,47 @@ async def get_combo_filter(
 
     return result
 
+
+# ===== 均線策略篩選 =====
+
+@router.get("/ma-strategy/{strategy}")
+async def get_ma_strategy(
+    strategy: str,
+    date: Optional[str] = Query(None, description="查詢日期 YYYY-MM-DD"),
+):
+    """
+    均線策略篩選（週轉率前200名）
+
+    策略類型：
+    - extreme: 極強勢多頭 (多頭排列 + 均線向上 + Close > MA5)
+    - steady: 穩健多頭 (多頭排列 + 均線向上 + Close > MA20)
+    - support: 波段支撐 (多頭排列 + 均線向上 + Close > MA60)
+    - tangled: 均線糾結突破 (均線間距 < 1% + Close > max(MA))
+    """
+    result = await high_turnover_analyzer.get_ma_strategy(strategy, date)
+
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "查詢失敗"))
+
+    return result
+
+
+@router.get("/ma-strategy")
+async def get_all_ma_strategies(
+    date: Optional[str] = Query(None, description="查詢日期 YYYY-MM-DD"),
+):
+    """
+    取得所有均線策略結果
+
+    回傳 4 種策略的篩選結果：
+    - extreme: 極強勢多頭
+    - steady: 穩健多頭
+    - support: 波段支撐
+    - tangled: 均線糾結突破
+    """
+    result = await high_turnover_analyzer.get_all_ma_strategies(date)
+
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "查詢失敗"))
+
+    return result

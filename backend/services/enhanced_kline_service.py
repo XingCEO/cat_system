@@ -11,9 +11,9 @@ import logging
 import asyncio
 
 try:
-    import pandas_ta as ta
+    from services.technical_analysis import calculate_all_indicators as shared_calculate_indicators
 except ImportError:
-    ta = None
+    from services.technical_analysis import calculate_all_indicators as shared_calculate_indicators
 
 from sqlalchemy import select, delete
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -100,7 +100,7 @@ class EnhancedKLineService:
             return {"error": "資料驗證後無有效資料"}
         
         # 計算技術指標
-        df = self._calculate_all_indicators(df)
+        df = shared_calculate_indicators(df)
         
         # 根據週期轉換
         if period == "week":
@@ -406,7 +406,7 @@ class EnhancedKLineService:
         
         return df
     
-    def _calculate_indicators_manual(self, df: pd.DataFrame) -> pd.DataFrame:
+    # Removed _calculate_indicators_manual as it is now in indicator_calculator.py
         """手動計算指標"""
         # 移動平均線
         df["SMA_5"] = df["close"].rolling(window=5).mean()

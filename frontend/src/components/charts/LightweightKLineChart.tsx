@@ -122,6 +122,7 @@ export function LightweightKLineChart({
             layout: {
                 background: { type: ColorType.Solid, color: '#ffffff' },
                 textColor: '#333333',
+                attributionLogo: false,  // 移除 TradingView Logo
             },
             grid: {
                 vertLines: { color: 'rgba(197, 203, 206, 0.3)' },

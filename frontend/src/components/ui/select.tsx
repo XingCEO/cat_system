@@ -18,7 +18,7 @@ const SelectTrigger = React.forwardRef<
             "ring-offset-background transition-all duration-200 cursor-pointer",
             "placeholder:text-muted-foreground",
             "hover:border-primary/50",
-            "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:border-primary",
+            "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:border-primary",
             "disabled:cursor-not-allowed disabled:opacity-50",
             "dark:bg-background/50 dark:hover:bg-background/80",
             "[&>span]:line-clamp-1",

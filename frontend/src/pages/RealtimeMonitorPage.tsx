@@ -17,7 +17,7 @@ import { Link } from 'react-router-dom';
 import axios from 'axios';
 
 const apiBase = axios.create({
-    baseURL: '',
+    baseURL: '',  // 使用相對路徑，透過 Vite 代理
     timeout: 30000,
 });
 
@@ -234,7 +234,115 @@ export function RealtimeMonitorPage() {
                 ))}
             </div>
 
-            {/* Table */}
+            {/* 圖表區塊 */}
+            {items.length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* 產業分佈圓餅圖 */}
+                    <Card>
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-base">產業分佈</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="h-48">
+                                {(() => {
+                                    const industryMap: Record<string, number> = {};
+                                    items.forEach(item => {
+                                        const industry = item.industry || '其他';
+                                        industryMap[industry] = (industryMap[industry] || 0) + 1;
+                                    });
+                                    const sortedIndustries = Object.entries(industryMap)
+                                        .sort((a, b) => b[1] - a[1])
+                                        .slice(0, 8);
+                                    const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16'];
+                                    const total = sortedIndustries.reduce((sum, [, count]) => sum + count, 0);
+
+                                    return (
+                                        <div className="flex items-center h-full">
+                                            <svg viewBox="0 0 100 100" className="w-32 h-32">
+                                                {(() => {
+                                                    let startAngle = 0;
+                                                    return sortedIndustries.map(([, count], i) => {
+                                                        const angle = (count / total) * 360;
+                                                        const endAngle = startAngle + angle;
+                                                        const largeArc = angle > 180 ? 1 : 0;
+                                                        const x1 = 50 + 40 * Math.cos((startAngle - 90) * Math.PI / 180);
+                                                        const y1 = 50 + 40 * Math.sin((startAngle - 90) * Math.PI / 180);
+                                                        const x2 = 50 + 40 * Math.cos((endAngle - 90) * Math.PI / 180);
+                                                        const y2 = 50 + 40 * Math.sin((endAngle - 90) * Math.PI / 180);
+                                                        const path = `M 50 50 L ${x1} ${y1} A 40 40 0 ${largeArc} 1 ${x2} ${y2} Z`;
+                                                        startAngle = endAngle;
+                                                        return <path key={i} d={path} fill={colors[i]} opacity={0.85} />;
+                                                    });
+                                                })()}
+                                            </svg>
+                                            <div className="ml-4 text-xs space-y-1 flex-1">
+                                                {sortedIndustries.map(([industry, count], i) => (
+                                                    <div key={industry} className="flex items-center gap-2">
+                                                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: colors[i] }} />
+                                                        <span className="truncate flex-1">{industry}</span>
+                                                        <span className="font-mono text-muted-foreground">{count}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* 漲跌分佈柱狀圖 */}
+                    <Card>
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-base">漲跌分佈</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="h-48">
+                                {(() => {
+                                    const ranges = [
+                                        { label: '漲停', min: 9.5, max: 100, color: '#ef4444' },
+                                        { label: '5-9%', min: 5, max: 9.5, color: '#f97316' },
+                                        { label: '3-5%', min: 3, max: 5, color: '#fb923c' },
+                                        { label: '1-3%', min: 1, max: 3, color: '#fbbf24' },
+                                        { label: '0-1%', min: 0, max: 1, color: '#a3a3a3' },
+                                        { label: '0-(-1)%', min: -1, max: 0, color: '#a3a3a3' },
+                                        { label: '(-1)-(-3)%', min: -3, max: -1, color: '#4ade80' },
+                                        { label: '<-3%', min: -100, max: -3, color: '#22c55e' },
+                                    ];
+                                    const chartData = ranges.map(range => ({
+                                        ...range,
+                                        count: items.filter(i => {
+                                            const pct = i.realtime_change_pct ?? i.change_percent ?? 0;
+                                            return pct >= range.min && pct < range.max;
+                                        }).length
+                                    }));
+                                    const maxCount = Math.max(...chartData.map(d => d.count), 1);
+
+                                    return (
+                                        <div className="flex items-end justify-around h-full gap-1 pb-6">
+                                            {chartData.map((d, i) => (
+                                                <div key={i} className="flex flex-col items-center flex-1">
+                                                    <span className="text-xs font-mono mb-1">{d.count || ''}</span>
+                                                    <div
+                                                        className="w-full rounded-t transition-all"
+                                                        style={{
+                                                            height: `${Math.max((d.count / maxCount) * 120, d.count > 0 ? 8 : 0)}px`,
+                                                            backgroundColor: d.color
+                                                        }}
+                                                    />
+                                                    <span className="text-[10px] text-muted-foreground mt-1 text-center leading-tight">{d.label}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
+
+
             <Card>
                 <CardHeader className="pb-3">
                     <CardTitle className="text-lg flex items-center gap-2">

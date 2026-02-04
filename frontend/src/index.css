@@ -135,7 +135,10 @@
   }
 
   /* 數據表格使用等寬字體 */
-  .font-mono, code, pre, table td.font-mono {
+  .font-mono,
+  code,
+  pre,
+  table td.font-mono {
     font-family: 'Fira Code', ui-monospace, monospace;
   }
 
@@ -178,12 +181,12 @@
   /* 玻璃態卡片效果 */
   .glass-card {
     @apply bg-card/80 backdrop-blur-xl border border-white/20 shadow-lg;
-    background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
   }
 
   .dark .glass-card {
     @apply bg-card/40 border-white/10;
-    background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
   }
 
   /* Premium 發光卡片 */
@@ -237,12 +240,10 @@
 
   /* Premium Shimmer 載入效果 */
   .shimmer {
-    background: linear-gradient(
-      90deg,
-      hsl(var(--muted)) 0%,
-      hsl(var(--muted-foreground) / 0.1) 50%,
-      hsl(var(--muted)) 100%
-    );
+    background: linear-gradient(90deg,
+        hsl(var(--muted)) 0%,
+        hsl(var(--muted-foreground) / 0.1) 50%,
+        hsl(var(--muted)) 100%);
     background-size: 200% 100%;
     animation: shimmer 1.5s ease-in-out infinite;
   }
@@ -287,8 +288,15 @@
   }
 
   @keyframes limit-up-pulse {
-    0%, 100% { box-shadow: 0 0 20px hsl(var(--down) / 0.3); }
-    50% { box-shadow: 0 0 30px hsl(var(--down) / 0.5); }
+
+    0%,
+    100% {
+      box-shadow: 0 0 20px hsl(var(--down) / 0.3);
+    }
+
+    50% {
+      box-shadow: 0 0 30px hsl(var(--down) / 0.5);
+    }
   }
 
   /* 上漲發光效果 */
@@ -337,9 +345,17 @@
   }
 
   @keyframes pulse-ring {
-    0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
-    70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+    0% {
+      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+    }
+
+    70% {
+      box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+    }
+
+    100% {
+      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+    }
   }
 
   /* 數據表格行懸浮 */
@@ -409,3 +425,8 @@ input[type="date"] {
   color-scheme: dark;
 }
 
+/* 隱藏 TradingView Logo (lightweight-charts 浮水印) */
+#tv-attr-logo,
+.tv-lightweight-charts-logo {
+  display: none !important;
+}

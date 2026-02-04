@@ -652,6 +652,7 @@ class DataFetcher:
                                             "Trading_Volume": vol_val,
                                         })
                                 except (ValueError, IndexError, TypeError):
+                                    # logger.warning(f"Failed to parse row: {row}")
                                     continue
 
                             if records:

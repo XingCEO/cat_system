@@ -42,7 +42,7 @@ class Top200FiltersMixin:
 
         trading_days = get_trading_days(start, end)
 
-        return [format_date(d) for d in trading_days]
+        return trading_days  # get_trading_days 已經返回字串列表
 
     async def get_top200_limit_up(self, date: Optional[str] = None) -> Dict[str, Any]:
         """週轉率前200名且漲停股"""

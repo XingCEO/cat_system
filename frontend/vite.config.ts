@@ -10,9 +10,15 @@ export default defineConfig({
         },
     },
     server: {
-        port: 5173,
+        host: true,
+        allowedHosts: true, // 允許所有 Host header，解決 ngrok 報錯
+        port: 5174,
         proxy: {
             '/api': {
+                target: 'http://127.0.0.1:8000',
+                changeOrigin: true,
+            },
+            '/realtime': {
                 target: 'http://127.0.0.1:8000',
                 changeOrigin: true,
             },

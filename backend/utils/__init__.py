@@ -1,19 +1,22 @@
 """Utils package"""
+from utils.validators import validate_date, validate_symbol, validate_date_range
 from utils.date_utils import (
-    is_trading_day,
-    get_trading_days,
     get_previous_trading_day,
-    format_date
+    get_latest_trading_day,
+    get_past_trading_days,
+    get_trading_days,
+    format_date,
+    is_trading_day
 )
-from utils.validators import validate_date_range, validate_symbol
-from utils.export import ExportService
 
 __all__ = [
-    "is_trading_day",
-    "get_trading_days", 
-    "get_previous_trading_day",
-    "format_date",
+    "validate_date",
+    "validate_symbol", 
     "validate_date_range",
-    "validate_symbol",
-    "ExportService"
+    "get_previous_trading_day",
+    "get_latest_trading_day",
+    "get_past_trading_days",
+    "get_trading_days",
+    "format_date",
+    "is_trading_day"
 ]

@@ -173,7 +173,7 @@ class RealtimeQuotesService:
             high_price=safe_float(item.get("h")),
             low_price=safe_float(item.get("l")),
             prev_close=prev_close,
-            volume=safe_int(item.get("v")),  # 成交量（張）
+            volume=safe_int(item.get("v")) // 1000 if safe_int(item.get("v")) is not None else None,  # 成交量（張）
             bid_price=bid_price,
             ask_price=ask_price,
             update_time=item.get("t"),

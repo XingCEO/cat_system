@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     cache_industries: int = 604800  # 7 days (permanent-like)
     
     # CORS
-    cors_origins: str = "http://localhost:5173,http://localhost:3000"
+    cors_origins: str = "*"
     
     # Pagination
     default_page_size: int = 50
