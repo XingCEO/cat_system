@@ -1,0 +1,29 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+venv
+.env
+logs/
+*.sqlite
+twse_filter.db
+
+# Node
+node_modules
+frontend/node_modules
+dist
+frontend/dist
+
+# IDE
+.vscode
+.idea
+.DS_Store
+
+# Docker
+Dockerfile
+.dockerignore
