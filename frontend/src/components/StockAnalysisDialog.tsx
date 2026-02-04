@@ -228,9 +228,10 @@ export function StockAnalysisDialog({ open, onClose, symbol, name }: StockAnalys
                                 width: 285mm;
                                 height: 198mm;
                                 display: grid;
-                                grid-template-columns: 200mm 83mm;
+                                grid-template-columns: 225mm 58mm;
                                 grid-template-rows: auto 1fr auto;
                                 gap: 2mm;
+                                padding: 1mm;
                             }
                             /* 標題橫跨兩欄 */
                             .header {
@@ -238,8 +239,9 @@ export function StockAnalysisDialog({ open, onClose, symbol, name }: StockAnalys
                                 display: flex;
                                 justify-content: space-between;
                                 align-items: center;
-                                padding: 2mm 0;
+                                padding: 1mm 0;
                                 border-bottom: 2px solid #1e293b;
+                                margin-bottom: 2mm;
                             }
                             .title-group { display: flex; align-items: baseline; gap: 12px; }
                             .symbol {
@@ -262,25 +264,33 @@ export function StockAnalysisDialog({ open, onClose, symbol, name }: StockAnalys
                             .charts-area {
                                 display: flex;
                                 flex-direction: column;
-                                gap: 2mm;
+                                gap: 1mm;
                             }
                             .chart-box {
-                                background: #fafafa;
+                                background: white;
                                 border: 1px solid #e2e8f0;
-                                border-radius: 4px;
-                                padding: 2mm;
+                                border-radius: 2px;
+                                padding: 0;
                                 overflow: hidden;
                             }
                             .chart-title {
-                                font-size: 9px; color: #64748b; font-weight: 600;
-                                margin-bottom: 1mm; text-transform: uppercase; letter-spacing: 0.5px;
+                                font-size: 8px; color: #475569; font-weight: 700;
+                                position: absolute;
+                                top: 0; left: 0;
+                                padding: 2px 6px;
+                                background: rgba(255,255,255,0.9);
+                                backdrop-filter: blur(2px);
+                                z-index: 10;
+                                border-bottom-right-radius: 4px;
+                                border-right: 1px solid #e2e8f0;
+                                border-bottom: 1px solid #e2e8f0;
                             }
-                            .chart-main { height: 100mm; }
-                            .chart-volume { height: 32mm; }
-                            .chart-indicator { height: 40mm; }
+                            .chart-main { height: 100mm; position: relative; }
+                            .chart-volume { height: 30mm; position: relative; }
+                            .chart-indicator { height: 35mm; position: relative; }
                             .chart-image {
                                 width: 100%;
-                                height: calc(100% - 5mm);
+                                height: 100%;
                                 object-fit: contain;
                                 object-position: left center;
                             }
@@ -289,7 +299,7 @@ export function StockAnalysisDialog({ open, onClose, symbol, name }: StockAnalys
                             .info-panel {
                                 display: flex;
                                 flex-direction: column;
-                                gap: 2mm;
+                                gap: 1.5mm;
                             }
                             .info-card {
                                 background: #f8fafc;
