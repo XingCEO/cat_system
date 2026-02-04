@@ -1,0 +1,1 @@
+function n(r,t=2){return r==null?"-":`${r>=0?"+":""}${r.toFixed(t)}%`}function e(r){return r==null?"-":r.toLocaleString("zh-TW")}function o(r){return r==null?"-":r.toFixed(2)}function i(r){return r==null?"text-muted-foreground":r>0?"text-emerald-600 dark:text-emerald-400":r<0?"text-red-600 dark:text-red-400":"text-muted-foreground"}export{n as a,e as b,o as f,i as g};
