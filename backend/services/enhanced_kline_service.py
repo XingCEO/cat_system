@@ -9,6 +9,7 @@ from datetime import datetime, date, timedelta
 from dateutil.relativedelta import relativedelta
 import logging
 import asyncio
+import pandas_ta as ta
 
 try:
     from services.technical_analysis import calculate_all_indicators as shared_calculate_indicators
