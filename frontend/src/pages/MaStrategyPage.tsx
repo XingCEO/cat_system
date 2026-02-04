@@ -96,14 +96,16 @@ const strategies = [
 export default function MaStrategyPage() {
     const [activeStrategy, setActiveStrategy] = useState('extreme');
     const [selectedStock, setSelectedStock] = useState<{ symbol: string; name: string } | null>(null);
+    const [queryDate, setQueryDate] = useState<string>(''); // Default to empty (today)
 
     const { data, isLoading, error, refetch, isFetching } = useQuery<StrategyResult>({
-        queryKey: ['ma-strategy', activeStrategy],
+        queryKey: ['ma-strategy', activeStrategy, queryDate],
         queryFn: async () => {
-            const response = await axios.get(`/api/turnover/ma-strategy/${activeStrategy}`);
+            const params = queryDate ? { date: queryDate } : {};
+            const response = await axios.get(`/api/turnover/ma-strategy/${activeStrategy}`, { params });
             return response.data;
         },
-        staleTime: 5 * 60 * 1000, // 5 分鐘快取
+        staleTime: 5 * 60 * 1000,
         refetchOnWindowFocus: false,
     });
 
@@ -123,15 +125,27 @@ export default function MaStrategyPage() {
                         從週轉率前 200 名中篩選符合均線策略的股票
                     </p>
                 </div>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => refetch()}
-                    disabled={isFetching}
-                >
-                    <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? 'animate-spin' : ''}`} />
-                    重新整理
-                </Button>
+                <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 bg-background border rounded-md px-3 py-1">
+                        <span className="text-sm text-muted-foreground whitespace-nowrap">查詢日期:</span>
+                        <input
+                            type="date"
+                            className="bg-transparent text-sm focus:outline-none"
+                            value={queryDate}
+                            onChange={(e) => setQueryDate(e.target.value)}
+                            max={new Date().toISOString().split('T')[0]}
+                        />
+                    </div>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => refetch()}
+                        disabled={isFetching}
+                    >
+                        <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? 'animate-spin' : ''}`} />
+                        重新整理
+                    </Button>
+                </div>
             </div>
 
             {/* 策略選擇 Tabs */}
