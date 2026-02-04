@@ -15,6 +15,7 @@ aiosqlite==0.20.0
 pandas==2.2.3
 numpy==1.26.4
 
+
 # ===== HTTP Client =====
 httpx==0.28.1
 aiohttp==3.11.11

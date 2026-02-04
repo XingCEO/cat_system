@@ -9,7 +9,10 @@ from datetime import datetime, date, timedelta
 from dateutil.relativedelta import relativedelta
 import logging
 import asyncio
-import pandas_ta as ta
+try:
+    import pandas_ta as ta
+except ImportError:
+    ta = None
 
 try:
     from services.technical_analysis import calculate_all_indicators as shared_calculate_indicators
@@ -407,8 +410,8 @@ class EnhancedKLineService:
         
         return df
     
-    # Removed _calculate_indicators_manual as it is now in indicator_calculator.py
-        """手動計算指標"""
+    def _calculate_indicators_manual(self, df: pd.DataFrame) -> pd.DataFrame:
+        """手動計算指標 (當 pandas_ta 不可用時的備援)"""
         # 移動平均線
         df["SMA_5"] = df["close"].rolling(window=5).mean()
         df["SMA_10"] = df["close"].rolling(window=10).mean()
