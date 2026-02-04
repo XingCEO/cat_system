@@ -472,9 +472,34 @@ class TechnicalAnalyzerMixin:
         if cached is not None:
             return cached
 
-        top200_result = await self.get_top20_turnover(date)
+        # 1. 取得週轉率前200名 (作為篩選池)
+        # 如果是查詢當日，且資料庫還沒有當日資料，則使用「最近一個交易日」的名單作為候選池
+        # 但價格仍然會強制使用即時報價
+        
+        candidates_date = date
+        from datetime import datetime
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        
+        # 標記是否為當日查詢
+        is_today_query = (date is None or date == today_str)
+
+        top200_result = await self.get_top20_turnover(candidates_date)
+        
+        # 若當日查詢失敗（通常是因為資料庫還沒匯入今日資料），嘗試用上一交易日名單
+        if is_today_query and not top200_result.get("success"):
+            from utils.date_utils import get_previous_trading_day, parse_date, format_date
+            today_date = parse_date(today_str)
+            prev_date = get_previous_trading_day(today_date)
+            # 如果 get_previous_trading_day 回傳今天 (e.g. 早上)，需要再往前找一天
+            if format_date(prev_date) == today_str:
+                prev_date = get_previous_trading_day(prev_date)
+            
+            fallback_date = format_date(prev_date)
+            logger.info(f"Today's turnover data unused/missing. Fallback to {fallback_date} list for realtime scanning.")
+            top200_result = await self.get_top20_turnover(fallback_date)
+
         if not top200_result.get("success"):
-            return {"success": False, "error": "無法取得週轉率資料"}
+            return {"success": False, "error": "無法取得週轉率資料 (含備援)"}
 
         stocks_to_check = top200_result.get("items", [])
         if not stocks_to_check:
