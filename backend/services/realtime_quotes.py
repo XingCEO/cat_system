@@ -19,9 +19,10 @@ CACHE_TTL = 15  # 15 秒快取（從 30 秒降低）
 CACHE_MAX_SIZE = 500
 
 # 請求設定
-BATCH_SIZE = 80  # 每批最多 80 檔（從 50 提升）
-BATCH_DELAY = 1.5  # 批次間隔秒數（從 3 秒降低）
-REQUEST_TIMEOUT = 10  # 請求超時秒數
+# 請求設定
+BATCH_SIZE = 50  # 每批最多 50 檔（從 80 降回 50 以減少連線重置）
+BATCH_DELAY = 2.0  # 批次間隔秒數（從 1.5 增加）
+REQUEST_TIMEOUT = 8  # 請求超時秒數
 MAX_RETRIES = 3  # 最大重試次數
 RETRY_DELAY = 1.0  # 重試延遲秒數
 
@@ -341,8 +342,10 @@ class RealtimeQuotesService:
         except Exception as e:
             logger.warning(f"Yahoo quote error for {symbol}: {e}")
             self._sources["yahoo"].consecutive_failures += 1
-            self._sources["yahoo"].last_failure = time.time()
-            return None
+
+
+
+# ... (USER_AGENTS 省略)
 
     async def get_quotes(self, symbols: List[str], force_refresh: bool = False) -> Dict[str, Any]:
         """
@@ -380,14 +383,21 @@ class RealtimeQuotesService:
 
         # 2. 抓取缺失的資料
         if missing_symbols:
-            async with aiohttp.ClientSession() as session:
+            # 使用自訂 Connector 忽略 SSL 錯誤 (解決 Connection reset 部分原因)
+            connector = aiohttp.TCPConnector(ssl=False)
+            async with aiohttp.ClientSession(connector=connector) as session:
                 # 優先使用證交所
                 if self._sources["twse"].is_healthy:
                     # 分批查詢
                     for i in range(0, len(missing_symbols), BATCH_SIZE):
                         batch = missing_symbols[i:i + BATCH_SIZE]
-                        batch_results = await self._fetch_twse_batch(batch, session)
-                        results.extend(batch_results)
+                        try:
+                            batch_results = await self._fetch_twse_batch(batch, session)
+                            results.extend(batch_results)
+                        except Exception as e:
+                            logger.error(f"Batch fetch failed: {e}")
+                            # 批次失敗時，嘗試標記來源不穩，讓後續盡快切換
+                            self._sources["twse"].consecutive_failures += 1
 
                         # 批次間延遲
                         if i + BATCH_SIZE < len(missing_symbols):
@@ -398,8 +408,10 @@ class RealtimeQuotesService:
                     still_missing = [s for s in missing_symbols if s not in fetched_symbols]
 
                     # 用 Yahoo 備援
-                    if still_missing and self._sources["yahoo"].is_healthy:
-                        for symbol in still_missing[:10]:  # 最多補 10 檔
+                    # 如果 TWSE 連續失敗 或 仍有缺漏，更積極使用 Yahoo
+                    if still_missing and (self._sources["yahoo"].is_healthy or self._sources["twse"].consecutive_failures > 0):
+                        logger.info(f"Fallback to Yahoo for {len(still_missing)} symbols")
+                        for symbol in still_missing[:15]:  # 最多補 15 檔 (提升上限)
                             quote = await self._fetch_yahoo_quote(symbol, session)
                             if quote:
                                 results.append(quote)
@@ -408,6 +420,7 @@ class RealtimeQuotesService:
                 # 證交所掛了，改用 Yahoo
                 elif self._sources["yahoo"].is_healthy:
                     self._stats["source_switches"] += 1
+                    logger.warning("TWSE unhealthy, switching strictly to Yahoo")
                     for symbol in missing_symbols[:50]:  # Yahoo 較慢，限制數量
                         quote = await self._fetch_yahoo_quote(symbol, session)
                         if quote:

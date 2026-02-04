@@ -480,6 +480,68 @@ class TechnicalAnalyzerMixin:
         if not stocks_to_check:
             return {"success": False, "error": "無有效資料"}
 
+        # 注入即時報價（如果是查詢當日）
+        from datetime import datetime
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        
+        # 嚴格過濾：僅保留成功取得即時報價的股票
+        valid_realtime_stocks = []
+        
+        if date is None or date == today_str:
+            try:
+                from services.realtime_quotes import realtime_quotes_service
+                symbols = [s["symbol"] for s in stocks_to_check]
+                # 取得即時報價
+                quotes_result = await realtime_quotes_service.get_quotes(symbols)
+                
+                if quotes_result.get("success"):
+                    quotes_map = {q["symbol"]: q for q in quotes_result.get("quotes", [])}
+                    updated_count = 0
+                    
+                    for stock in stocks_to_check:
+                        symbol = stock["symbol"]
+                        if symbol in quotes_map:
+                            q = quotes_map[symbol]
+                            # 嚴格檢查：必須有有效價格
+                            if q.get("price") is not None and q["price"] > 0:
+                                stock["close_price"] = q["price"]  # 更新收盤價為即時價
+                                
+                                if q.get("change_pct") is not None:
+                                    stock["change_percent"] = q["change_pct"]
+                                    
+                                if q.get("volume") is not None:
+                                    stock["volume"] = q["volume"]
+                                
+                                # 加入有效清單
+                                valid_realtime_stocks.append(stock)
+                                updated_count += 1
+                    
+                    logger.info(f"Updated {updated_count} stocks with realtime price for MA strategy (Strict Mode)")
+                    
+                    # 替換為經過嚴格過濾的列表
+                    # 如果 API 全掛，這裡會變空，符合「絕不容許出現昨日」的要求
+                    stocks_to_check = valid_realtime_stocks
+                    
+                    if not stocks_to_check:
+                        logger.warning("Strict Mode: No stocks passed realtime validation. Returning empty result.")
+                        return {
+                            "success": True,
+                            "query_date": date,
+                            "strategy": strategy,
+                            "strategy_name": strategy_names[strategy],
+                            "matched_count": 0,
+                            "items": [],
+                            "note": "嚴格模式：目前無法取得即時報價，暫無結果"
+                        }
+
+            except Exception as e:
+                logger.warning(f"Failed to inject realtime quotes for MA strategy: {e}")
+                # 發生例外時，為了安全起見，在嚴格模式下也應該回傳空
+                return {
+                     "success": False,
+                     "error": f"即時報價服務異常，嚴格模式無法執行: {str(e)}"
+                }
+
         # 使用 semaphore 控制並發
         semaphore = asyncio.Semaphore(10)
         matched_stocks = []
