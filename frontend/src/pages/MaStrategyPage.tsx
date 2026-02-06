@@ -1,6 +1,6 @@
 /**
- * MA Strategy Page
- * Provides 4 MA strategy filters: Strong Uptrend, Steady Uptrend, Support Rebound, MA Convergence Breakout
+ * 均線策略篩選頁面
+ * 提供 4 種均線策略篩選：極強勢多頭、穩健多頭、波段支撐、均線糾結突破
  */
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -57,36 +57,36 @@ interface StrategyResult {
 const strategies = [
     {
         id: 'extreme',
-        name: 'Strong Uptrend',
-        description: 'Bullish Alignment + MA Upward + Price > MA5',
-        meaning: 'Stock price is in a rapid attack phase, strongest momentum.',
+        name: '極強勢多頭',
+        description: '多頭排列 + 均線向上 + 價格站上 MA5',
+        meaning: '股價正處於極速攻擊階段，最強勢',
         icon: Zap,
         color: 'text-red-500',
         bgColor: 'bg-red-500/10',
     },
     {
         id: 'steady',
-        name: 'Steady Uptrend',
-        description: 'Bullish Alignment + MA Upward + Price > MA20',
-        meaning: 'Price corrected to monthly line without breaking, medium-term bullish.',
+        name: '穩健多頭',
+        description: '多頭排列 + 均線向上 + 價格站上 MA20',
+        meaning: '股價回測月線不破，屬於中線偏多',
         icon: TrendingUp,
         color: 'text-orange-500',
         bgColor: 'bg-orange-500/10',
     },
     {
         id: 'support',
-        name: 'Support Rebound',
-        description: 'Bullish Alignment + MA Upward + Price > MA60',
-        meaning: 'Price corrected to quarterly line support, long-term trend protects short-term.',
+        name: '波段支撐',
+        description: '多頭排列 + 均線向上 + 價格站上 MA60',
+        meaning: '股價回測季線支撐，長線趨勢保護短線',
         icon: Shield,
         color: 'text-blue-500',
         bgColor: 'bg-blue-500/10',
     },
     {
         id: 'tangled',
-        name: 'MA Convergence Breakout',
-        description: 'MA Gap < 1% + Volume Breakout',
-        meaning: 'Consolidation ended, starting point of a new trend.',
+        name: '均線糾結突破',
+        description: '均線間距 < 1% + 收盤價放量突破',
+        meaning: '盤整結束，發動新一波趨勢的起點',
         icon: Target,
         color: 'text-purple-500',
         bgColor: 'bg-purple-500/10',
@@ -114,27 +114,27 @@ export default function MaStrategyPage() {
 
     return (
         <div className="container mx-auto py-6 px-4 space-y-6">
-            {/* Page Header */}
+            {/* 頁面標題 */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
                     <h1 className="text-2xl font-bold flex items-center gap-2">
                         <TrendingUp className="h-6 w-6 text-primary" />
-                        MA Strategy Filter
+                        均線策略篩選
                     </h1>
                     <p className="text-muted-foreground mt-1">
-                        Filter stocks matching MA strategies from Top 200 Turnover
+                        從週轉率前 200 名中篩選符合均線策略的股票
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
                     <div className="flex items-center gap-2 bg-background border rounded-md px-3 py-1">
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">Date:</span>
+                        <span className="text-sm text-muted-foreground whitespace-nowrap">查詢日期:</span>
                         <input
                             type="date"
                             className="bg-transparent text-sm focus:outline-none"
                             value={queryDate}
                             onChange={(e) => setQueryDate(e.target.value)}
                             max={(() => {
-                                // Use Taiwan Time for today's date
+                                // 使用台灣時區計算今天日期
                                 const now = new Date();
                                 const taiwanTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
                                 const year = taiwanTime.getFullYear();
@@ -151,12 +151,12 @@ export default function MaStrategyPage() {
                         disabled={isFetching}
                     >
                         <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? 'animate-spin' : ''}`} />
-                        Refresh
+                        重新整理
                     </Button>
                 </div>
             </div>
 
-            {/* Strategy Tabs */}
+            {/* 策略選擇 Tabs */}
             <Tabs value={activeStrategy} onValueChange={setActiveStrategy}>
                 <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
                     {strategies.map((strategy) => {
@@ -177,7 +177,7 @@ export default function MaStrategyPage() {
 
                 {strategies.map((strategy) => (
                     <TabsContent key={strategy.id} value={strategy.id}>
-                        {/* Strategy Info Card */}
+                        {/* 策略說明卡片 */}
                         <Card className={`mb-6 ${strategy.bgColor} border-none`}>
                             <CardHeader className="pb-2">
                                 <CardTitle className="flex items-center gap-2">
@@ -196,7 +196,7 @@ export default function MaStrategyPage() {
                 ))}
             </Tabs>
 
-            {/* Stats */}
+            {/* 結果統計 */}
             {data && data.success && (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <Card>
@@ -204,7 +204,7 @@ export default function MaStrategyPage() {
                             <div className="text-2xl font-bold text-primary">
                                 {data.matched_count || 0}
                             </div>
-                            <p className="text-sm text-muted-foreground">Matched Stocks</p>
+                            <p className="text-sm text-muted-foreground">符合策略股票數</p>
                         </CardContent>
                     </Card>
                     <Card>
@@ -212,7 +212,7 @@ export default function MaStrategyPage() {
                             <div className="text-2xl font-bold">
                                 {data.query_date}
                             </div>
-                            <p className="text-sm text-muted-foreground">Query Date</p>
+                            <p className="text-sm text-muted-foreground">查詢日期</p>
                         </CardContent>
                     </Card>
                     <Card>
@@ -221,7 +221,7 @@ export default function MaStrategyPage() {
                                 <Icon className="h-6 w-6 inline-block mr-1" />
                                 {currentStrategy?.name}
                             </div>
-                            <p className="text-sm text-muted-foreground">Current Strategy</p>
+                            <p className="text-sm text-muted-foreground">當前策略</p>
                         </CardContent>
                     </Card>
                     <Card>
@@ -229,25 +229,25 @@ export default function MaStrategyPage() {
                             <div className="text-2xl font-bold text-green-500">
                                 200
                             </div>
-                            <p className="text-sm text-muted-foreground">Turnover Pool</p>
+                            <p className="text-sm text-muted-foreground">週轉率池</p>
                         </CardContent>
                     </Card>
                 </div>
             )}
 
-            {/* Loading */}
+            {/* 載入中 */}
             {isLoading && (
                 <div className="flex items-center justify-center py-20">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                    <span className="ml-2 text-muted-foreground">Loading...</span>
+                    <span className="ml-2 text-muted-foreground">載入中...</span>
                 </div>
             )}
 
-            {/* Error */}
+            {/* 錯誤 */}
             {error && (
                 <Card className="border-red-500/50 bg-red-500/10 mb-6">
                     <CardContent className="pt-6">
-                        <p className="text-red-500">Load failed, please retry</p>
+                        <p className="text-red-500">載入失敗，請重試</p>
                     </CardContent>
                 </Card>
             )}
@@ -255,19 +255,19 @@ export default function MaStrategyPage() {
                 <Card className="border-red-500/50 bg-red-500/10 mb-6">
                     <CardContent className="pt-6">
                         <p className="text-red-500">
-                            {(data as any).error || 'Data load failed, please try again later'}
+                            {(data as any).error || '資料載入失敗，請稍後再試'}
                         </p>
                     </CardContent>
                 </Card>
             )}
 
-            {/* Results Table */}
+            {/* 結果表格 */}
             {data && data.success && data.items && data.items.length > 0 && (
                 <Card>
                     <CardHeader>
-                        <CardTitle>Filter Results</CardTitle>
+                        <CardTitle>篩選結果</CardTitle>
                         <CardDescription>
-                            {data.matched_count} stocks match "{data.strategy_name || currentStrategy?.name}" strategy
+                            共 {data.matched_count} 檔股票符合「{data.strategy_name}」策略
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -275,17 +275,17 @@ export default function MaStrategyPage() {
                             <Table>
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHead>Symbol</TableHead>
-                                        <TableHead>Name</TableHead>
-                                        <TableHead>Industry</TableHead>
-                                        <TableHead className="text-right">Close</TableHead>
-                                        <TableHead className="text-right">Change</TableHead>
-                                        <TableHead className="text-right">Turnover</TableHead>
+                                        <TableHead>代號</TableHead>
+                                        <TableHead>名稱</TableHead>
+                                        <TableHead>產業</TableHead>
+                                        <TableHead className="text-right">收盤價</TableHead>
+                                        <TableHead className="text-right">漲跌幅</TableHead>
+                                        <TableHead className="text-right">週轉率</TableHead>
                                         <TableHead className="text-right">MA5</TableHead>
                                         <TableHead className="text-right">MA20</TableHead>
                                         <TableHead className="text-right">MA60</TableHead>
-                                        <TableHead>Strategy Details</TableHead>
-                                        <TableHead className="text-center">Action</TableHead>
+                                        <TableHead>策略細節</TableHead>
+                                        <TableHead className="text-center">操作</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -333,7 +333,7 @@ export default function MaStrategyPage() {
                                                         size="sm"
                                                         onClick={() => setSelectedStock({ symbol: stock.symbol, name: stock.name })}
                                                         className="h-8 w-8 p-0"
-                                                        title="View K-Line"
+                                                        title="查看K線圖"
                                                     >
                                                         <LineChart className="h-4 w-4" />
                                                     </Button>
@@ -348,16 +348,16 @@ export default function MaStrategyPage() {
                 </Card>
             )}
 
-            {/* No Results */}
+            {/* 無結果 */}
             {data && data.success && data.items && data.items.length === 0 && (
                 <Card>
                     <CardContent className="pt-6 text-center">
-                        <p className="text-muted-foreground">No stocks match "{data.strategy_name || currentStrategy?.name}" strategy today</p>
+                        <p className="text-muted-foreground">今日無符合「{data.strategy_name}」策略的股票</p>
                     </CardContent>
                 </Card>
             )}
 
-            {/* Stock Analysis Dialog */}
+            {/* 股票分析彈窗 */}
             <StockAnalysisDialog
                 open={!!selectedStock}
                 onClose={() => setSelectedStock(null)}
