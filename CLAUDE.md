@@ -1,5 +1,8 @@
 # CLAUDE.md - System Memory v2.0
 
+**Repo:** https://github.com/XingCEO/cat_system.git
+**Branch:** `happy-dubinsky` | **Last Push:** 2026-02-06
+
 ## Token Efficiency Rules
 
 **READ FIRST:** Do not re-scan the codebase for context. This file contains current architecture state.
@@ -13,7 +16,17 @@
 
 ## Architecture Summary
 
-**Stack:** FastAPI + React 18 + TypeScript + SQLite (async)
+**Stack:** FastAPI + React 18 + TypeScript + SQLite/PostgreSQL (async)
+
+### Database Configuration
+
+| Environment | Driver | Config |
+|-------------|--------|--------|
+| Local | `sqlite+aiosqlite` | Default fallback |
+| Production | `postgresql+asyncpg` | Via `DATABASE_URL` env var |
+
+Set `DATABASE_URL` environment variable for Zeabur/production deployment.
+Auto-converts `postgresql://` to `postgresql+asyncpg://` for async compatibility.
 
 ### 3-Tier Caching (Delta Sync)
 

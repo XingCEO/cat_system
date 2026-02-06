@@ -1,17 +1,30 @@
 """
 TWSE Stock Filter - Database Configuration
+
+Supports both SQLite (local) and PostgreSQL (production).
+Connection string is read from DATABASE_URL environment variable.
 """
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 from config import get_settings
 
 settings = get_settings()
 
+# Configure engine options based on database type
+engine_options = {
+    "echo": settings.debug,
+    "future": True,
+}
+
+# PostgreSQL requires different pool settings for async
+if settings.is_postgres:
+    engine_options["poolclass"] = NullPool  # Recommended for async PostgreSQL
+
 # Create async engine
 engine = create_async_engine(
     settings.database_url,
-    echo=settings.debug,
-    future=True
+    **engine_options
 )
 
 # Create async session factory
