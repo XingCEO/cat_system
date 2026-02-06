@@ -26,7 +26,7 @@ from database import async_session_maker
 from models.kline_cache import KLineCache, KLineFetchProgress
 from services.data_fetcher import data_fetcher
 from services.cache_manager import cache_manager
-from utils.date_utils import get_taiwan_now
+from utils.date_utils import get_taiwan_now, get_taiwan_today, get_latest_trading_day, get_market_status, format_date
 
 logger = logging.getLogger(__name__)
 
@@ -79,11 +79,19 @@ class EnhancedKLineService:
         
         logger.info(f"取得 K 線資料: {symbol} {start_date} ~ {end_date}")
 
+        # 取得市場狀態，決定是否需要即時數據
+        market_status, should_have_today = get_market_status()
+        latest_trading_day = get_latest_trading_day()
+
         # 先嘗試從快取取得任何可用資料
         cached_any = await self._get_from_cache_any(symbol)
         if cached_any is not None and len(cached_any) > 0:
             logger.info(f"使用快取資料: {len(cached_any)} 筆")
             df = pd.DataFrame(cached_any)
+
+            # 關鍵修復：檢查快取是否缺少今日數據
+            if should_have_today:
+                df = await self._ensure_today_candle(symbol, df, latest_trading_day, market_status)
         else:
             # 嘗試從快取取得指定範圍
             cached_data = await self._get_from_cache(symbol, start_dt, end_dt)
@@ -199,7 +207,97 @@ class EnhancedKLineService:
         except Exception as e:
             logger.error(f"讀取快取失敗: {e}")
             return None
-    
+
+    async def _ensure_today_candle(
+        self,
+        symbol: str,
+        df: pd.DataFrame,
+        latest_trading_day: str,
+        market_status: str
+    ) -> pd.DataFrame:
+        """
+        確保 K 線數據包含今日蠟燭
+
+        如果快取中最新日期 < 最新交易日，從 API 抓取缺失的數據並合併
+        """
+        if df.empty:
+            return df
+
+        # 取得快取中最新日期
+        df_dates = df['date'].astype(str).str[:10]
+        cached_latest = df_dates.max()
+
+        # 如果快取已經是最新，直接返回
+        if cached_latest >= latest_trading_day:
+            logger.debug(f"[EnhancedKLine] {symbol} 快取已是最新 ({cached_latest})")
+            return df
+
+        # 需要補充數據
+        logger.info(f"[EnhancedKLine] {symbol} 快取過期 ({cached_latest} < {latest_trading_day})，正在補充...")
+
+        try:
+            # 從 API 抓取缺失的數據
+            from datetime import datetime, timedelta
+
+            # 從快取最新日期的隔天開始抓取
+            cached_date = datetime.strptime(cached_latest, "%Y-%m-%d").date()
+            fetch_start = (cached_date + timedelta(days=1)).strftime("%Y-%m-%d")
+            fetch_end = format_date(get_taiwan_today())
+
+            delta_df = await self.data_fetcher.get_historical_data(
+                symbol, fetch_start, fetch_end
+            )
+
+            if delta_df.empty:
+                # 嘗試獲取即時報價作為今日蠟燭
+                if market_status in ("open", "closed"):
+                    today_candle = await self._get_realtime_candle(symbol, latest_trading_day)
+                    if today_candle:
+                        delta_df = pd.DataFrame([today_candle])
+
+            if not delta_df.empty:
+                # 準備數據
+                delta_df = self._prepare_dataframe(delta_df)
+
+                # 儲存到快取
+                await self._save_to_cache(symbol, delta_df)
+
+                # 合併數據
+                df = pd.concat([df, delta_df], ignore_index=True)
+                df = df.drop_duplicates(subset=['date'], keep='last')
+                df = df.sort_values('date').reset_index(drop=True)
+
+                logger.info(f"[EnhancedKLine] {symbol} 已補充 {len(delta_df)} 筆數據，最新日期: {df['date'].astype(str).str[:10].max()}")
+
+        except Exception as e:
+            logger.warning(f"[EnhancedKLine] {symbol} 補充數據失敗: {e}")
+
+        return df
+
+    async def _get_realtime_candle(self, symbol: str, date_str: str) -> Optional[Dict]:
+        """
+        從即時報價取得今日蠟燭數據
+        """
+        try:
+            from services.realtime_quotes import realtime_quotes_service
+
+            quotes = await realtime_quotes_service.get_batch_quotes([symbol])
+            if quotes and symbol in quotes:
+                q = quotes[symbol]
+                if q.get("close") and q.get("close") > 0:
+                    return {
+                        "date": date_str,
+                        "open": q.get("open", q.get("close")),
+                        "high": q.get("high", q.get("close")),
+                        "low": q.get("low", q.get("close")),
+                        "close": q.get("close"),
+                        "volume": q.get("volume", 0),
+                    }
+        except Exception as e:
+            logger.debug(f"[EnhancedKLine] 即時報價失敗 {symbol}: {e}")
+
+        return None
+
     async def _fetch_and_cache(
         self, 
         symbol: str, 
