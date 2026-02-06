@@ -56,12 +56,25 @@ async function getRealtimeStatus() {
     return data;
 }
 
-// 判斷是否盤中的函數
-function checkMarketOpen(): boolean {
+// 取得台灣時間
+function getTaiwanTime(): Date {
     const now = new Date();
-    const hours = now.getHours();
-    const minutes = now.getMinutes();
-    return (hours === 9 && minutes >= 0) || (hours >= 10 && hours < 13) || (hours === 13 && minutes <= 30);
+    return new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+}
+
+// 判斷是否盤中的函數（使用台灣時區）
+function checkMarketOpen(): boolean {
+    const taiwanTime = getTaiwanTime();
+    const hours = taiwanTime.getHours();
+    const minutes = taiwanTime.getMinutes();
+    const dayOfWeek = taiwanTime.getDay();
+
+    // 週末不開盤
+    if (dayOfWeek === 0 || dayOfWeek === 6) return false;
+
+    // 09:00 - 13:30
+    const timeInMinutes = hours * 60 + minutes;
+    return timeInMinutes >= 9 * 60 && timeInMinutes <= 13 * 60 + 30;
 }
 
 export function RealtimeMonitorPage() {
@@ -106,7 +119,7 @@ export function RealtimeMonitorPage() {
         total: items.length,
         up: items.filter(i => (i.realtime_change_pct ?? i.change_percent ?? 0) > 0).length,
         down: items.filter(i => (i.realtime_change_pct ?? i.change_percent ?? 0) < 0).length,
-        limitUp: items.filter(i => (i.realtime_change_pct ?? i.change_percent ?? 0) >= 9.5).length,
+        limitUp: items.filter(i => (i.realtime_change_pct ?? i.change_percent ?? 0) >= 9.9).length,
     };
 
     return (
@@ -300,8 +313,8 @@ export function RealtimeMonitorPage() {
                             <div className="h-48">
                                 {(() => {
                                     const ranges = [
-                                        { label: '漲停', min: 9.5, max: 100, color: '#ef4444' },
-                                        { label: '5-9%', min: 5, max: 9.5, color: '#f97316' },
+                                        { label: '漲停', min: 9.9, max: 100, color: '#ef4444' },
+                                        { label: '5-9%', min: 5, max: 9.9, color: '#f97316' },
                                         { label: '3-5%', min: 3, max: 5, color: '#fb923c' },
                                         { label: '1-3%', min: 1, max: 3, color: '#fbbf24' },
                                         { label: '0-1%', min: 0, max: 1, color: '#a3a3a3' },
@@ -387,7 +400,7 @@ export function RealtimeMonitorPage() {
                                         const price = item.realtime_price ?? item.close_price;
                                         const changePct = item.realtime_change_pct ?? item.change_percent;
                                         const isUp = (changePct ?? 0) > 0;
-                                        const isLimitUp = (changePct ?? 0) >= 9.5;
+                                        const isLimitUp = (changePct ?? 0) >= 9.9;
 
                                         return (
                                             <tr

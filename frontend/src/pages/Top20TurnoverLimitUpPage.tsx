@@ -121,27 +121,33 @@ export function Top20TurnoverLimitUpPage() {
     const stocks: TurnoverStock[] = data?.items || [];
     const top20FullList: TurnoverStock[] = data?.top20_full_list || [];
 
-    // Quick date buttons
+    // Quick date buttons - 使用台灣時區
     const handleQuickDate = (type: string) => {
-        const today = new Date();
-        let targetDate = new Date();
+        // 取得台灣時間
+        const now = new Date();
+        const taiwanTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+        let targetDate = new Date(taiwanTime);
 
         switch (type) {
             case 'today':
-                targetDate = today;
+                // 已經是台灣時間
                 break;
             case 'yesterday':
-                targetDate.setDate(today.getDate() - 1);
+                targetDate.setDate(taiwanTime.getDate() - 1);
                 break;
             case 'lastWeek':
-                targetDate.setDate(today.getDate() - 7);
+                targetDate.setDate(taiwanTime.getDate() - 7);
                 break;
             case 'lastMonth':
-                targetDate.setMonth(today.getMonth() - 1);
+                targetDate.setMonth(taiwanTime.getMonth() - 1);
                 break;
         }
 
-        setQueryDate(targetDate.toISOString().split('T')[0]);
+        // 格式化為 YYYY-MM-DD
+        const year = targetDate.getFullYear();
+        const month = String(targetDate.getMonth() + 1).padStart(2, '0');
+        const day = String(targetDate.getDate()).padStart(2, '0');
+        setQueryDate(`${year}-${month}-${day}`);
     };
 
     // Export functions

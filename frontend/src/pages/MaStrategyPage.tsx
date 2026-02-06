@@ -133,7 +133,15 @@ export default function MaStrategyPage() {
                             className="bg-transparent text-sm focus:outline-none"
                             value={queryDate}
                             onChange={(e) => setQueryDate(e.target.value)}
-                            max={new Date().toISOString().split('T')[0]}
+                            max={(() => {
+                                // 使用台灣時區計算今天日期
+                                const now = new Date();
+                                const taiwanTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+                                const year = taiwanTime.getFullYear();
+                                const month = String(taiwanTime.getMonth() + 1).padStart(2, '0');
+                                const day = String(taiwanTime.getDate()).padStart(2, '0');
+                                return `${year}-${month}-${day}`;
+                            })()}
                         />
                     </div>
                     <Button
