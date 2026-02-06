@@ -1,4 +1,4 @@
-# CLAUDE.md - System Memory v4.4
+# CLAUDE.md - System Memory v4.5
 
 **Repo:** https://github.com/XingCEO/cat_system.git
 **Branch:** `main` | **Last Sync:** 2026-02-06
@@ -64,13 +64,22 @@ const wrong = new Date().toISOString().split('T')[0];  // 會得到 UTC 日期
 
 ---
 
-## Turnover Realtime Fallback (NEW)
+## Realtime Fallback for ALL Daily Data Endpoints
 
-**Problem Solved:** Turnover/Top200 pages showing yesterday's data before ~14:30.
+**Problem Solved:** All pages showing yesterday's data before ~14:30.
 
 **Root Cause:** TWSE OpenAPI `STOCK_DAY_ALL` doesn't accept date parameter - returns latest available data (yesterday until ~14:30).
 
-**Solution:** Two-part fix in `data_fetcher.py` and `base.py`.
+**Solution:** ALL endpoints using `get_daily_data()` now have realtime fallback.
+
+### Files with Realtime Fallback
+
+| File | Endpoint | Method |
+|------|----------|--------|
+| `data_fetcher.py` | (core) | Date validation - returns empty if stale |
+| `analyzers/base.py` | `/api/turnover/top20` | `_fetch_realtime_as_daily()` |
+| `stock_filter.py` | `/api/stocks/filter` | `_fetch_realtime_as_daily()` |
+| `routers/stocks.py` | `/api/stocks/{symbol}` | `_fetch_realtime_as_daily_for_symbol()` |
 
 ### Data Fetcher Date Validation
 
@@ -85,10 +94,10 @@ if actual_data_date and actual_data_date != trade_date:
     return pd.DataFrame()
 ```
 
-### Base Analyzer Realtime Fallback
+### Realtime Fallback Pattern (used in all endpoints)
 
 ```python
-# base.py - _fetch_daily_data()
+# Common pattern in base.py, stock_filter.py, stocks.py
 
 if df.empty:
     today_str = get_taiwan_today().strftime("%Y-%m-%d")
@@ -101,18 +110,27 @@ if df.empty:
 ### Data Flow
 
 ```
-Turnover/Top200 Request (today)
+ANY Daily Data Request (today)
             ↓
 data_fetcher.get_daily_data()
             ↓
 TWSE API returns yesterday? → Cache under yesterday's key, return empty
             ↓
-base.py detects empty + market open/closed
+Endpoint detects empty + market open/closed
             ↓
 _fetch_realtime_as_daily() → Batch fetch realtime quotes
             ↓
 Convert to daily format → Return today's data ✅
 ```
+
+### Affected Features (all now show today's data)
+
+- 周轉率前 200 名 (`/api/turnover/top20`)
+- 前 200 周轉漲停榜
+- 均線策略篩選 (`/api/turnover/ma-strategy/*`)
+- 股票篩選器 (`/api/stocks/filter`)
+- 單一股票詳情 (`/api/stocks/{symbol}`)
+- 盤中即時監控 (always realtime)
 
 ---
 
