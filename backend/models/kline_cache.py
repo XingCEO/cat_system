@@ -5,6 +5,12 @@ K-Line Cache Model - 儲存 K 線歷史資料與技術指標
 from sqlalchemy import Column, String, Float, Integer, Date, DateTime, Index, Text
 from datetime import datetime, timedelta
 from database import Base
+from utils.date_utils import get_taiwan_now
+
+
+def _get_taiwan_now_naive():
+    """取得台灣時間（無時區資訊，供資料庫使用）"""
+    return get_taiwan_now().replace(tzinfo=None)
 
 
 class KLineCache(Base):
@@ -51,7 +57,7 @@ class KLineCache(Base):
     bb_lower = Column(Float, nullable=True)
     
     # 快取時間戳記
-    cached_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    cached_at = Column(DateTime, default=_get_taiwan_now_naive, onupdate=_get_taiwan_now_naive)
     
     # 資料有效性標記
     is_valid = Column(Integer, default=1)  # 1=有效, 0=無效/缺失
@@ -66,10 +72,11 @@ class KLineCache(Base):
         return f"<KLineCache {self.symbol} @ {self.date}>"
     
     def is_stale(self, hours: int = 24) -> bool:
-        """檢查快取是否過期"""
+        """檢查快取是否過期（使用台灣時間）"""
         if not self.cached_at:
             return True
-        return datetime.utcnow() - self.cached_at > timedelta(hours=hours)
+        now = _get_taiwan_now_naive()
+        return now - self.cached_at > timedelta(hours=hours)
     
     def to_dict(self) -> dict:
         """轉換為字典格式"""
@@ -117,7 +124,7 @@ class KLineFetchProgress(Base):
     # 時間戳記
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=_get_taiwan_now_naive, onupdate=_get_taiwan_now_naive)
     
     __table_args__ = (
         Index('idx_fetch_symbol', 'symbol', unique=True),

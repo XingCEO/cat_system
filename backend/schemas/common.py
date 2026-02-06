@@ -1,9 +1,15 @@
 """
 Common Schemas
 """
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, Generic, TypeVar, List, Any
 from datetime import datetime
+from utils.date_utils import get_taiwan_now
+
+
+def _get_taiwan_now_naive():
+    """取得台灣時間（無時區資訊）"""
+    return get_taiwan_now().replace(tzinfo=None)
 
 T = TypeVar('T')
 
@@ -43,7 +49,7 @@ class APIResponse(BaseModel, Generic[T]):
     data: Optional[T] = None
     error: Optional[str] = None
     message: Optional[str] = None
-    timestamp: datetime = datetime.utcnow()
+    timestamp: datetime = Field(default_factory=_get_taiwan_now_naive)
     
     @classmethod
     def ok(cls, data: T = None, message: str = None):
