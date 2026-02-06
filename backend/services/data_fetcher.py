@@ -789,7 +789,8 @@ class DataFetcher:
             return date_str
         
         # Fallback: use date_utils
-        fallback = format_date(get_previous_trading_day(today))
+        from utils.date_utils import format_date as fmt_date
+        fallback = fmt_date(get_previous_trading_day(today))
         logger.warning(f"Using fallback trading date: {fallback}")
         return fallback
 
