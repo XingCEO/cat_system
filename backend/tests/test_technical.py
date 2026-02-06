@@ -185,24 +185,27 @@ class TestLimitUpDetection:
     """Test limit-up price calculation and detection"""
 
     def test_calculate_limit_up_price(self):
-        """Test limit-up price calculation"""
+        """Test limit-up price calculation (Taiwan uses 9.9% threshold with tick rounding)"""
         from services.analyzers.base import BaseAnalyzer
         analyzer = BaseAnalyzer()
 
-        # Test different price ranges
-        assert analyzer._calculate_limit_up_price(100) == 110.0
-        assert analyzer._calculate_limit_up_price(50) == 55.0
-        assert analyzer._calculate_limit_up_price(10) == 11.0
+        # Test different price ranges - Taiwan uses 9.9% limit with tick size rounding
+        # prev=100: 100*1.099=109.9, tick=0.5, floor(109.9/0.5)*0.5=109.5
+        assert analyzer._calculate_limit_up_price(100) == 109.5
+        # prev=50: 50*1.099=54.95, tick=0.1, floor(54.95/0.1)*0.1=54.9
+        assert analyzer._calculate_limit_up_price(50) == 54.9
+        # prev=10: 10*1.099=10.99, tick=0.05, floor(10.99/0.05)*0.05=10.95
+        assert analyzer._calculate_limit_up_price(10) == 10.95
 
     def test_is_limit_up(self):
-        """Test limit-up detection"""
+        """Test limit-up detection (Taiwan uses 9.9% threshold with tick rounding)"""
         from services.analyzers.base import BaseAnalyzer
         analyzer = BaseAnalyzer()
 
-        # Exact limit-up
-        assert analyzer._is_limit_up(110.0, 100) is True
-        # Close to limit-up
-        assert analyzer._is_limit_up(109.99, 100) is True
+        # Exact limit-up (9.9% with tick rounding = 109.5 for prev=100)
+        assert analyzer._is_limit_up(109.5, 100) is True
+        # Close to limit-up (within 0.02 tolerance)
+        assert analyzer._is_limit_up(109.49, 100) is True
         # Not limit-up
         assert analyzer._is_limit_up(105.0, 100) is False
 

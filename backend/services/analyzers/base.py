@@ -42,11 +42,11 @@ class BaseAnalyzer:
         return sum(valid_values) / len(valid_values)
 
     def _calculate_limit_up_price(self, prev_close: float) -> float:
-        """計算台股漲停價"""
+        """計算台股漲停價 (9.9% 漲停限制)"""
         if prev_close <= 0:
             return 0
 
-        raw_limit = prev_close * 1.10
+        raw_limit = prev_close * 1.099  # 台股使用 9.9% 漲停限制
 
         if raw_limit < 10:
             tick = 0.01

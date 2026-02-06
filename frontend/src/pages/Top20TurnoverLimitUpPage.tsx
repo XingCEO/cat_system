@@ -126,7 +126,7 @@ export function Top20TurnoverLimitUpPage() {
         // 取得台灣時間
         const now = new Date();
         const taiwanTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
-        let targetDate = new Date(taiwanTime);
+        const targetDate = new Date(taiwanTime);
 
         switch (type) {
             case 'today':

@@ -90,14 +90,91 @@ def validate_pagination(
 ) -> Tuple[bool, Optional[str]]:
     """
     驗證分頁參數
-    
+
     Returns:
         (is_valid, error_message)
     """
     if page < 1:
         return False, "頁碼必須 >= 1"
-    
+
     if page_size < 1 or page_size > 500:
         return False, "每頁數量必須在 1-500 之間"
-    
+
     return True, None
+
+
+def validate_percentage_range(
+    min_val: Optional[float] = None,
+    max_val: Optional[float] = None
+) -> Tuple[bool, Optional[str]]:
+    """
+    驗證百分比範圍
+
+    Returns:
+        (is_valid, error_message)
+    """
+    if min_val is not None and (min_val < -100 or min_val > 100):
+        return False, "百分比超出有效範圍 (-100% ~ 100%)"
+
+    if max_val is not None and (max_val < -100 or max_val > 100):
+        return False, "百分比超出有效範圍 (-100% ~ 100%)"
+
+    if min_val is not None and max_val is not None and min_val > max_val:
+        return False, "最小值不可大於最大值"
+
+    return True, None
+
+
+def validate_volume(volume: Optional[int]) -> Tuple[bool, Optional[str]]:
+    """
+    驗證成交量
+
+    Returns:
+        (is_valid, error_message)
+    """
+    if volume is None:
+        return True, None
+
+    if volume < 0:
+        return False, "成交量不可為負數"
+
+    return True, None
+
+
+def validate_price(
+    min_price: Optional[float] = None,
+    max_price: Optional[float] = None
+) -> Tuple[bool, Optional[str]]:
+    """
+    驗證價格範圍
+
+    Returns:
+        (is_valid, error_message)
+    """
+    if min_price is not None and min_price <= 0:
+        return False, "價格必須大於 0"
+
+    if max_price is not None and max_price <= 0:
+        return False, "價格必須大於 0"
+
+    if min_price is not None and max_price is not None and min_price > max_price:
+        return False, "最低價不可大於最高價"
+
+    return True, None
+
+
+def sanitize_string(s: str, max_length: int = 255) -> str:
+    """
+    清理字串：去除空白、限制長度
+
+    Returns:
+        sanitized string
+    """
+    if not s:
+        return ""
+
+    result = s.strip()
+    if len(result) > max_length:
+        result = result[:max_length]
+
+    return result

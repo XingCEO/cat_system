@@ -9,8 +9,8 @@ TOP_N_TURNOVER = 200  # 取周轉率前N名
 TOP_20_TURNOVER = 20  # 精選前20名
 
 # Limit up/down thresholds
-LIMIT_UP_THRESHOLD = 9.5  # 漲停判定門檻 (%)
-LIMIT_DOWN_THRESHOLD = -9.5  # 跌停判定門檻 (%)
+LIMIT_UP_THRESHOLD = 9.9  # 漲停判定門檻 (%) - 台股使用9.9%
+LIMIT_DOWN_THRESHOLD = -9.9  # 跌停判定門檻 (%)
 
 # Price tick rules for Taiwan stocks
 PRICE_TICK_RULES = [

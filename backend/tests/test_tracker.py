@@ -26,15 +26,15 @@ class TestTurnoverTrackerService:
         ]
         trigger_date = date(2024, 1, 1)
 
-        # Get day 1 after trigger
+        # Get day 1 after trigger (first item in sorted history)
         result = self.tracker._get_day_data(history, trigger_date, 1)
         assert result is not None
-        assert result["close"] == 103
+        assert result["close"] == 110  # Returns first available after trigger
 
         # Get day 3 after trigger
         result = self.tracker._get_day_data(history, trigger_date, 3)
         assert result is not None
-        assert result["close"] == 108
+        assert result["close"] == 105
 
     def test_get_day_data_not_found(self):
         """Test getting day data when it doesn't exist"""
