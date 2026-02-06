@@ -6,6 +6,7 @@
  * - 背景自動更新
  * - 智能重試機制
  */
+/// <reference types="vite/client" />
 import { QueryClient } from '@tanstack/react-query';
 
 export const queryClient = new QueryClient({
