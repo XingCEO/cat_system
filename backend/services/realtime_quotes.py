@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from cachetools import TTLCache
 
+from utils.date_utils import get_taiwan_now
+
 logger = logging.getLogger(__name__)
 
 # 快取設定
@@ -452,7 +454,7 @@ class RealtimeQuotesService:
 
         return {
             "success": True,
-            "update_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "update_time": get_taiwan_now().strftime("%Y-%m-%d %H:%M:%S"),
             "total_count": len(quotes_list),
             "quotes": quotes_list,
             "sources": {

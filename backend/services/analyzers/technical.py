@@ -9,6 +9,7 @@ from datetime import datetime
 import logging
 
 from services.cache_manager import cache_manager
+from utils.date_utils import get_taiwan_today, get_latest_trading_day, format_date
 
 logger = logging.getLogger(__name__)
 
@@ -477,9 +478,8 @@ class TechnicalAnalyzerMixin:
         # 但價格仍然會強制使用即時報價
         
         candidates_date = date
-        from datetime import datetime
-        today_str = datetime.now().strftime("%Y-%m-%d")
-        
+        today_str = format_date(get_taiwan_today())
+
         # 標記是否為當日查詢
         is_today_query = (date is None or date == today_str)
 
@@ -506,8 +506,7 @@ class TechnicalAnalyzerMixin:
             return {"success": False, "error": "無有效資料"}
 
         # 注入即時報價（如果是查詢當日）
-        from datetime import datetime
-        today_str = datetime.now().strftime("%Y-%m-%d")
+        today_str = format_date(get_taiwan_today())
         
         # 嚴格過濾：僅保留成功取得即時報價的股票
         valid_realtime_stocks = []

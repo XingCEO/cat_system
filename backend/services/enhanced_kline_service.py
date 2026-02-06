@@ -26,6 +26,7 @@ from database import async_session_maker
 from models.kline_cache import KLineCache, KLineFetchProgress
 from services.data_fetcher import data_fetcher
 from services.cache_manager import cache_manager
+from utils.date_utils import get_taiwan_now
 
 logger = logging.getLogger(__name__)
 
@@ -272,7 +273,7 @@ class EnhancedKLineService:
                         "close": float(row["close"]) if pd.notna(row.get("close")) else None,
                         "volume": int(row["volume"]) if pd.notna(row.get("volume")) else None,
                         "is_valid": 1,
-                        "cached_at": datetime.utcnow(),
+                        "cached_at": get_taiwan_now().replace(tzinfo=None),
                     }
                     records.append(record)
                 

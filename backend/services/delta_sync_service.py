@@ -391,7 +391,7 @@ class DeltaSyncService:
                     existing_row.bb_upper = row.get('bb_upper')
                     existing_row.bb_middle = row.get('bb_middle')
                     existing_row.bb_lower = row.get('bb_lower')
-                    existing_row.updated_at = datetime.utcnow()
+                    existing_row.updated_at = get_taiwan_now().replace(tzinfo=None)
                 else:
                     # Insert new
                     cache_entry = KLineCache(
