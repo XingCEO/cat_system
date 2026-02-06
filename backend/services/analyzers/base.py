@@ -128,13 +128,24 @@ class BaseAnalyzer:
             return {"success": False, "error": str(e)}
 
     async def _fetch_daily_data(self, date: str) -> pd.DataFrame:
-        """取得當日所有股票資料"""
+        """取得當日所有股票資料，若無則使用即時報價"""
+        from utils.date_utils import get_taiwan_today, get_market_status
+
         try:
             df = await self.data_fetcher.get_daily_data(date)
 
             if df.empty:
-                logger.warning(f"No daily data for {date}")
-                return pd.DataFrame()
+                # Check if we should try realtime quotes
+                today_str = get_taiwan_today().strftime("%Y-%m-%d")
+                market_status, _ = get_market_status()
+
+                if date == today_str and market_status in ("open", "closed"):
+                    logger.info(f"No daily data for {date}, trying realtime quotes")
+                    df = await self._fetch_realtime_as_daily(date)
+
+                if df.empty:
+                    logger.warning(f"No daily data for {date}")
+                    return pd.DataFrame()
 
             if "stock_id" in df.columns:
                 df = df[~df["stock_id"].str.startswith("00")]
@@ -160,6 +171,79 @@ class BaseAnalyzer:
 
         except Exception as e:
             logger.error(f"Error fetching daily data: {e}")
+            return pd.DataFrame()
+
+    async def _fetch_realtime_as_daily(self, date: str) -> pd.DataFrame:
+        """從即時報價建構當日資料（當 TWSE 尚未更新時使用）"""
+        try:
+            from services.realtime_quotes import realtime_service
+
+            # Get all stocks first
+            stock_list = await self.data_fetcher.get_stock_list()
+            if stock_list.empty:
+                return pd.DataFrame()
+
+            # Get symbols (excluding ETFs)
+            symbols = [
+                s for s in stock_list["stock_id"].tolist()
+                if s and not s.startswith("00")
+            ]
+
+            # Batch fetch realtime quotes (limit to avoid API overload)
+            batch_size = 50
+            all_quotes = []
+
+            for i in range(0, min(len(symbols), 500), batch_size):
+                batch = symbols[i:i + batch_size]
+                try:
+                    quotes = await realtime_service.get_quotes(batch)
+                    if quotes:
+                        all_quotes.extend(quotes)
+                except Exception as e:
+                    logger.warning(f"Realtime batch {i} failed: {e}")
+                    continue
+
+            if not all_quotes:
+                logger.warning("No realtime quotes available")
+                return pd.DataFrame()
+
+            # Convert realtime quotes to daily data format
+            records = []
+            for q in all_quotes:
+                symbol = q.get("symbol", "")
+                price = q.get("price") or q.get("close")
+                if not symbol or not price:
+                    continue
+
+                prev_close = q.get("prev_close") or q.get("yesterday_close") or price
+                volume = q.get("volume", 0) or 0
+
+                # Skip low volume
+                if volume < 1000:
+                    continue
+
+                spread = price - prev_close if prev_close else 0
+
+                records.append({
+                    "stock_id": symbol,
+                    "stock_name": q.get("name", symbol),
+                    "Trading_Volume": volume,
+                    "open": q.get("open") or q.get("open_price") or price,
+                    "max": q.get("high") or q.get("high_price") or price,
+                    "min": q.get("low") or q.get("low_price") or price,
+                    "close": price,
+                    "spread": round(spread, 2),
+                    "date": date,
+                })
+
+            if records:
+                logger.info(f"Built {len(records)} stocks from realtime quotes for {date}")
+                return pd.DataFrame(records)
+
+            return pd.DataFrame()
+
+        except Exception as e:
+            logger.error(f"Error fetching realtime as daily: {e}")
             return pd.DataFrame()
 
     async def _get_float_shares(self) -> Dict[str, float]:

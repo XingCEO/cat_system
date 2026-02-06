@@ -206,11 +206,18 @@ class DataFetcher:
         return await self._fetch_twse_daily_openapi(trade_date)
 
     async def _fetch_twse_daily_openapi(self, trade_date: str) -> pd.DataFrame:
-        """Fetch daily data from TWSE OpenAPI (more reliable)"""
+        """Fetch daily data from TWSE OpenAPI (more reliable)
+
+        IMPORTANT: TWSE OpenAPI STOCK_DAY_ALL doesn't accept date parameter.
+        It returns the latest available data, which may be yesterday's data
+        if today's data hasn't been published yet (usually after 14:30-15:00).
+
+        We MUST validate the returned date matches the requested date.
+        """
         cache_key = f"daily_{trade_date}"
 
         try:
-            # Use TWSE OpenAPI - returns today's data
+            # Use TWSE OpenAPI - returns latest available data (NOT necessarily today)
             url = "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
 
             client = await self.get_client()
@@ -220,6 +227,8 @@ class DataFetcher:
 
             if data:
                 stocks = []
+                actual_data_date = None  # Track the actual date from API
+
                 for item in data:
                     try:
                         symbol = item.get("Code", "").strip()
@@ -253,6 +262,10 @@ class DataFetcher:
                             month = api_date[3:5]
                             day = api_date[5:7]
                             actual_date = f"{roc_year + 1911}-{month}-{day}"
+
+                            # Track the actual data date (should be same for all records)
+                            if actual_data_date is None:
+                                actual_data_date = actual_date
                         else:
                             actual_date = trade_date
 
@@ -272,7 +285,22 @@ class DataFetcher:
 
                 if stocks:
                     df = pd.DataFrame(stocks)
-                    logger.info(f"Loaded {len(stocks)} stocks from TWSE OpenAPI")
+
+                    # CRITICAL: Validate that data date matches requested date
+                    if actual_data_date and actual_data_date != trade_date:
+                        logger.warning(
+                            f"TWSE API returned data for {actual_data_date}, "
+                            f"but requested {trade_date}. Data may be stale."
+                        )
+                        # Cache under the ACTUAL date, not requested date
+                        actual_cache_key = f"daily_{actual_data_date}"
+                        cache_manager.set(actual_cache_key, df.to_dict("records"), "daily")
+                        logger.info(f"Cached {len(stocks)} stocks under {actual_data_date} (actual API date)")
+
+                        # Return empty for the requested date - caller should use realtime
+                        return pd.DataFrame()
+
+                    logger.info(f"Loaded {len(stocks)} stocks from TWSE OpenAPI for {trade_date}")
                     cache_manager.set(cache_key, df.to_dict("records"), "daily")
                     return df
 
