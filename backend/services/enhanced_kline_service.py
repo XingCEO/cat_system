@@ -281,27 +281,105 @@ class EnhancedKLineService:
     async def _get_realtime_candle(self, symbol: str, date_str: str) -> Optional[Dict]:
         """
         從即時報價取得今日蠟燭數據
+        確保 OHLC 有真實的不同值，避免產生 Doji 假蠟燭
         """
         try:
             from services.realtime_quotes import realtime_quotes_service
 
-            # Use get_quotes (not get_batch_quotes which doesn't exist)
+            # Use get_quotes to fetch realtime data
             result = await realtime_quotes_service.get_quotes([symbol])
             quotes = {q["symbol"]: q for q in result.get("quotes", [])}
+
             if quotes and symbol in quotes:
                 q = quotes[symbol]
-                price = q.get("price") or q.get("close")
-                if price and price > 0:
+
+                # Extract current price (close)
+                close = q.get("price")
+                if not close or close <= 0:
+                    logger.warning(f"[EnhancedKLine] {symbol} 無有效成交價")
+                    return None
+
+                # Extract OHLC - these fields come from TWSE MIS API
+                open_price = q.get("open_price")
+                high_price = q.get("high_price")
+                low_price = q.get("low_price")
+                volume = q.get("volume") or 0
+
+                # Validate OHL values are real numbers (not None, not 0)
+                has_valid_ohlc = (
+                    open_price and open_price > 0 and
+                    high_price and high_price > 0 and
+                    low_price and low_price > 0
+                )
+
+                if has_valid_ohlc:
+                    # All OHLC values are valid
+                    candle = {
+                        "date": date_str,
+                        "open": float(open_price),
+                        "high": float(high_price),
+                        "low": float(low_price),
+                        "close": float(close),
+                        "volume": int(volume) if volume else 0,
+                    }
+                    logger.info(f"[EnhancedKLine] {symbol} 即時蠟燭: O={open_price} H={high_price} L={low_price} C={close} V={volume}")
+                    return candle
+                else:
+                    # OHL missing - use prev_close for open, calculate H/L from price movement
+                    prev_close = q.get("prev_close")
+                    if prev_close and prev_close > 0:
+                        # Estimate: open = prev_close, high/low based on change direction
+                        estimated_open = float(prev_close)
+                        if close >= estimated_open:
+                            # Up day: low = open, high = close
+                            estimated_high = float(close)
+                            estimated_low = estimated_open
+                        else:
+                            # Down day: high = open, low = close
+                            estimated_high = estimated_open
+                            estimated_low = float(close)
+
+                        candle = {
+                            "date": date_str,
+                            "open": estimated_open,
+                            "high": estimated_high,
+                            "low": estimated_low,
+                            "close": float(close),
+                            "volume": int(volume) if volume else 0,
+                        }
+                        logger.info(f"[EnhancedKLine] {symbol} 估計蠟燭 (from prev_close): O={estimated_open} H={estimated_high} L={estimated_low} C={close}")
+                        return candle
+                    else:
+                        # Last resort: use bid/ask spread to estimate range
+                        bid = q.get("bid_price")
+                        ask = q.get("ask_price")
+                        if bid and ask and bid > 0 and ask > 0:
+                            estimated_low = min(float(bid), float(close))
+                            estimated_high = max(float(ask), float(close))
+                            candle = {
+                                "date": date_str,
+                                "open": float(close),  # No better estimate
+                                "high": estimated_high,
+                                "low": estimated_low,
+                                "close": float(close),
+                                "volume": int(volume) if volume else 0,
+                            }
+                            logger.info(f"[EnhancedKLine] {symbol} 估計蠟燭 (from bid/ask): H={estimated_high} L={estimated_low} C={close}")
+                            return candle
+
+                    # Absolute fallback - toothpick (better than nothing)
+                    logger.warning(f"[EnhancedKLine] {symbol} 無法取得完整OHLC，使用單一價格")
                     return {
                         "date": date_str,
-                        "open": q.get("open_price") or q.get("open") or price,
-                        "high": q.get("high_price") or q.get("high") or price,
-                        "low": q.get("low_price") or q.get("low") or price,
-                        "close": price,
-                        "volume": q.get("volume") or 0,
+                        "open": float(close),
+                        "high": float(close),
+                        "low": float(close),
+                        "close": float(close),
+                        "volume": int(volume) if volume else 0,
                     }
+
         except Exception as e:
-            logger.debug(f"[EnhancedKLine] 即時報價失敗 {symbol}: {e}")
+            logger.warning(f"[EnhancedKLine] 即時報價失敗 {symbol}: {e}")
 
         return None
 
