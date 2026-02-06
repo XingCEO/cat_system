@@ -176,7 +176,7 @@ class BaseAnalyzer:
     async def _fetch_realtime_as_daily(self, date: str) -> pd.DataFrame:
         """從即時報價建構當日資料（當 TWSE 尚未更新時使用）"""
         try:
-            from services.realtime_quotes import realtime_service
+            from services.realtime_quotes import realtime_quotes_service
 
             # Get all stocks first
             stock_list = await self.data_fetcher.get_stock_list()
@@ -196,7 +196,7 @@ class BaseAnalyzer:
             for i in range(0, min(len(symbols), 500), batch_size):
                 batch = symbols[i:i + batch_size]
                 try:
-                    quotes = await realtime_service.get_quotes(batch)
+                    quotes = await realtime_quotes_service.get_quotes(batch)
                     if quotes:
                         all_quotes.extend(quotes)
                 except Exception as e:

@@ -21,9 +21,9 @@ async def _fetch_realtime_as_daily_for_symbol(symbol: str, date: str):
     """從即時報價取得單一股票當日資料"""
     import pandas as pd
     try:
-        from services.realtime_quotes import realtime_service
+        from services.realtime_quotes import realtime_quotes_service
 
-        quotes = await realtime_service.get_quotes([symbol])
+        quotes = await realtime_quotes_service.get_quotes([symbol])
         if not quotes:
             return pd.DataFrame()
 
