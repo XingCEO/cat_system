@@ -1,4 +1,4 @@
-# CLAUDE.md - System Memory v4.1
+# CLAUDE.md - System Memory v4.2
 
 **Repo:** https://github.com/XingCEO/cat_system.git
 **Branch:** `main` | **Last Sync:** 2026-02-06
@@ -33,6 +33,7 @@ Violations waste tokens and context window. This file exists to prevent redundan
 | `get_market_status()` | `utils/date_utils.py` | Returns `(status, should_have_today)` |
 | `get_latest_trading_day()` | `utils/date_utils.py` | Today if market opened, else previous |
 | `is_market_open()` | `utils/date_utils.py` | True if 09:00-13:30 Taiwan time |
+| `_get_taiwan_now_naive()` | `models/kline_cache.py`, `schemas/common.py` | Taiwan time without tzinfo (for DB) |
 
 **Market Status Values:**
 - `"open"` - Market trading (09:00-13:30), `should_have_today=True`
@@ -41,6 +42,8 @@ Violations waste tokens and context window. This file exists to prevent redundan
 - `"holiday"` - Non-trading day, `should_have_today=False`
 
 **NEVER use:** `datetime.now()`, `date.today()`, `datetime.utcnow()`
+
+**Database Timestamps:** All models use `_get_taiwan_now_naive()` for `cached_at`, `updated_at` columns.
 
 ---
 
@@ -267,11 +270,14 @@ Full docs at `/docs` (Swagger UI).
 
 ## Recent Fixes (2026-02-06)
 
-### Critical Fix: PostgreSQL Upsert Compatibility
+### Critical Fix: Full System Timezone Standardization
 
 | Issue | Root Cause | Fix |
 |-------|------------|-----|
 | **Data not saving in production** | SQLite-only `insert` dialect used | Auto-detect DB type, use `pg_insert` for PostgreSQL |
+| **datetime.utcnow() in models** | Cache staleness calculated wrong | Replaced with `_get_taiwan_now_naive()` |
+| **API response UTC timestamp** | Inconsistent with data timezone | Changed to Taiwan time |
+| **is_stale() wrong timezone** | Comparing UTC vs Taiwan time | Fixed to use Taiwan time |
 | Timezone cache mismatch | Comparing aware vs naive datetime | Normalize to naive datetime before comparison |
 | Realtime quote hanging | No timeout protection | Added 10s `asyncio.wait_for` timeout |
 | OTC stocks not found | Oversimplified market classification | Improved logic with fallback mechanism |
@@ -296,11 +302,19 @@ Full docs at `/docs` (Swagger UI).
 Before claiming completion, verify:
 
 ```bash
-# Check latest candle date matches today
-curl https://your-url/api/stocks/2486/kline | jq '.kline_data[-1].date'
+# 1. Check latest candle date matches today
+curl https://your-url/api/stocks/2330/kline | jq '.kline_data[-1].date'
 # Expected: "2026-02-06"
 
-# Check OHLC are distinct values (not toothpick)
-curl https://your-url/api/stocks/2486/kline | jq '.kline_data[-1] | {o:.open, h:.high, l:.low, c:.close}'
+# 2. Check OHLC are distinct values (not toothpick)
+curl https://your-url/api/stocks/2330/kline | jq '.kline_data[-1] | {o:.open, h:.high, l:.low, c:.close}'
 # Expected: 4 different values for a real candle body
+
+# 3. Check Top 20 turnover date
+curl https://your-url/api/turnover/top20 | jq '.query_date'
+# Expected: "2026-02-06"
+
+# 4. Check API timestamp is Taiwan time
+curl https://your-url/api/health | jq '.timestamp'
+# Expected: ~14:xx or 15:xx (Taiwan time, not 06:xx UTC)
 ```
