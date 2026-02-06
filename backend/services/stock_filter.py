@@ -34,18 +34,28 @@ class StockFilter:
 
         # Get trading date
         trade_date = params.date or await self.data_fetcher.get_latest_trading_date()
+        today_str = get_taiwan_today().strftime("%Y-%m-%d")
+        market_status, should_have_today = get_market_status()
+
+        logger.info(f"StockFilter: Fetching data for {trade_date}, today={today_str}, status={market_status}")
 
         # Fetch daily data
         daily_df = await self.data_fetcher.get_daily_data(trade_date)
 
-        # If empty and today, try realtime fallback
-        if daily_df.empty:
-            today_str = get_taiwan_today().strftime("%Y-%m-%d")
-            market_status, _ = get_market_status()
+        # 強制使用 realtime fallback：
+        # 1. DataFrame 為空
+        # 2. 或者請求的是今天的資料且應該有今日資料
+        use_realtime = daily_df.empty or (trade_date == today_str and should_have_today)
 
-            if trade_date == today_str and market_status in ("open", "closed"):
-                logger.info(f"No daily data for {trade_date}, trying realtime quotes")
-                daily_df = await self._fetch_realtime_as_daily(trade_date)
+        if use_realtime:
+            logger.info(f"StockFilter: Using realtime fallback (df.empty={daily_df.empty}, is_today={trade_date == today_str})")
+            realtime_df = await self._fetch_realtime_as_daily(trade_date)
+
+            if not realtime_df.empty:
+                logger.info(f"StockFilter: Realtime success with {len(realtime_df)} stocks")
+                daily_df = realtime_df
+            elif daily_df.empty:
+                logger.warning(f"StockFilter: No data available for {trade_date}")
 
         if daily_df.empty:
             return {
@@ -251,8 +261,10 @@ class StockFilter:
             from services.realtime_quotes import realtime_quotes_service
 
             # Get all stocks first
+            logger.info("StockFilter: Fetching stock list for realtime fallback...")
             stock_list = await self.data_fetcher.get_stock_list()
             if stock_list.empty:
+                logger.error("StockFilter: Stock list is empty")
                 return pd.DataFrame()
 
             # Get symbols (excluding ETFs)
@@ -260,12 +272,13 @@ class StockFilter:
                 s for s in stock_list["stock_id"].tolist()
                 if s and not s.startswith("00")
             ]
+            logger.info(f"StockFilter: Found {len(symbols)} symbols")
 
-            # Batch fetch realtime quotes
-            batch_size = 50
+            # Batch fetch realtime quotes (increased limit)
+            batch_size = 80
             all_quotes = []
 
-            for i in range(0, min(len(symbols), 500), batch_size):
+            for i in range(0, min(len(symbols), 1500), batch_size):
                 batch = symbols[i:i + batch_size]
                 try:
                     result = await realtime_quotes_service.get_quotes(batch)
@@ -276,8 +289,10 @@ class StockFilter:
                     logger.warning(f"Realtime batch {i} failed: {e}")
                     continue
 
+            logger.info(f"StockFilter: Got {len(all_quotes)} realtime quotes")
+
             if not all_quotes:
-                logger.warning("No realtime quotes available")
+                logger.warning("StockFilter: No realtime quotes available")
                 return pd.DataFrame()
 
             # Convert realtime quotes to daily data format
@@ -291,7 +306,12 @@ class StockFilter:
                 prev_close = q.get("prev_close") or q.get("yesterday_close") or price
                 volume = q.get("volume", 0) or 0
 
-                if volume < 1000:
+                # Realtime volume is in 張 (lots), convert to 股 (shares)
+                # 1 張 = 1000 股
+                volume_in_shares = volume * 1000 if volume < 10000 else volume
+
+                # Skip low volume (less than 1 lot = 1000 shares)
+                if volume_in_shares < 1000:
                     continue
 
                 spread = price - prev_close if prev_close else 0
@@ -299,7 +319,7 @@ class StockFilter:
                 records.append({
                     "stock_id": symbol,
                     "stock_name": q.get("name", symbol),
-                    "Trading_Volume": volume,
+                    "Trading_Volume": volume_in_shares,
                     "open": q.get("open") or q.get("open_price") or price,
                     "max": q.get("high") or q.get("high_price") or price,
                     "min": q.get("low") or q.get("low_price") or price,
