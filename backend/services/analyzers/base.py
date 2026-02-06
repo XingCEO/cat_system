@@ -196,9 +196,10 @@ class BaseAnalyzer:
             for i in range(0, min(len(symbols), 500), batch_size):
                 batch = symbols[i:i + batch_size]
                 try:
-                    quotes = await realtime_quotes_service.get_quotes(batch)
-                    if quotes:
-                        all_quotes.extend(quotes)
+                    result = await realtime_quotes_service.get_quotes(batch)
+                    # get_quotes returns {"success": True, "quotes": [...], ...}
+                    if result and result.get("success") and result.get("quotes"):
+                        all_quotes.extend(result["quotes"])
                 except Exception as e:
                     logger.warning(f"Realtime batch {i} failed: {e}")
                     continue
