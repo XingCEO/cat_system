@@ -26,16 +26,27 @@ class StockFilter:
     ) -> Dict[str, Any]:
         """
         Filter stocks based on criteria
-        
+
         Returns:
             Dict with items, total count, and query metadata
         """
+        from utils.date_utils import get_taiwan_today, get_market_status
+
         # Get trading date
         trade_date = params.date or await self.data_fetcher.get_latest_trading_date()
-        
+
         # Fetch daily data
         daily_df = await self.data_fetcher.get_daily_data(trade_date)
-        
+
+        # If empty and today, try realtime fallback
+        if daily_df.empty:
+            today_str = get_taiwan_today().strftime("%Y-%m-%d")
+            market_status, _ = get_market_status()
+
+            if trade_date == today_str and market_status in ("open", "closed"):
+                logger.info(f"No daily data for {trade_date}, trying realtime quotes")
+                daily_df = await self._fetch_realtime_as_daily(trade_date)
+
         if daily_df.empty:
             return {
                 "items": [],
@@ -233,7 +244,79 @@ class StockFilter:
             results.append(result)
         
         return results
-    
+
+    async def _fetch_realtime_as_daily(self, date: str) -> pd.DataFrame:
+        """從即時報價建構當日資料（當 TWSE 尚未更新時使用）"""
+        try:
+            from services.realtime_quotes import realtime_service
+
+            # Get all stocks first
+            stock_list = await self.data_fetcher.get_stock_list()
+            if stock_list.empty:
+                return pd.DataFrame()
+
+            # Get symbols (excluding ETFs)
+            symbols = [
+                s for s in stock_list["stock_id"].tolist()
+                if s and not s.startswith("00")
+            ]
+
+            # Batch fetch realtime quotes
+            batch_size = 50
+            all_quotes = []
+
+            for i in range(0, min(len(symbols), 500), batch_size):
+                batch = symbols[i:i + batch_size]
+                try:
+                    quotes = await realtime_service.get_quotes(batch)
+                    if quotes:
+                        all_quotes.extend(quotes)
+                except Exception as e:
+                    logger.warning(f"Realtime batch {i} failed: {e}")
+                    continue
+
+            if not all_quotes:
+                logger.warning("No realtime quotes available")
+                return pd.DataFrame()
+
+            # Convert realtime quotes to daily data format
+            records = []
+            for q in all_quotes:
+                symbol = q.get("symbol", "")
+                price = q.get("price") or q.get("close")
+                if not symbol or not price:
+                    continue
+
+                prev_close = q.get("prev_close") or q.get("yesterday_close") or price
+                volume = q.get("volume", 0) or 0
+
+                if volume < 1000:
+                    continue
+
+                spread = price - prev_close if prev_close else 0
+
+                records.append({
+                    "stock_id": symbol,
+                    "stock_name": q.get("name", symbol),
+                    "Trading_Volume": volume,
+                    "open": q.get("open") or q.get("open_price") or price,
+                    "max": q.get("high") or q.get("high_price") or price,
+                    "min": q.get("low") or q.get("low_price") or price,
+                    "close": price,
+                    "spread": round(spread, 2),
+                    "date": date,
+                })
+
+            if records:
+                logger.info(f"Built {len(records)} stocks from realtime quotes for {date}")
+                return pd.DataFrame(records)
+
+            return pd.DataFrame()
+
+        except Exception as e:
+            logger.error(f"Error fetching realtime as daily: {e}")
+            return pd.DataFrame()
+
     def _apply_sorting(
         self,
         results: List[Dict],

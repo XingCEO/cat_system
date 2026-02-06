@@ -17,6 +17,41 @@ from utils.date_utils import get_previous_trading_day, format_date
 router = APIRouter(prefix="/api/stocks", tags=["stocks"])
 
 
+async def _fetch_realtime_as_daily_for_symbol(symbol: str, date: str):
+    """從即時報價取得單一股票當日資料"""
+    import pandas as pd
+    try:
+        from services.realtime_quotes import realtime_service
+
+        quotes = await realtime_service.get_quotes([symbol])
+        if not quotes:
+            return pd.DataFrame()
+
+        q = quotes[0]
+        price = q.get("price") or q.get("close")
+        if not price:
+            return pd.DataFrame()
+
+        prev_close = q.get("prev_close") or q.get("yesterday_close") or price
+        spread = price - prev_close if prev_close else 0
+
+        return pd.DataFrame([{
+            "stock_id": symbol,
+            "stock_name": q.get("name", symbol),
+            "Trading_Volume": q.get("volume", 0) or 0,
+            "open": q.get("open") or q.get("open_price") or price,
+            "max": q.get("high") or q.get("high_price") or price,
+            "min": q.get("low") or q.get("low_price") or price,
+            "close": price,
+            "spread": round(spread, 2),
+            "date": date,
+        }])
+
+    except Exception:
+        import pandas as pd
+        return pd.DataFrame()
+
+
 @router.get("/filter", response_model=APIResponse[StockListResponse])
 async def filter_stocks(
     date: Optional[str] = Query(None, description="查詢日期 YYYY-MM-DD"),
@@ -119,19 +154,30 @@ async def get_stock_detail(symbol: str):
     valid, error = validate_symbol(symbol)
     if not valid:
         raise HTTPException(status_code=400, detail=error)
-    
+
     try:
+        from utils.date_utils import get_taiwan_today, get_market_status
+
         # Get stock info
         stock_info = await data_fetcher.get_stock_info(symbol)
         if not stock_info:
             raise HTTPException(status_code=404, detail=f"查無股票: {symbol}")
-        
+
         # Get latest trading date
         trade_date = format_date(get_previous_trading_day())
-        
+
         # Get daily data
         daily_df = await data_fetcher.get_daily_data(trade_date)
-        stock_daily = daily_df[daily_df["stock_id"] == symbol]
+
+        # If empty and today, try realtime fallback
+        if daily_df.empty:
+            today_str = get_taiwan_today().strftime("%Y-%m-%d")
+            market_status, _ = get_market_status()
+
+            if trade_date == today_str and market_status in ("open", "closed"):
+                daily_df = await _fetch_realtime_as_daily_for_symbol(symbol, trade_date)
+
+        stock_daily = daily_df[daily_df["stock_id"] == symbol] if not daily_df.empty else daily_df
         
         if stock_daily.empty:
             raise HTTPException(status_code=404, detail=f"查無 {symbol} 的交易資料")
