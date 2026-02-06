@@ -189,9 +189,16 @@ class DataFetcher:
         try:
             client = await self.get_client()
             response = await client.get(self.finmind_url, params=params, timeout=10.0)
-            if response.status_code == 402:
-                DataFetcher._finmind_available = False
-                logger.warning("FinMind API quota exceeded, switching to TWSE")
+            if response.status_code in (400, 402, 403, 429):
+                # 400: Bad request (date too new/invalid)
+                # 402: Quota exceeded
+                # 403: Forbidden
+                # 429: Rate limited
+                if response.status_code == 402:
+                    DataFetcher._finmind_available = False
+                    logger.warning("FinMind API quota exceeded, switching to TWSE")
+                else:
+                    logger.warning(f"FinMind API returned {response.status_code}, using TWSE fallback")
                 return await self._fetch_twse_daily_openapi(trade_date)
             response.raise_for_status()
             data = response.json()
@@ -346,10 +353,16 @@ class DataFetcher:
         try:
             client = await self.get_client()
             response = await client.get(self.finmind_url, params=params, timeout=10.0)
-            if response.status_code == 402:
-                # Mark FinMind as unavailable for this session
-                DataFetcher._finmind_available = False
-                logger.warning("FinMind API quota exceeded (402), switching to TWSE fallback for all requests")
+            if response.status_code in (400, 402, 403, 429):
+                # 400: Bad request (date too new/invalid)
+                # 402: Quota exceeded
+                # 403: Forbidden
+                # 429: Rate limited
+                if response.status_code == 402:
+                    DataFetcher._finmind_available = False
+                    logger.warning("FinMind API quota exceeded (402), switching to TWSE fallback for all requests")
+                else:
+                    logger.warning(f"FinMind API returned {response.status_code} for {symbol}, using TWSE fallback")
                 return await self._fetch_twse_historical(symbol, start_date, end_date)
             response.raise_for_status()
             data = response.json()

@@ -189,11 +189,11 @@ class BaseAnalyzer:
                 if s and not s.startswith("00")
             ]
 
-            # Batch fetch realtime quotes (limit to avoid API overload)
-            batch_size = 50
+            # Batch fetch realtime quotes (increased limit for better coverage)
+            batch_size = 80
             all_quotes = []
 
-            for i in range(0, min(len(symbols), 500), batch_size):
+            for i in range(0, min(len(symbols), 1500), batch_size):
                 batch = symbols[i:i + batch_size]
                 try:
                     result = await realtime_quotes_service.get_quotes(batch)
@@ -219,8 +219,12 @@ class BaseAnalyzer:
                 prev_close = q.get("prev_close") or q.get("yesterday_close") or price
                 volume = q.get("volume", 0) or 0
 
-                # Skip low volume
-                if volume < 1000:
+                # Realtime volume is in 張 (lots), convert to 股 (shares) for consistency
+                # 1 張 = 1000 股
+                volume_in_shares = volume * 1000 if volume < 10000 else volume
+
+                # Skip low volume (less than 1 lot = 1000 shares)
+                if volume_in_shares < 1000:
                     continue
 
                 spread = price - prev_close if prev_close else 0
@@ -228,7 +232,7 @@ class BaseAnalyzer:
                 records.append({
                     "stock_id": symbol,
                     "stock_name": q.get("name", symbol),
-                    "Trading_Volume": volume,
+                    "Trading_Volume": volume_in_shares,
                     "open": q.get("open") or q.get("open_price") or price,
                     "max": q.get("high") or q.get("high_price") or price,
                     "min": q.get("low") or q.get("low_price") or price,
