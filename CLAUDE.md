@@ -1,4 +1,4 @@
-# CLAUDE.md - System Memory v4.0
+# CLAUDE.md - System Memory v4.1
 
 **Repo:** https://github.com/XingCEO/cat_system.git
 **Branch:** `main` | **Last Sync:** 2026-02-06
@@ -146,7 +146,7 @@ useKLineData(symbol, 'day', 2)  // Instant display, background refresh
 usePrefetchKLines().prefetch(['2330', '2317'])  // Preload stocks
 ```
 
-**Config:** 5min staleTime, 60min gcTime, offlineFirst networkMode
+**Config:** Dynamic staleTime (1min market open, 5min closed), 60min gcTime, refetchOnMount: 'always'
 
 ### Indicator Persistence
 
@@ -266,6 +266,20 @@ Full docs at `/docs` (Swagger UI).
 ---
 
 ## Recent Fixes (2026-02-06)
+
+### Critical Fix: PostgreSQL Upsert Compatibility
+
+| Issue | Root Cause | Fix |
+|-------|------------|-----|
+| **Data not saving in production** | SQLite-only `insert` dialect used | Auto-detect DB type, use `pg_insert` for PostgreSQL |
+| Timezone cache mismatch | Comparing aware vs naive datetime | Normalize to naive datetime before comparison |
+| Realtime quote hanging | No timeout protection | Added 10s `asyncio.wait_for` timeout |
+| OTC stocks not found | Oversimplified market classification | Improved logic with fallback mechanism |
+| Stale cache served | `_get_from_cache_any` skipped expiry check | Added market-aware TTL check |
+| Frontend shows old data | `refetchOnMount: false` | Changed to `'always'` |
+| Fixed 5min stale time | Ignores market hours | Dynamic: 1min open, 5min closed |
+
+### Previous Fixes
 
 | Issue | Root Cause | Fix |
 |-------|------------|-----|
