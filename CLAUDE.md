@@ -1,4 +1,4 @@
-# CLAUDE.md - System Memory v4.3
+# CLAUDE.md - System Memory v4.4
 
 **Repo:** https://github.com/XingCEO/cat_system.git
 **Branch:** `main` | **Last Sync:** 2026-02-06
@@ -61,6 +61,58 @@ const wrong = new Date().toISOString().split('T')[0];  // 會得到 UTC 日期
 **Database Timestamps:** All models use `_get_taiwan_now_naive()` for `cached_at`, `updated_at` columns.
 
 **Limit-Up Threshold:** Taiwan stocks use **9.9%** (not 9.5%)
+
+---
+
+## Turnover Realtime Fallback (NEW)
+
+**Problem Solved:** Turnover/Top200 pages showing yesterday's data before ~14:30.
+
+**Root Cause:** TWSE OpenAPI `STOCK_DAY_ALL` doesn't accept date parameter - returns latest available data (yesterday until ~14:30).
+
+**Solution:** Two-part fix in `data_fetcher.py` and `base.py`.
+
+### Data Fetcher Date Validation
+
+```python
+# data_fetcher.py - _fetch_twse_daily_openapi()
+
+# Parse actual date from API response
+if actual_data_date and actual_data_date != trade_date:
+    # Cache under ACTUAL date (not requested date)
+    cache_manager.set(f"daily_{actual_data_date}", df.to_dict("records"), "daily")
+    # Return empty - caller should use realtime fallback
+    return pd.DataFrame()
+```
+
+### Base Analyzer Realtime Fallback
+
+```python
+# base.py - _fetch_daily_data()
+
+if df.empty:
+    today_str = get_taiwan_today().strftime("%Y-%m-%d")
+    market_status, _ = get_market_status()
+
+    if date == today_str and market_status in ("open", "closed"):
+        df = await self._fetch_realtime_as_daily(date)
+```
+
+### Data Flow
+
+```
+Turnover/Top200 Request (today)
+            ↓
+data_fetcher.get_daily_data()
+            ↓
+TWSE API returns yesterday? → Cache under yesterday's key, return empty
+            ↓
+base.py detects empty + market open/closed
+            ↓
+_fetch_realtime_as_daily() → Batch fetch realtime quotes
+            ↓
+Convert to daily format → Return today's data ✅
+```
 
 ---
 
