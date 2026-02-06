@@ -21,6 +21,7 @@ class KLineCache(Base):
     low = Column(Float, nullable=True)
     close = Column(Float, nullable=True)
     volume = Column(Integer, nullable=True)
+    change_percent = Column(Float, nullable=True)  # 漲跌幅 %
     
     # 移動平均線
     ma5 = Column(Float, nullable=True)

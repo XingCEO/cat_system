@@ -217,7 +217,13 @@ class BaseAnalyzer:
                 volume_shares = float(row.get(volume_col, 0) or 0)
                 volume_lots = volume_shares / 1000
 
-                float_shares = float_shares_map.get(symbol, 0)
+                float_shares_raw = float_shares_map.get(symbol)
+                if float_shares_raw is None:
+                    continue
+                try:
+                    float_shares = float(float_shares_raw)
+                except (TypeError, ValueError):
+                    continue
 
                 if float_shares <= 0:
                     continue

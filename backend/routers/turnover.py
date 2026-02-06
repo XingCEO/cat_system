@@ -5,6 +5,7 @@ from fastapi import APIRouter, Query, HTTPException
 from typing import Optional, List
 
 from services.high_turnover_analyzer import high_turnover_analyzer
+from services.turnover_tracker import turnover_tracker
 from schemas.turnover import (
     HighTurnoverLimitUpResponse, Top20Response, TurnoverStats,
     TurnoverHistoryResponse, SymbolTurnoverHistoryResponse,
@@ -153,19 +154,21 @@ async def get_symbol_turnover_history(
 async def create_track(request: TrackRequest):
     """
     建立追蹤任務
-    
+
     追蹤高周轉漲停股的後續表現：
     - 隔日漲跌幅
     - 隔日是否繼續漲停
     - 3/5/7日後表現
     """
-    # TODO: 實作追蹤邏輯，需要定時任務
-    return {
-        "success": True,
-        "message": "追蹤任務已建立",
-        "date": request.date,
-        "symbols": request.symbols or "all_limit_up"
-    }
+    result = await turnover_tracker.create_track(
+        trigger_date=request.date,
+        symbols=request.symbols
+    )
+
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "建立追蹤失敗"))
+
+    return result
 
 
 @router.get("/track/stats", response_model=TrackStatsResponse)
@@ -175,22 +178,37 @@ async def get_track_stats(
 ):
     """
     取得追蹤統計
-    
+
     顯示高周轉漲停股的後續表現統計：
     - 隔日繼續漲停比例
     - 隔日平均漲跌幅
     - 7日後平均報酬
     """
-    # TODO: 實作追蹤統計
-    return {
-        "success": True,
-        "total_tracked": 0,
-        "day1_continued_limit_up_ratio": None,
-        "day1_avg_change": None,
-        "day3_avg_change": None,
-        "day7_avg_change": None,
-        "results": []
-    }
+    result = await turnover_tracker.get_track_stats(
+        start_date=start_date,
+        end_date=end_date
+    )
+
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "查詢失敗"))
+
+    return result
+
+
+@router.post("/track/update")
+async def update_track_results():
+    """
+    更新追蹤結果（手動觸發）
+
+    更新所有未完成追蹤任務的後續表現數據
+    建議每日收盤後執行
+    """
+    result = await turnover_tracker.update_track_results()
+
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "更新失敗"))
+
+    return result
 
 
 # ===== 快速預設查詢 =====

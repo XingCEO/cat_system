@@ -84,20 +84,27 @@ class TechnicalAnalyzer:
         return sum(prices[:period]) / period
     
     def calculate_rsi(self, prices: List[float], period: int = 14) -> Optional[float]:
-        """計算 RSI"""
+        """
+        計算 RSI (Relative Strength Index)
+        使用標準方法：所有變化（包括零變化日）都計入平均
+        """
         if len(prices) < period + 1:
             return None
-        
+
+        # 計算價格變化（從新到舊）
         changes = [prices[i] - prices[i + 1] for i in range(period)]
-        gains = [c for c in changes if c > 0]
-        losses = [-c for c in changes if c < 0]
-        
-        avg_gain = sum(gains) / period if gains else 0
-        avg_loss = sum(losses) / period if losses else 0
-        
+
+        # 分離漲跌，零變化計入總數但不計入漲跌
+        gains = [max(c, 0) for c in changes]
+        losses = [max(-c, 0) for c in changes]
+
+        # 使用標準平均（所有天數都計入分母）
+        avg_gain = sum(gains) / period
+        avg_loss = sum(losses) / period
+
         if avg_loss == 0:
-            return 100.0
-        
+            return 100.0 if avg_gain > 0 else 50.0
+
         rs = avg_gain / avg_loss
         return 100 - (100 / (1 + rs))
     

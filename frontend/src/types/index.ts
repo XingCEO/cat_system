@@ -191,6 +191,101 @@ export interface BatchCompareItem {
     latest_change?: number;
 }
 
+// High Turnover Analysis types
+export interface TurnoverStock {
+    symbol: string;
+    name: string;
+    industry: string;
+    close_price: number;
+    prev_close: number | null;
+    change_percent: number;
+    turnover_rate: number;
+    turnover_rank: number;
+    volume: number;
+    float_shares: number;
+    volume_ratio: number;
+    amplitude: number;
+    consecutive_up_days: number;
+    is_limit_up: boolean;
+    limit_up_type?: string;
+    // MA strategy fields
+    ma5?: number;
+    ma10?: number;
+    ma20?: number;
+    ma60?: number;
+    ma_range?: number;
+    strategy?: string;
+    strategy_name?: string;
+    strategy_detail?: string;
+}
+
+export interface TurnoverStats {
+    query_date: string;
+    top20_count: number;
+    limit_up_count: number;
+    limit_up_ratio: number;
+    avg_turnover_rate: number;
+    total_volume: number;
+    total_amount: number;
+    limit_up_by_type: Record<string, number>;
+}
+
+export interface HighTurnoverLimitUpResponse {
+    success: boolean;
+    query_date: string;
+    stats: TurnoverStats;
+    items: TurnoverStock[];
+}
+
+export interface Top20TurnoverResponse {
+    success: boolean;
+    query_date: string;
+    items: TurnoverStock[];
+    limit_up_symbols: string[];
+}
+
+export interface MaStrategyResponse {
+    success: boolean;
+    query_date: string;
+    strategy: string;
+    strategy_name: string;
+    matched_count: number;
+    items: TurnoverStock[];
+    note?: string;
+}
+
+export interface AllMaStrategiesResponse {
+    success: boolean;
+    query_date: string;
+    strategies: Record<string, {
+        strategy_name: string;
+        matched_count: number;
+        items: TurnoverStock[];
+    }>;
+    total_unique: number;
+}
+
+export interface MaBreakoutResponse {
+    success: boolean;
+    query_date: string;
+    filter: {
+        min_change?: number;
+        max_change?: number;
+    };
+    breakout_count: number;
+    items: TurnoverStock[];
+}
+
+export interface VolumeSurgeResponse {
+    success: boolean;
+    query_date: string;
+    filter: {
+        volume_ratio: number;
+    };
+    surge_count: number;
+    items: TurnoverStock[];
+}
+
 // K-Line chart types
 export interface KLineDataPoint {
     date: string;

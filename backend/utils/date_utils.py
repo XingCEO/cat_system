@@ -180,17 +180,67 @@ def format_date(dt: date) -> str:
 def parse_date(date_str: str) -> Optional[date]:
     """
     解析日期字串
-    
+
     Args:
         date_str: YYYY-MM-DD 格式字串
-    
+
     Returns:
         date 物件或 None
     """
+    if date_str is None:
+        return None
     try:
         return datetime.strptime(date_str, "%Y-%m-%d").date()
     except (ValueError, TypeError):
         return None
+
+
+def validate_date_str(date_str: str) -> bool:
+    """
+    驗證日期字串格式是否正確
+
+    Args:
+        date_str: YYYY-MM-DD 格式字串
+
+    Returns:
+        True 如果格式正確，否則 False
+    """
+    return parse_date(date_str) is not None
+
+
+def get_trading_days_between(start_date, end_date) -> List[date]:
+    """
+    取得兩個日期之間的所有交易日 (回傳 date 物件列表)
+
+    Args:
+        start_date: 起始日期 (date 物件或 YYYY-MM-DD 字串)
+        end_date: 結束日期 (date 物件或 YYYY-MM-DD 字串)
+
+    Returns:
+        交易日列表 [date, ...]
+    """
+    if isinstance(start_date, str):
+        start = parse_date(start_date)
+    else:
+        start = start_date
+
+    if isinstance(end_date, str):
+        end = parse_date(end_date)
+    else:
+        end = end_date
+
+    if start is None or end is None:
+        return []
+
+    result = []
+    current = start
+
+    while current <= end:
+        if is_trading_day(current):
+            result.append(current)
+        current += timedelta(days=1)
+
+    return result
 
 
 def days_between(date1: str, date2: str) -> int:
