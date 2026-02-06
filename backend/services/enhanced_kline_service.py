@@ -22,7 +22,7 @@ except ImportError:
 from sqlalchemy import select, delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from config import settings
+from config import get_settings
 
 from database import async_session_maker
 from models.kline_cache import KLineCache, KLineFetchProgress
@@ -488,7 +488,8 @@ class EnhancedKLineService:
                     records.append(record)
                 
                 # 使用 upsert - 自動選擇正確的資料庫方言
-                is_postgresql = settings.DATABASE_URL and settings.DATABASE_URL.startswith("postgresql")
+                settings = get_settings()
+                is_postgresql = settings.database_url and settings.database_url.startswith("postgresql")
 
                 for record in records:
                     if is_postgresql:
