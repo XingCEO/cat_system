@@ -188,8 +188,10 @@ class BaseAnalyzer:
             from services.realtime_quotes import realtime_quotes_service
 
             # Get all stocks first
+            logger.info("Fetching stock list for realtime fallback...")
             stock_list = await self.data_fetcher.get_stock_list()
             if stock_list.empty:
+                logger.error("Stock list is empty - cannot fetch realtime quotes")
                 return pd.DataFrame()
 
             # Get symbols (excluding ETFs)
@@ -197,10 +199,12 @@ class BaseAnalyzer:
                 s for s in stock_list["stock_id"].tolist()
                 if s and not s.startswith("00")
             ]
+            logger.info(f"Found {len(symbols)} symbols for realtime fetch")
 
             # Batch fetch realtime quotes (increased limit for better coverage)
             batch_size = 80
             all_quotes = []
+            failed_batches = 0
 
             for i in range(0, min(len(symbols), 1500), batch_size):
                 batch = symbols[i:i + batch_size]
@@ -209,12 +213,21 @@ class BaseAnalyzer:
                     # get_quotes returns {"success": True, "quotes": [...], ...}
                     if result and result.get("success") and result.get("quotes"):
                         all_quotes.extend(result["quotes"])
+                        if i == 0:
+                            logger.info(f"First batch success: {len(result['quotes'])} quotes")
+                    else:
+                        failed_batches += 1
+                        if i == 0:
+                            logger.warning(f"First batch failed: {result}")
                 except Exception as e:
+                    failed_batches += 1
                     logger.warning(f"Realtime batch {i} failed: {e}")
                     continue
 
+            logger.info(f"Realtime fetch complete: {len(all_quotes)} quotes, {failed_batches} failed batches")
+
             if not all_quotes:
-                logger.warning("No realtime quotes available")
+                logger.error("No realtime quotes available after all batches")
                 return pd.DataFrame()
 
             # Convert realtime quotes to daily data format
