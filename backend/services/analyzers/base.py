@@ -137,14 +137,19 @@ class BaseAnalyzer:
             if df.empty:
                 # Check if we should try realtime quotes
                 today_str = get_taiwan_today().strftime("%Y-%m-%d")
-                market_status, _ = get_market_status()
+                market_status, should_have_today = get_market_status()
 
-                if date == today_str and market_status in ("open", "closed"):
+                logger.info(f"Daily data empty for {date}. Today={today_str}, status={market_status}, should_have={should_have_today}")
+
+                # 使用 realtime fallback 的條件放寬:
+                # 1. 請求的是今天的資料 且 市場已開盤或收盤
+                # 2. 或者請求的是今天且 should_have_today=True（即使狀態是 pre_market）
+                if date == today_str and (market_status in ("open", "closed") or should_have_today):
                     logger.info(f"No daily data for {date}, trying realtime quotes")
                     df = await self._fetch_realtime_as_daily(date)
 
                 if df.empty:
-                    logger.warning(f"No daily data for {date}")
+                    logger.warning(f"No daily data for {date} (realtime fallback also failed)")
                     return pd.DataFrame()
 
             if "stock_id" in df.columns:
