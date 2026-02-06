@@ -14,7 +14,10 @@ from database import async_session_maker
 from models.kline_cache import KLineCache
 from services.data_fetcher import data_fetcher
 from services.cache_manager import cache_manager
-from utils.date_utils import get_latest_trading_day, is_trading_day, parse_date, format_date
+from utils.date_utils import (
+    get_latest_trading_day, is_trading_day, parse_date, format_date,
+    get_taiwan_now, get_taiwan_today, is_market_open, get_market_status
+)
 
 logger = logging.getLogger(__name__)
 
@@ -28,11 +31,55 @@ class DeltaSyncService:
     2. 只從 API 獲取缺失的 delta
     3. 合併新舊數據
     4. 增量計算技術指標
+
+    時區處理:
+    - 使用台灣時間 (UTC+8) 判斷交易日和市場狀態
+    - 盤中數據會頻繁更新，收盤後數據穩定
     """
 
     def __init__(self):
-        self._memory_cache: Dict[str, Tuple[pd.DataFrame, datetime]] = {}
-        self._cache_ttl_seconds = 3600  # 1 hour memory cache
+        self._memory_cache: Dict[str, Tuple[pd.DataFrame, datetime, date]] = {}
+        self._cache_ttl_seconds = 3600  # 1 hour memory cache for closed market
+        self._intraday_ttl_seconds = 60  # 1 minute cache during market hours
+
+    def _is_cache_valid(self, cache_key: str) -> bool:
+        """
+        智能快取驗證 - 考慮市場狀態和今日數據
+
+        快取失效條件:
+        1. 超過 TTL (盤中 1 分鐘，盤後 1 小時)
+        2. 今天應該有數據但快取中沒有今天的 K 線
+        """
+        if cache_key not in self._memory_cache:
+            return False
+
+        df, cached_at, cached_latest_date = self._memory_cache[cache_key]
+        now = get_taiwan_now()
+        age_seconds = (now - cached_at.replace(tzinfo=now.tzinfo)).total_seconds()
+
+        # Get market status
+        market_status, should_have_today = get_market_status()
+
+        # During market hours, use shorter TTL
+        if market_status == "open":
+            if age_seconds > self._intraday_ttl_seconds:
+                logger.debug(f"[DeltaSync] Intraday cache expired for {cache_key}")
+                return False
+
+        # After market close or on holidays, use normal TTL
+        else:
+            if age_seconds > self._cache_ttl_seconds:
+                logger.debug(f"[DeltaSync] Cache TTL expired for {cache_key}")
+                return False
+
+        # Critical check: if today should have data but cache doesn't have it
+        if should_have_today:
+            today = get_taiwan_today()
+            if cached_latest_date < today:
+                logger.info(f"[DeltaSync] Cache missing today's data ({today}), invalidating")
+                return False
+
+        return True
 
     async def get_stock_history_fast(
         self,
@@ -44,26 +91,27 @@ class DeltaSyncService:
         快速獲取股票歷史數據 (< 0.5s for cached data)
 
         優先順序:
-        1. Memory cache (instant)
+        1. Memory cache (instant) - 驗證是否包含今日數據
         2. DB cache (fast)
         3. API fetch (only delta)
         """
         cache_key = f"history_{symbol}_{days}"
 
-        # Layer 1: Memory cache check
-        if not force_refresh and cache_key in self._memory_cache:
-            df, cached_at = self._memory_cache[cache_key]
-            age_seconds = (datetime.now() - cached_at).total_seconds()
-            if age_seconds < self._cache_ttl_seconds:
-                logger.debug(f"[DeltaSync] Memory cache hit for {symbol}")
-                return df.copy()
+        # Layer 1: Memory cache check with smart validation
+        if not force_refresh and self._is_cache_valid(cache_key):
+            df, cached_at, _ = self._memory_cache[cache_key]
+            logger.debug(f"[DeltaSync] Memory cache hit for {symbol}")
+            return df.copy()
 
         # Layer 2: DB cache + delta fetch
         df = await self._get_with_delta_sync(symbol, days)
 
-        # Update memory cache
+        # Update memory cache with latest date info
         if not df.empty:
-            self._memory_cache[cache_key] = (df.copy(), datetime.now())
+            latest_date = df['date'].max()
+            if isinstance(latest_date, str):
+                latest_date = parse_date(latest_date)
+            self._memory_cache[cache_key] = (df.copy(), datetime.now(), latest_date)
 
         return df
 
@@ -74,31 +122,45 @@ class DeltaSyncService:
     ) -> pd.DataFrame:
         """
         從 DB 獲取數據，並只獲取缺失的 delta
+
+        時區: 使用台灣時間 (UTC+8) 進行日期判斷
         """
         try:
             async with async_session_maker() as session:
                 # Step 1: Get latest date in DB
                 latest_db_date = await self._get_latest_db_date(session, symbol)
 
-                # Step 2: Calculate date range
-                end_date = date.today()
+                # Step 2: Calculate date range (using Taiwan timezone)
+                end_date = get_taiwan_today()
                 start_date = end_date - timedelta(days=int(days * 1.5))  # Buffer for non-trading days
 
                 # Step 3: Get existing data from DB
                 existing_df = await self._get_from_db(session, symbol, start_date, end_date)
 
                 # Step 4: Determine if delta fetch is needed
+                # get_latest_trading_day() now considers market hours
                 latest_trading = parse_date(get_latest_trading_day())
+                market_status, should_have_today = get_market_status()
 
                 needs_delta = (
                     latest_db_date is None or
                     (latest_trading and latest_db_date < latest_trading)
                 )
 
+                # During market hours, always try to fetch latest data
+                if market_status == "open" and latest_db_date == get_taiwan_today():
+                    needs_delta = True
+                    logger.info(f"[DeltaSync] Market open, refreshing intraday data for {symbol}")
+
                 if needs_delta:
                     # Only fetch missing data
                     delta_start = (latest_db_date + timedelta(days=1)) if latest_db_date else start_date
-                    logger.info(f"[DeltaSync] Fetching delta for {symbol}: {delta_start} -> {end_date}")
+
+                    # If market is open and we have today's data, re-fetch today
+                    if market_status == "open" and latest_db_date == get_taiwan_today():
+                        delta_start = get_taiwan_today()
+
+                    logger.info(f"[DeltaSync] Fetching delta for {symbol}: {delta_start} -> {end_date} (market: {market_status})")
 
                     delta_df = await self._fetch_delta(symbol, delta_start, end_date)
 

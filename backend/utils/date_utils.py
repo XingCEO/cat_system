@@ -1,11 +1,91 @@
 """
 Date Utils - 日期相關工具函數
 """
-from datetime import datetime, date, timedelta
-from typing import List, Optional
+from datetime import datetime, date, timedelta, timezone
+from typing import List, Optional, Tuple
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Taiwan timezone (UTC+8)
+TW_TIMEZONE = timezone(timedelta(hours=8))
+
+# Taiwan Stock Exchange market hours
+MARKET_OPEN_HOUR = 9
+MARKET_OPEN_MINUTE = 0
+MARKET_CLOSE_HOUR = 13
+MARKET_CLOSE_MINUTE = 30
+
+
+def get_taiwan_now() -> datetime:
+    """取得台灣當前時間 (UTC+8)"""
+    return datetime.now(TW_TIMEZONE)
+
+
+def get_taiwan_today() -> date:
+    """取得台灣當前日期 (UTC+8)"""
+    return get_taiwan_now().date()
+
+
+def is_market_open() -> bool:
+    """
+    判斷台股市場是否正在交易中
+    交易時間: 09:00 - 13:30 (台灣時間)
+    """
+    now = get_taiwan_now()
+
+    # Check if today is a trading day
+    if not is_trading_day(now.date()):
+        return False
+
+    # Check market hours
+    market_open = now.replace(hour=MARKET_OPEN_HOUR, minute=MARKET_OPEN_MINUTE, second=0, microsecond=0)
+    market_close = now.replace(hour=MARKET_CLOSE_HOUR, minute=MARKET_CLOSE_MINUTE, second=0, microsecond=0)
+
+    return market_open <= now <= market_close
+
+
+def is_market_closed_today() -> bool:
+    """
+    判斷今天的交易是否已經結束
+    Returns True if: 今天是交易日 AND 現在時間 > 13:30
+    """
+    now = get_taiwan_now()
+    today = now.date()
+
+    if not is_trading_day(today):
+        return False
+
+    market_close = now.replace(hour=MARKET_CLOSE_HOUR, minute=MARKET_CLOSE_MINUTE, second=0, microsecond=0)
+    return now > market_close
+
+
+def get_market_status() -> Tuple[str, bool]:
+    """
+    取得市場狀態
+
+    Returns:
+        Tuple[status_string, should_have_today_data]
+        - "open": 市場開盤中，今日數據持續更新
+        - "closed": 市場已收盤，今日數據應該完整
+        - "pre_market": 開盤前，今日數據尚未產生
+        - "holiday": 假日，無今日數據
+    """
+    now = get_taiwan_now()
+    today = now.date()
+
+    if not is_trading_day(today):
+        return ("holiday", False)
+
+    market_open = now.replace(hour=MARKET_OPEN_HOUR, minute=MARKET_OPEN_MINUTE, second=0, microsecond=0)
+    market_close = now.replace(hour=MARKET_CLOSE_HOUR, minute=MARKET_CLOSE_MINUTE, second=0, microsecond=0)
+
+    if now < market_open:
+        return ("pre_market", False)
+    elif now <= market_close:
+        return ("open", True)
+    else:
+        return ("closed", True)
 
 # Taiwan Stock Exchange holidays (major ones - add more as needed)
 # Format: (month, day)
@@ -76,46 +156,65 @@ def get_previous_trading_day(from_date: Optional[date] = None) -> date:
     """
     取得最近的交易日（包含今天，如果今天是交易日）
     若今天非交易日，則往前找最近的交易日
+
+    注意: 使用台灣時區 (UTC+8)
     """
     if from_date is None:
-        from_date = date.today()
-    
+        from_date = get_taiwan_today()
+
     current = from_date
     max_lookback = 10  # Avoid infinite loop
-    
+
     for _ in range(max_lookback):
         if is_trading_day(current):
             return current
         current -= timedelta(days=1)
-    
+
     # Fallback: return input date
     return from_date
 
 
 def get_latest_trading_day() -> str:
     """
-    取得最近交易日的字串格式
-    
+    取得最近一個「應該有數據」的交易日
+
+    邏輯:
+    - 若今天是交易日且已開盤(>=09:00)，返回今天
+    - 若今天是交易日但未開盤(<09:00)，返回上一個交易日
+    - 若今天非交易日，返回上一個交易日
+
     Returns:
         日期字串 YYYY-MM-DD
     """
-    trading_day = get_previous_trading_day()
-    return format_date(trading_day)
+    now = get_taiwan_now()
+    today = now.date()
+
+    # Check if today is a trading day
+    if is_trading_day(today):
+        # Market opens at 09:00 Taiwan time
+        market_open = now.replace(hour=MARKET_OPEN_HOUR, minute=MARKET_OPEN_MINUTE, second=0, microsecond=0)
+        if now >= market_open:
+            # Market has opened, today's data should exist
+            return format_date(today)
+
+    # Return previous trading day
+    yesterday = today - timedelta(days=1)
+    return format_date(get_previous_trading_day(yesterday))
 
 
 def get_past_trading_days(days: int = 5, from_date: Optional[date] = None) -> List[str]:
     """
     取得過去 N 個交易日
-    
+
     Args:
         days: 要取得的交易日數量
-        from_date: 起始日期（預設今天）
-    
+        from_date: 起始日期（預設台灣今天）
+
     Returns:
         交易日列表 ['YYYY-MM-DD', ...]
     """
     if from_date is None:
-        from_date = date.today()
+        from_date = get_taiwan_today()
     
     result = []
     current = from_date
