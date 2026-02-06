@@ -105,7 +105,11 @@ class EnhancedKLineService:
 
                 if df.empty:
                     return {"error": f"無法取得 {symbol} 的歷史資料，API 暫時無法使用"}
-        
+
+            # 關鍵修復：這個路徑也要檢查今日數據
+            if should_have_today:
+                df = await self._ensure_today_candle(symbol, df, latest_trading_day, market_status)
+
         # 資料驗證與清理
         df = self._validate_and_clean_data(df)
         
@@ -281,17 +285,20 @@ class EnhancedKLineService:
         try:
             from services.realtime_quotes import realtime_quotes_service
 
-            quotes = await realtime_quotes_service.get_batch_quotes([symbol])
+            # Use get_quotes (not get_batch_quotes which doesn't exist)
+            result = await realtime_quotes_service.get_quotes([symbol])
+            quotes = {q["symbol"]: q for q in result.get("quotes", [])}
             if quotes and symbol in quotes:
                 q = quotes[symbol]
-                if q.get("close") and q.get("close") > 0:
+                price = q.get("price") or q.get("close")
+                if price and price > 0:
                     return {
                         "date": date_str,
-                        "open": q.get("open", q.get("close")),
-                        "high": q.get("high", q.get("close")),
-                        "low": q.get("low", q.get("close")),
-                        "close": q.get("close"),
-                        "volume": q.get("volume", 0),
+                        "open": q.get("open_price") or q.get("open") or price,
+                        "high": q.get("high_price") or q.get("high") or price,
+                        "low": q.get("low_price") or q.get("low") or price,
+                        "close": price,
+                        "volume": q.get("volume") or 0,
                     }
         except Exception as e:
             logger.debug(f"[EnhancedKLine] 即時報價失敗 {symbol}: {e}")
