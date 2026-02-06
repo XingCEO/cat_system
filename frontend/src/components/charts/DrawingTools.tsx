@@ -513,7 +513,7 @@ export function DrawingCanvas({
                     break;
                 case 'fibonacci': drawFibonacci(ctx, startPixel, endPt, false); break;
                 case 'golden': drawGoldenRatio(ctx, startPixel, endPt, false); break;
-                case 'rectangle':
+                case 'rectangle': {
                     const x = Math.min(startPixel.x, endPt.x);
                     const y = Math.min(startPixel.y, endPt.y);
                     const w = Math.abs(endPt.x - startPixel.x);
@@ -522,6 +522,7 @@ export function DrawingCanvas({
                     ctx.fillRect(x, y, w, h);
                     ctx.strokeRect(x, y, w, h);
                     break;
+                }
             }
         }
     }, [drawings, width, height, isDrawing, startPixel, currentPixel, thirdPixel, activeType, selectedId, drawStep, isDrawingMode, drawLine, drawFibonacci, drawGoldenRatio, chartToPixel, redrawTrigger]);

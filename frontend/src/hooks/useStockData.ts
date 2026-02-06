@@ -90,7 +90,7 @@ export function useIndicators(symbol: string | null) {
  * 股票歷史數據 Hook
  */
 export function useStockHistory(symbol: string | null, days: number = 60) {
-  return useQuery<any[], Error>({
+  return useQuery<Record<string, unknown>[], Error>({
     queryKey: stockKeys.history(symbol || '', days),
     queryFn: async () => {
       if (!symbol) throw new Error('No symbol provided');
