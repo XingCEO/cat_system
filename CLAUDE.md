@@ -1,4 +1,4 @@
-# CLAUDE.md - System Memory v4.2
+# CLAUDE.md - System Memory v4.3
 
 **Repo:** https://github.com/XingCEO/cat_system.git
 **Branch:** `main` | **Last Sync:** 2026-02-06
@@ -26,6 +26,8 @@ Violations waste tokens and context window. This file exists to prevent redundan
 
 **All datetime operations use Taiwan Timezone (UTC+8)**
 
+### Backend Functions
+
 | Function | Location | Purpose |
 |----------|----------|---------|
 | `get_taiwan_now()` | `utils/date_utils.py` | Current Taiwan datetime |
@@ -35,15 +37,30 @@ Violations waste tokens and context window. This file exists to prevent redundan
 | `is_market_open()` | `utils/date_utils.py` | True if 09:00-13:30 Taiwan time |
 | `_get_taiwan_now_naive()` | `models/kline_cache.py`, `schemas/common.py` | Taiwan time without tzinfo (for DB) |
 
+### Frontend Pattern
+
+```typescript
+// 正確：使用 Asia/Taipei 時區
+const now = new Date();
+const taiwanTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+
+// 錯誤：直接使用 new Date()
+const wrong = new Date().toISOString().split('T')[0];  // 會得到 UTC 日期
+```
+
 **Market Status Values:**
 - `"open"` - Market trading (09:00-13:30), `should_have_today=True`
 - `"closed"` - After hours (>13:30), `should_have_today=True`
 - `"pre_market"` - Before open (<09:00), `should_have_today=False`
 - `"holiday"` - Non-trading day, `should_have_today=False`
 
-**NEVER use:** `datetime.now()`, `date.today()`, `datetime.utcnow()`
+**NEVER use:**
+- Backend: `datetime.now()`, `date.today()`, `datetime.utcnow()`
+- Frontend: `new Date().toISOString()` for display dates
 
 **Database Timestamps:** All models use `_get_taiwan_now_naive()` for `cached_at`, `updated_at` columns.
+
+**Limit-Up Threshold:** Taiwan stocks use **9.9%** (not 9.5%)
 
 ---
 
@@ -272,6 +289,8 @@ Full docs at `/docs` (Swagger UI).
 
 ### Critical Fix: Full System Timezone Standardization
 
+**Backend Fixes:**
+
 | Issue | Root Cause | Fix |
 |-------|------------|-----|
 | **Data not saving in production** | SQLite-only `insert` dialect used | Auto-detect DB type, use `pg_insert` for PostgreSQL |
@@ -282,6 +301,15 @@ Full docs at `/docs` (Swagger UI).
 | Realtime quote hanging | No timeout protection | Added 10s `asyncio.wait_for` timeout |
 | OTC stocks not found | Oversimplified market classification | Improved logic with fallback mechanism |
 | Stale cache served | `_get_from_cache_any` skipped expiry check | Added market-aware TTL check |
+
+**Frontend Fixes:**
+
+| Issue | Root Cause | Fix |
+|-------|------------|-----|
+| **Market status wrong timezone** | Used local `Date()` | Changed to `Asia/Taipei` timezone |
+| **Limit-up threshold 9.5%** | Incorrect threshold | Fixed to 9.9% (Taiwan rule) |
+| **Quick date buttons wrong** | Used `toISOString()` (UTC) | Use Taiwan timezone formatting |
+| **Date picker max wrong** | Used UTC date | Use Taiwan date |
 | Frontend shows old data | `refetchOnMount: false` | Changed to `'always'` |
 | Fixed 5min stale time | Ignores market hours | Dynamic: 1min open, 5min closed |
 
