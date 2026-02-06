@@ -1,4 +1,4 @@
-# CLAUDE.md - System Memory v3.0
+# CLAUDE.md - System Memory v4.0
 
 **Repo:** https://github.com/XingCEO/cat_system.git
 **Branch:** `main` | **Last Sync:** 2026-02-06
@@ -16,8 +16,74 @@ This document is the authoritative source for the project's current architecture
 2. **Trust this document** - Architecture, patterns, and file locations are current
 3. **Read only when editing** - Only read specific files when making targeted changes
 4. **Use correct services** - Use `delta_sync` for stock data (not raw `data_fetcher`)
+5. **Never claim 100% completion** - Until you visually verify the data matches expectations
 
 Violations waste tokens and context window. This file exists to prevent redundant exploration.
+
+---
+
+## Timezone Standardization (CRITICAL)
+
+**All datetime operations use Taiwan Timezone (UTC+8)**
+
+| Function | Location | Purpose |
+|----------|----------|---------|
+| `get_taiwan_now()` | `utils/date_utils.py` | Current Taiwan datetime |
+| `get_taiwan_today()` | `utils/date_utils.py` | Current Taiwan date |
+| `get_market_status()` | `utils/date_utils.py` | Returns `(status, should_have_today)` |
+| `get_latest_trading_day()` | `utils/date_utils.py` | Today if market opened, else previous |
+| `is_market_open()` | `utils/date_utils.py` | True if 09:00-13:30 Taiwan time |
+
+**Market Status Values:**
+- `"open"` - Market trading (09:00-13:30), `should_have_today=True`
+- `"closed"` - After hours (>13:30), `should_have_today=True`
+- `"pre_market"` - Before open (<09:00), `should_have_today=False`
+- `"holiday"` - Non-trading day, `should_have_today=False`
+
+**NEVER use:** `datetime.now()`, `date.today()`, `datetime.utcnow()`
+
+---
+
+## K-Line Realtime Candle Injection
+
+**Problem Solved:** Charts showing yesterday's data even after market opens.
+
+**Solution:** `enhanced_kline_service.py` now injects today's candle from realtime quotes.
+
+### Key Methods
+
+```python
+# enhanced_kline_service.py
+
+async def _ensure_today_candle(symbol, df, latest_trading_day, market_status):
+    """
+    Called on EVERY data retrieval path.
+    If cache is missing today's candle, fetches from API or realtime quotes.
+    """
+
+async def _get_realtime_candle(symbol, date_str):
+    """
+    Constructs proper OHLC candle from TWSE MIS API.
+
+    Priority:
+    1. Direct OHLC from API (open_price, high_price, low_price, price)
+    2. Estimate from prev_close (direction-based H/L)
+    3. Estimate from bid/ask spread
+    4. Fallback: single price (toothpick)
+    """
+```
+
+### Data Flow
+
+```
+Request → Cache Check → Missing Today? → Fetch Delta from API
+                              ↓
+                        API Empty?
+                              ↓
+                    Get Realtime Quote → Construct OHLC Candle
+                              ↓
+                        Merge & Save to DB
+```
 
 ---
 
@@ -63,8 +129,13 @@ All dependencies in `backend/requirements.txt`.
 ```
 Request → Memory Cache (0.03ms) → DB Cache (72ms) → API Delta (257ms)
                 ↓                      ↓                    ↓
-           1-hour TTL            Persistent           Only missing dates
+           Smart TTL             Persistent           Only missing dates
 ```
+
+**Smart Cache TTL:**
+- Market open: 1-minute TTL (refresh frequently)
+- Market closed: 1-hour TTL (data stable)
+- Missing today's data: Immediate invalidation
 
 **Result:** <1ms stock switching, <500ms for 2-year history (cached)
 
@@ -131,9 +202,12 @@ asyncio.run(migrate())
 |---------|------|
 | Config | `backend/config.py` |
 | Database | `backend/database.py` |
+| **Timezone Utils** | `backend/utils/date_utils.py` |
 | Delta Sync | `backend/services/delta_sync_service.py` |
-| K-Line Cache | `backend/models/kline_cache.py` |
+| **Enhanced K-Line** | `backend/services/enhanced_kline_service.py` |
+| K-Line Cache Model | `backend/models/kline_cache.py` |
 | Technical Analysis | `backend/services/technical_analysis.py` |
+| Realtime Quotes | `backend/services/realtime_quotes.py` |
 | Turnover Tracker | `backend/services/turnover_tracker.py` |
 | Frontend Hooks | `frontend/src/hooks/useStockData.ts` |
 | Query Client | `frontend/src/lib/queryClient.ts` |
@@ -157,11 +231,13 @@ Full docs at `/docs` (Swagger UI).
 
 ## Key Implementation Details
 
-1. **RSI:** Standard method - all days count in average (`technical_analysis.py:86-102`)
-2. **Null Safety:** Float shares checked before division (`analyzers/base.py:220-225`)
-3. **Taiwan Holidays:** 2024-2026 defined in `utils/date_utils.py`
-4. **Limit-Up:** 10% rule with tick size adjustments
-5. **PostgreSQL:** Auto-uses `NullPool` for async compatibility
+1. **Timezone:** 100% Taiwan (UTC+8) via `get_taiwan_now()` / `get_taiwan_today()`
+2. **RSI:** Standard method - all days count in average (`technical_analysis.py:86-102`)
+3. **Null Safety:** Float shares checked before division (`analyzers/base.py:220-225`)
+4. **Taiwan Holidays:** 2024-2026 defined in `utils/date_utils.py`
+5. **Limit-Up:** 10% rule with tick size adjustments
+6. **PostgreSQL:** Auto-uses `NullPool` for async compatibility
+7. **Realtime Candle:** Proper OHLC extraction with fallback chain
 
 ---
 
@@ -170,7 +246,7 @@ Full docs at `/docs` (Swagger UI).
 | Priority | Source | Use |
 |----------|--------|-----|
 | 1 | FinMind API | Historical OHLCV |
-| 2 | TWSE OpenAPI | Real-time quotes |
+| 2 | TWSE MIS API | Real-time quotes (via `realtime_quotes.py`) |
 | 3 | Yahoo Finance | Fallback |
 
 ---
@@ -183,5 +259,34 @@ Full docs at `/docs` (Swagger UI).
 | Stock switch (cached) | **0.04ms** |
 | DB cache hit | 72ms |
 | Cold API fetch | 257ms |
+| Realtime candle injection | ~150ms |
 
 **Target:** <500ms for 2-year cached history ✅
+
+---
+
+## Recent Fixes (2026-02-06)
+
+| Issue | Root Cause | Fix |
+|-------|------------|-----|
+| Charts show yesterday | No timezone awareness | Added Taiwan UTC+8 throughout |
+| Stale cache blocking | 1-hour TTL too long | Smart TTL based on market status |
+| Missing today's candle | No realtime injection | Added `_ensure_today_candle()` |
+| Toothpick/Doji candles | All OHLC = price | Proper field extraction with fallbacks |
+| Wrong API method | `get_batch_quotes` | Changed to `get_quotes()` |
+
+---
+
+## Verification Checklist
+
+Before claiming completion, verify:
+
+```bash
+# Check latest candle date matches today
+curl https://your-url/api/stocks/2486/kline | jq '.kline_data[-1].date'
+# Expected: "2026-02-06"
+
+# Check OHLC are distinct values (not toothpick)
+curl https://your-url/api/stocks/2486/kline | jq '.kline_data[-1] | {o:.open, h:.high, l:.low, c:.close}'
+# Expected: 4 different values for a real candle body
+```
