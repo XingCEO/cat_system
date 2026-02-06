@@ -20,7 +20,9 @@ except ImportError:
     from services.technical_analysis import calculate_all_indicators as shared_calculate_indicators
 
 from sqlalchemy import select, delete
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from config import settings
 
 from database import async_session_maker
 from models.kline_cache import KLineCache, KLineFetchProgress
@@ -193,7 +195,7 @@ class EnhancedKLineService:
             return None
 
     async def _get_from_cache_any(self, symbol: str) -> Optional[List[Dict]]:
-        """從資料庫取得任何可用的快取資料（不檢查完整性）"""
+        """從資料庫取得任何可用的快取資料（不檢查完整性，但檢查過期）"""
         try:
             async with async_session_maker() as session:
                 stmt = select(KLineCache).where(
@@ -204,9 +206,20 @@ class EnhancedKLineService:
                 result = await session.execute(stmt)
                 rows = result.scalars().all()
 
-                if rows:
-                    return [row.to_dict() for row in rows]
-                return None
+                if not rows:
+                    return None
+
+                # 檢查是否有過期資料（使用較寬鬆的標準）
+                # 盤中用較短 TTL，盤後用較長 TTL
+                market_status, _ = get_market_status()
+                cache_hours = 1 if market_status == "open" else self.CACHE_HOURS
+
+                # 只檢查最新一筆是否過期
+                if rows and rows[-1].is_stale(cache_hours):
+                    logger.info(f"[EnhancedKLine] {symbol} 快取過期 (>{cache_hours}h)，但仍返回舊資料供快速顯示")
+                    # 仍然返回舊資料，讓 _ensure_today_candle 去補充新資料
+
+                return [row.to_dict() for row in rows]
 
         except Exception as e:
             logger.error(f"讀取快取失敗: {e}")
@@ -282,12 +295,24 @@ class EnhancedKLineService:
         """
         從即時報價取得今日蠟燭數據
         確保 OHLC 有真實的不同值，避免產生 Doji 假蠟燭
+
+        增強錯誤處理：
+        - 加入 timeout 保護
+        - 詳細日誌記錄
+        - 多層 fallback
         """
         try:
             from services.realtime_quotes import realtime_quotes_service
 
-            # Use get_quotes to fetch realtime data
-            result = await realtime_quotes_service.get_quotes([symbol])
+            # Use get_quotes to fetch realtime data with timeout protection
+            try:
+                result = await asyncio.wait_for(
+                    realtime_quotes_service.get_quotes([symbol]),
+                    timeout=10.0  # 10 秒超時
+                )
+            except asyncio.TimeoutError:
+                logger.warning(f"[EnhancedKLine] {symbol} 即時報價超時 (10s)")
+                return None
             quotes = {q["symbol"]: q for q in result.get("quotes", [])}
 
             if quotes and symbol in quotes:
@@ -303,6 +328,8 @@ class EnhancedKLineService:
                 open_price = q.get("open_price")
                 high_price = q.get("high_price")
                 low_price = q.get("low_price")
+                # 注意：realtime_quotes 已將成交量轉為「張」，歷史數據也是「張」
+                # 確保單位一致
                 volume = q.get("volume") or 0
 
                 # Validate OHL values are real numbers (not None, not 0)
@@ -460,21 +487,40 @@ class EnhancedKLineService:
                     }
                     records.append(record)
                 
-                # 使用 upsert
+                # 使用 upsert - 自動選擇正確的資料庫方言
+                is_postgresql = settings.DATABASE_URL and settings.DATABASE_URL.startswith("postgresql")
+
                 for record in records:
-                    stmt = sqlite_insert(KLineCache).values(**record)
-                    stmt = stmt.on_conflict_do_update(
-                        index_elements=["symbol", "date"],
-                        set_={
-                            "open": stmt.excluded.open,
-                            "high": stmt.excluded.high,
-                            "low": stmt.excluded.low,
-                            "close": stmt.excluded.close,
-                            "volume": stmt.excluded.volume,
-                            "cached_at": stmt.excluded.cached_at,
-                            "is_valid": stmt.excluded.is_valid,
-                        }
-                    )
+                    if is_postgresql:
+                        # PostgreSQL 使用 ON CONFLICT DO UPDATE
+                        stmt = pg_insert(KLineCache).values(**record)
+                        stmt = stmt.on_conflict_do_update(
+                            index_elements=["symbol", "date"],
+                            set_={
+                                "open": stmt.excluded.open,
+                                "high": stmt.excluded.high,
+                                "low": stmt.excluded.low,
+                                "close": stmt.excluded.close,
+                                "volume": stmt.excluded.volume,
+                                "cached_at": stmt.excluded.cached_at,
+                                "is_valid": stmt.excluded.is_valid,
+                            }
+                        )
+                    else:
+                        # SQLite 使用 INSERT OR REPLACE
+                        stmt = sqlite_insert(KLineCache).values(**record)
+                        stmt = stmt.on_conflict_do_update(
+                            index_elements=["symbol", "date"],
+                            set_={
+                                "open": stmt.excluded.open,
+                                "high": stmt.excluded.high,
+                                "low": stmt.excluded.low,
+                                "close": stmt.excluded.close,
+                                "volume": stmt.excluded.volume,
+                                "cached_at": stmt.excluded.cached_at,
+                                "is_valid": stmt.excluded.is_valid,
+                            }
+                        )
                     await session.execute(stmt)
                 
                 await session.commit()

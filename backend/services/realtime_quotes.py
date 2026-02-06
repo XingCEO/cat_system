@@ -192,10 +192,24 @@ class RealtimeQuotesService:
         otc_symbols = []
 
         for symbol in symbols:
-            # 上櫃股票代號特徵：4開頭四碼、5開頭部分、6開頭四碼、8開頭四碼
-            if len(symbol) == 4 and symbol[0] in ('4', '5', '6', '8'):
-                otc_symbols.append(symbol)
+            # 改進的上市/上櫃分類邏輯
+            # 上櫃股票：4開頭、5開頭(部分)、6開頭、8開頭、3開頭部分
+            # 但實際上無法100%準確判斷，所以採用「先查上市，找不到再查上櫃」的策略
+            # 這裡只做初步分類，後面會有 fallback 機制
+            if len(symbol) == 4:
+                first_digit = symbol[0]
+                # 明確的上櫃股票特徵
+                if first_digit in ('4', '6', '8'):
+                    otc_symbols.append(symbol)
+                # 5開頭可能是上市或上櫃
+                elif first_digit == '5':
+                    # 先假設上櫃，找不到會 fallback
+                    otc_symbols.append(symbol)
+                # 3開頭大部分是上市，但有例外
+                else:
+                    tse_symbols.append(symbol)
             else:
+                # 非標準四碼，嘗試上市
                 tse_symbols.append(symbol)
 
         # 先查上市

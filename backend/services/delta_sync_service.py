@@ -55,7 +55,10 @@ class DeltaSyncService:
 
         df, cached_at, cached_latest_date = self._memory_cache[cache_key]
         now = get_taiwan_now()
-        age_seconds = (now - cached_at.replace(tzinfo=now.tzinfo)).total_seconds()
+        # 統一時區處理：將 now 轉為 naive datetime 進行比較
+        now_naive = now.replace(tzinfo=None)
+        cached_at_naive = cached_at.replace(tzinfo=None) if cached_at.tzinfo else cached_at
+        age_seconds = (now_naive - cached_at_naive).total_seconds()
 
         # Get market status
         market_status, should_have_today = get_market_status()

@@ -20,9 +20,33 @@ export const stockKeys = {
 };
 
 // Cache time constants (in ms)
-const STALE_TIME = 5 * 60 * 1000;      // 5 minutes - data considered fresh
-const CACHE_TIME = 60 * 60 * 1000;     // 60 minutes - keep in cache
-const REFETCH_INTERVAL = 5 * 60 * 1000; // 5 minutes - background refetch
+// 盤中使用較短的 stale time，盤後使用較長的
+const STALE_TIME_MARKET_OPEN = 1 * 60 * 1000;   // 1 minute during market hours
+const STALE_TIME_MARKET_CLOSED = 5 * 60 * 1000; // 5 minutes after market close
+const CACHE_TIME = 60 * 60 * 1000;              // 60 minutes - keep in cache
+const REFETCH_INTERVAL = 1 * 60 * 1000;         // 1 minute - background refetch
+
+// 判斷是否為台灣股市開盤時間 (09:00-13:30 UTC+8)
+function isMarketOpen(): boolean {
+  const now = new Date();
+  // 轉換為台灣時間
+  const taiwanTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+  const hours = taiwanTime.getHours();
+  const minutes = taiwanTime.getMinutes();
+  const dayOfWeek = taiwanTime.getDay();
+
+  // 週末不開盤
+  if (dayOfWeek === 0 || dayOfWeek === 6) return false;
+
+  // 09:00 - 13:30
+  const timeInMinutes = hours * 60 + minutes;
+  return timeInMinutes >= 9 * 60 && timeInMinutes <= 13 * 60 + 30;
+}
+
+// 動態獲取 stale time
+function getStaleTime(): number {
+  return isMarketOpen() ? STALE_TIME_MARKET_OPEN : STALE_TIME_MARKET_CLOSED;
+}
 
 /**
  * K線數據 Hook - 支援 2 年歷史快速載入
@@ -43,11 +67,11 @@ export function useKLineData(
       return result;
     },
     enabled: !!symbol,
-    staleTime: STALE_TIME,
+    staleTime: getStaleTime(),
     gcTime: CACHE_TIME,
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
-    refetchInterval: REFETCH_INTERVAL,
+    refetchOnMount: 'always',  // 修復：每次掛載時都重新驗證資料
+    refetchInterval: isMarketOpen() ? REFETCH_INTERVAL : false,  // 盤中才自動刷新
     placeholderData: (previousData) => previousData, // Keep showing old data while loading
   });
 }
@@ -63,9 +87,10 @@ export function useStockDetail(symbol: string | null) {
       return getStockDetail(symbol);
     },
     enabled: !!symbol,
-    staleTime: STALE_TIME,
+    staleTime: getStaleTime(),
     gcTime: CACHE_TIME,
     refetchOnWindowFocus: false,
+    refetchOnMount: 'always',
   });
 }
 
@@ -80,9 +105,10 @@ export function useIndicators(symbol: string | null) {
       return getIndicators(symbol);
     },
     enabled: !!symbol,
-    staleTime: STALE_TIME,
+    staleTime: getStaleTime(),
     gcTime: CACHE_TIME,
     refetchOnWindowFocus: false,
+    refetchOnMount: 'always',
   });
 }
 
@@ -97,9 +123,10 @@ export function useStockHistory(symbol: string | null, days: number = 60) {
       return getStockHistory(symbol, days);
     },
     enabled: !!symbol,
-    staleTime: STALE_TIME,
+    staleTime: getStaleTime(),
     gcTime: CACHE_TIME,
     refetchOnWindowFocus: false,
+    refetchOnMount: 'always',
   });
 }
 
@@ -114,7 +141,7 @@ export function usePrefetchKLines() {
       queryClient.prefetchQuery({
         queryKey: stockKeys.kline(symbol, period, years),
         queryFn: () => getKLineData(symbol, period, years),
-        staleTime: STALE_TIME,
+        staleTime: getStaleTime(),
       })
     );
     await Promise.all(promises);
