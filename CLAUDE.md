@@ -25,6 +25,8 @@
 | Local | `sqlite+aiosqlite` | Default fallback |
 | Production | `postgresql+asyncpg` | Via `DATABASE_URL` env var |
 
+**Dependencies:** `asyncpg` (PostgreSQL), `aiosqlite` (SQLite) - both in requirements.txt
+
 Set `DATABASE_URL` environment variable for Zeabur/production deployment.
 Auto-converts `postgresql://` to `postgresql+asyncpg://` for async compatibility.
 
