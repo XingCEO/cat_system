@@ -11,6 +11,7 @@ import logging
 
 from config import get_settings
 from services.cache_manager import cache_manager
+from utils.date_utils import get_taiwan_today
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -717,7 +718,7 @@ class DataFetcher:
             logger.debug(f"Using cached latest trading date: {cached}")
             return cached
         
-        today = date.today()
+        today = get_taiwan_today()
         
         # Fast path: use calendar-based check first
         for i in range(10):  # Check last 10 days

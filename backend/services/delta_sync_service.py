@@ -111,7 +111,7 @@ class DeltaSyncService:
             latest_date = df['date'].max()
             if isinstance(latest_date, str):
                 latest_date = parse_date(latest_date)
-            self._memory_cache[cache_key] = (df.copy(), datetime.now(), latest_date)
+            self._memory_cache[cache_key] = (df.copy(), get_taiwan_now().replace(tzinfo=None), latest_date)
 
         return df
 
@@ -433,7 +433,7 @@ class DeltaSyncService:
     ) -> pd.DataFrame:
         """Fallback: 直接從 API 獲取全部數據"""
         try:
-            end_date = date.today()
+            end_date = get_taiwan_today()
             start_date = end_date - timedelta(days=int(days * 1.5))
 
             df = await data_fetcher.get_historical_data(

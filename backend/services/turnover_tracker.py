@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import async_session_maker
 from models.turnover import TurnoverTrack, TurnoverRanking
 from services.data_fetcher import data_fetcher
-from utils.date_utils import get_latest_trading_day, get_trading_days_between, parse_date
+from utils.date_utils import get_latest_trading_day, get_trading_days_between, parse_date, get_taiwan_today
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +145,7 @@ class TurnoverTrackerService:
                     return {"success": True, "message": "無待更新的追蹤任務", "updated": 0}
 
                 updated_count = 0
-                today = date.today()
+                today = get_taiwan_today()
 
                 for track in tracks:
                     trigger_dt = track.trigger_date

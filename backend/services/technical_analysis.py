@@ -5,8 +5,10 @@ Technical Analysis Service
 import pandas as pd
 import numpy as np
 from typing import Optional, Dict, List, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
+
+from utils.date_utils import get_taiwan_now, get_taiwan_today
 
 logger = logging.getLogger(__name__)
 
@@ -137,11 +139,10 @@ class TechnicalAnalyzer:
         """
         try:
             from services.data_fetcher import data_fetcher
-            from datetime import datetime, timedelta
-            
-            # 計算日期範圍
-            end_date = datetime.now().strftime("%Y-%m-%d")
-            start_date = (datetime.now() - timedelta(days=days * 2)).strftime("%Y-%m-%d")
+
+            # 計算日期範圍 (使用台灣時區)
+            end_date = get_taiwan_today().strftime("%Y-%m-%d")
+            start_date = (get_taiwan_today() - timedelta(days=days * 2)).strftime("%Y-%m-%d")
             
             # 取得歷史資料
             df = await data_fetcher.get_historical_data(symbol, start_date, end_date)

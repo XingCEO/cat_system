@@ -10,6 +10,7 @@ from schemas.common import APIResponse
 from services.technical_analysis import technical_analyzer
 from services.data_fetcher import data_fetcher
 from utils.validators import validate_symbol
+from utils.date_utils import get_taiwan_today
 import logging
 
 logger = logging.getLogger(__name__)
@@ -94,7 +95,7 @@ async def get_kline_data(
         from services.enhanced_kline_service import enhanced_kline_service
         
         # 計算日期範圍
-        today = date.today()
+        today = get_taiwan_today()
         
         # 若未指定 end_date，使用今天
         if not end_date:
@@ -203,7 +204,7 @@ async def get_trading_date():
         from utils.date_utils import get_previous_trading_day, format_date, is_trading_day
         from datetime import date
         
-        today = date.today()
+        today = get_taiwan_today()
         latest = get_previous_trading_day(today)
         
         return APIResponse.ok(data={
