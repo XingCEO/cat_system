@@ -201,33 +201,24 @@ class BaseAnalyzer:
             ]
             logger.info(f"Found {len(symbols)} symbols for realtime fetch")
 
-            # Batch fetch realtime quotes (increased limit for better coverage)
-            batch_size = 80
-            all_quotes = []
-            failed_batches = 0
-
-            for i in range(0, min(len(symbols), 1500), batch_size):
-                batch = symbols[i:i + batch_size]
-                try:
-                    result = await realtime_quotes_service.get_quotes(batch)
-                    # get_quotes returns {"success": True, "quotes": [...], ...}
-                    if result and result.get("success") and result.get("quotes"):
-                        all_quotes.extend(result["quotes"])
-                        if i == 0:
-                            logger.info(f"First batch success: {len(result['quotes'])} quotes")
-                    else:
-                        failed_batches += 1
-                        if i == 0:
-                            logger.warning(f"First batch failed: {result}")
-                except Exception as e:
-                    failed_batches += 1
-                    logger.warning(f"Realtime batch {i} failed: {e}")
-                    continue
-
-            logger.info(f"Realtime fetch complete: {len(all_quotes)} quotes, {failed_batches} failed batches")
+            # Batch fetch realtime quotes (use service's internal batching)
+            try:
+                # Limit to 1500 symbols max
+                target_symbols = symbols[:1500]
+                logger.info(f"Fetching quotes for {len(target_symbols)} symbols...")
+                
+                result = await realtime_quotes_service.get_quotes(target_symbols)
+                
+                if result and result.get("success") and result.get("quotes"):
+                    all_quotes = result["quotes"]
+                    logger.info(f"Realtime fetch success: {len(all_quotes)} quotes")
+                else:
+                    logger.warning(f"Realtime fetch returned no quotes: {result}")
+            except Exception as e:
+                logger.error(f"Realtime fetch failed: {e}")
 
             if not all_quotes:
-                logger.error("No realtime quotes available after all batches")
+                logger.error("No realtime quotes available")
                 return pd.DataFrame()
 
             # Convert realtime quotes to daily data format

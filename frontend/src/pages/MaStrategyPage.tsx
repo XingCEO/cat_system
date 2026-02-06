@@ -197,12 +197,12 @@ export default function MaStrategyPage() {
             </Tabs>
 
             {/* 結果統計 */}
-            {data && (
+            {data && data.success && (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <Card>
                         <CardContent className="pt-4">
                             <div className="text-2xl font-bold text-primary">
-                                {data.matched_count}
+                                {data.matched_count || 0}
                             </div>
                             <p className="text-sm text-muted-foreground">符合策略股票數</p>
                         </CardContent>
@@ -245,15 +245,24 @@ export default function MaStrategyPage() {
 
             {/* 錯誤 */}
             {error && (
-                <Card className="border-red-500/50 bg-red-500/10">
+                <Card className="border-red-500/50 bg-red-500/10 mb-6">
                     <CardContent className="pt-6">
                         <p className="text-red-500">載入失敗，請重試</p>
                     </CardContent>
                 </Card>
             )}
+            {data && !data.success && (
+                <Card className="border-red-500/50 bg-red-500/10 mb-6">
+                    <CardContent className="pt-6">
+                        <p className="text-red-500">
+                            {(data as any).error || '資料載入失敗，請稍後再試'}
+                        </p>
+                    </CardContent>
+                </Card>
+            )}
 
             {/* 結果表格 */}
-            {data && data.items.length > 0 && (
+            {data && data.success && data.items && data.items.length > 0 && (
                 <Card>
                     <CardHeader>
                         <CardTitle>篩選結果</CardTitle>
@@ -340,7 +349,7 @@ export default function MaStrategyPage() {
             )}
 
             {/* 無結果 */}
-            {data && data.items.length === 0 && (
+            {data && data.success && data.items && data.items.length === 0 && (
                 <Card>
                     <CardContent className="pt-6 text-center">
                         <p className="text-muted-foreground">今日無符合「{data.strategy_name}」策略的股票</p>

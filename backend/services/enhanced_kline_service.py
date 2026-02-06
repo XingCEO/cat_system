@@ -9,10 +9,7 @@ from datetime import datetime, date, timedelta
 from dateutil.relativedelta import relativedelta
 import logging
 import asyncio
-try:
-    import pandas_ta as ta
-except ImportError:
-    ta = None
+
 
 try:
     from services.technical_analysis import calculate_all_indicators as shared_calculate_indicators
@@ -600,88 +597,7 @@ class EnhancedKLineService:
     
     def _calculate_all_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """計算所有技術指標"""
-        if df.empty or len(df) < 14:
-            return df
-        
-        if ta is not None:
-            try:
-                # 移動平均線
-                df["SMA_5"] = ta.sma(df["close"], length=5)
-                df["SMA_10"] = ta.sma(df["close"], length=10)
-                df["SMA_20"] = ta.sma(df["close"], length=20)
-                df["SMA_60"] = ta.sma(df["close"], length=60)
-                df["SMA_120"] = ta.sma(df["close"], length=120)
-                
-                # 成交量均線
-                df["Volume_MA5"] = ta.sma(df["volume"], length=5)
-                
-                # RSI
-                df["RSI_14"] = ta.rsi(df["close"], length=14)
-                
-                # MACD
-                macd = ta.macd(df["close"], fast=12, slow=26, signal=9)
-                if macd is not None:
-                    df = pd.concat([df, macd], axis=1)
-                
-                # KD
-                stoch = ta.stoch(df["high"], df["low"], df["close"], k=9, d=3, smooth_k=3)
-                if stoch is not None:
-                    df = pd.concat([df, stoch], axis=1)
-                
-                # 布林通道
-                bbands = ta.bbands(df["close"], length=20, std=2)
-                if bbands is not None:
-                    df = pd.concat([df, bbands], axis=1)
-                    
-            except Exception as e:
-                logger.error(f"計算指標失敗: {e}")
-                df = self._calculate_indicators_manual(df)
-        else:
-            df = self._calculate_indicators_manual(df)
-        
-        return df
-    
-    def _calculate_indicators_manual(self, df: pd.DataFrame) -> pd.DataFrame:
-        """手動計算指標 (當 pandas_ta 不可用時的備援)"""
-        # 移動平均線
-        df["SMA_5"] = df["close"].rolling(window=5).mean()
-        df["SMA_10"] = df["close"].rolling(window=10).mean()
-        df["SMA_20"] = df["close"].rolling(window=20).mean()
-        df["SMA_60"] = df["close"].rolling(window=60).mean()
-        df["SMA_120"] = df["close"].rolling(window=120).mean()
-        
-        # 成交量均線
-        df["Volume_MA5"] = df["volume"].rolling(window=5).mean()
-        
-        # RSI
-        delta = df["close"].diff()
-        gain = delta.where(delta > 0, 0)
-        loss = -delta.where(delta < 0, 0)
-        avg_gain = gain.rolling(window=14).mean()
-        avg_loss = loss.rolling(window=14).mean()
-        rs = avg_gain / avg_loss
-        df["RSI_14"] = 100 - (100 / (1 + rs))
-        
-        # MACD
-        ema12 = df["close"].ewm(span=12, adjust=False).mean()
-        ema26 = df["close"].ewm(span=26, adjust=False).mean()
-        df["MACD_12_26_9"] = ema12 - ema26
-        df["MACDs_12_26_9"] = df["MACD_12_26_9"].ewm(span=9, adjust=False).mean()
-        df["MACDh_12_26_9"] = df["MACD_12_26_9"] - df["MACDs_12_26_9"]
-        
-        # KD
-        low9 = df["low"].rolling(window=9).min()
-        high9 = df["high"].rolling(window=9).max()
-        df["STOCHk_9_3_3"] = 100 * (df["close"] - low9) / (high9 - low9)
-        df["STOCHd_9_3_3"] = df["STOCHk_9_3_3"].rolling(window=3).mean()
-        
-        # 布林通道
-        df["BBM_20_2.0"] = df["close"].rolling(window=20).mean()
-        std20 = df["close"].rolling(window=20).std()
-        df["BBU_20_2.0"] = df["BBM_20_2.0"] + 2 * std20
-        df["BBL_20_2.0"] = df["BBM_20_2.0"] - 2 * std20
-        
-        return df
+        return shared_calculate_indicators(df)
     
     def _resample_to_week(self, df: pd.DataFrame) -> pd.DataFrame:
         """轉換為週 K"""

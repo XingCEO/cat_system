@@ -77,7 +77,47 @@ class TechnicalAnalyzer:
     
     def calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """計算技術指標"""
-        return calculate_all_indicators(df)
+        try:
+            import pandas_ta as ta
+            # 嘗試使用 pandas_ta
+            try:
+                # 移動平均線
+                df["SMA_5"] = ta.sma(df["close"], length=5)
+                df["SMA_10"] = ta.sma(df["close"], length=10)
+                df["SMA_20"] = ta.sma(df["close"], length=20)
+                df["SMA_60"] = ta.sma(df["close"], length=60)
+                df["SMA_120"] = ta.sma(df["close"], length=120)
+                
+                # 成交量均線
+                if "volume" in df.columns:
+                    df["Volume_MA5"] = ta.sma(df["volume"], length=5)
+                
+                # RSI
+                df["RSI_14"] = ta.rsi(df["close"], length=14)
+                
+                # MACD
+                macd = ta.macd(df["close"], fast=12, slow=26, signal=9)
+                if macd is not None:
+                    # Rename columns to match expected format if needed, or rely on standard naming
+                    # pandas_ta returns columns like MACD_12_26_9, MACDh_12_26_9, MACDs_12_26_9
+                    df = pd.concat([df, macd], axis=1)
+                
+                # KD
+                stoch = ta.stoch(df["high"], df["low"], df["close"], k=9, d=3, smooth_k=3)
+                if stoch is not None:
+                    df = pd.concat([df, stoch], axis=1)
+                
+                # 布林通道
+                bbands = ta.bbands(df["close"], length=20, std=2)
+                if bbands is not None:
+                    df = pd.concat([df, bbands], axis=1)
+                    
+                return df
+            except Exception as e:
+                self.logger.warning(f"pandas_ta 計算失敗，轉為手動計算: {e}")
+                return calculate_all_indicators(df)
+        except ImportError:
+            return calculate_all_indicators(df)
     
     def calculate_ma(self, prices: List[float], period: int) -> Optional[float]:
         """計算移動平均線"""

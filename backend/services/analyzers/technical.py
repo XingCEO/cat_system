@@ -18,69 +18,49 @@ class TechnicalAnalyzerMixin:
     """技術分析混入類 - 均線突破篩選"""
 
     async def _fetch_yahoo_history_for_ma(self, symbol: str) -> pd.DataFrame:
-        """從 Yahoo Finance 獲取最近 3 個月歷史資料（支援 MA60 計算）"""
-        yahoo_symbol = f"{symbol}.TW"
-        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_symbol}"
-        params = {"interval": "1d", "range": "3mo"}  # 3 個月資料以支援 MA60
+        """
+        使用 EnhancedKLineService 獲取歷史資料（優先查資料庫快取）
+        保留 method 名稱以相容既有程式碼
+        """
+        try:
+            from services.enhanced_kline_service import enhanced_kline_service
+            from datetime import datetime, timedelta
+            from utils.date_utils import get_taiwan_today
 
-        client = await self.data_fetcher.get_client()
+            # 設定範圍：過去 6 個月 (確保有足夠資料算 MA60)
+            today = get_taiwan_today()
+            start_date = (today - timedelta(days=180)).strftime("%Y-%m-%d")
+            
+            # 使用 enhanced_kline_service (自動處理 DB 快取與 API 備援)
+            result = await enhanced_kline_service.get_kline_data_extended(
+                symbol=symbol,
+                start_date=start_date,
+                period="day"
+            )
 
-        for attempt in range(3):
-            try:
-                response = await client.get(url, params=params, timeout=10.0)
+            if "error" in result:
+                logger.debug(f"EnhancedKLineService error for {symbol}: {result['error']}")
+                return pd.DataFrame()
 
-                if response.status_code == 429:
-                    wait_time = (attempt + 1) * 2
-                    logger.debug(f"Yahoo 429 for {symbol}, waiting {wait_time}s...")
-                    await asyncio.sleep(wait_time)
-                    continue
+            kline_data = result.get("kline_data", [])
+            if not kline_data:
+                return pd.DataFrame()
 
-                if response.status_code == 200:
-                    data = response.json()
-                    result = data.get("chart", {}).get("result", [])
+            # 轉換為 DataFrame
+            df = pd.DataFrame(kline_data)
+            
+            # 確保欄位名稱一致 (original logic expects: date, close, open, low, volume)
+            # enhanced_kline already returns: date, open, high, low, close, volume (all lowercase)
+            
+            # 排序：原始邏輯需要「日期降序」（最新在最前）
+            if "date" in df.columns:
+                df = df.sort_values("date", ascending=False)
+                
+            return df
 
-                    if result and len(result) > 0:
-                        chart_data = result[0]
-                        timestamps = chart_data.get("timestamp", [])
-                        quote = chart_data.get("indicators", {}).get("quote", [{}])[0]
-
-                        if timestamps:
-                            records = []
-                            closes = quote.get("close", [])
-                            opens = quote.get("open", [])
-                            lows = quote.get("low", [])
-                            volumes = quote.get("volume", [])
-
-                            for i, ts in enumerate(timestamps):
-                                try:
-                                    close_val = closes[i] if i < len(closes) else None
-                                    open_val = opens[i] if i < len(opens) else None
-                                    low_val = lows[i] if i < len(lows) else None
-                                    volume_val = volumes[i] if i < len(volumes) else None
-                                    if close_val is not None:
-                                        dt = datetime.fromtimestamp(ts)
-                                        records.append({
-                                            "date": dt.strftime("%Y-%m-%d"),
-                                            "close": close_val,
-                                            "open": open_val,
-                                            "low": low_val,
-                                            "volume": volume_val,
-                                        })
-                                except (ValueError, IndexError, TypeError):
-                                    continue
-
-                            if records:
-                                df = pd.DataFrame(records)
-                                df = df.sort_values("date", ascending=False)
-                                return df
-                    break
-
-            except Exception as e:
-                logger.debug(f"Yahoo Finance fetch failed for {symbol}: {e}")
-                if attempt < 2:
-                    await asyncio.sleep(1)
-
-        return pd.DataFrame()
+        except Exception as e:
+            logger.warning(f"Failed to fetch history for {symbol} via EnhancedKLineService: {e}")
+            return pd.DataFrame()
 
     async def get_ma_breakout(
         self,
@@ -487,7 +467,7 @@ class TechnicalAnalyzerMixin:
         
         # 若當日查詢失敗（通常是因為資料庫還沒匯入今日資料），嘗試用上一交易日名單
         if is_today_query and not top200_result.get("success"):
-            from utils.date_utils import get_previous_trading_day, parse_date, format_date
+            from utils.date_utils import get_previous_trading_day, parse_date
             today_date = parse_date(today_str)
             prev_date = get_previous_trading_day(today_date)
             # 如果 get_previous_trading_day 回傳今天 (e.g. 早上)，需要再往前找一天
@@ -543,13 +523,12 @@ class TechnicalAnalyzerMixin:
                     logger.info(f"Updated {updated_count} stocks with realtime price for MA strategy (Strict Mode)")
                     
                     # 替換為經過嚴格過濾的列表
-                    # 如果 API 全掛，這裡會變空，符合「絕不容許出現昨日」的要求
                     stocks_to_check = valid_realtime_stocks
                     
                     if not stocks_to_check:
                         logger.warning("Strict Mode: No stocks passed realtime validation. Returning empty result.")
                         return {
-                            "success": True,
+                            "success": True, 
                             "query_date": date,
                             "strategy": strategy,
                             "strategy_name": strategy_names[strategy],
@@ -557,6 +536,13 @@ class TechnicalAnalyzerMixin:
                             "items": [],
                             "note": "嚴格模式：目前無法取得即時報價，暫無結果"
                         }
+                else:
+                    error_msg = quotes_result.get("error", "Unknown error")
+                    logger.warning(f"Realtime quotes fetch failed: {error_msg}")
+                    return {
+                        "success": False,
+                        "error": f"即時報價服務異常: {error_msg}"
+                    }
 
             except Exception as e:
                 logger.warning(f"Failed to inject realtime quotes for MA strategy: {e}")

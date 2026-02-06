@@ -17,14 +17,13 @@ from utils.date_utils import get_taiwan_now
 logger = logging.getLogger(__name__)
 
 # 快取設定
-CACHE_TTL = 15  # 15 秒快取（從 30 秒降低）
+CACHE_TTL = 30  # 30 秒快取
 CACHE_MAX_SIZE = 500
 
 # 請求設定
-# 請求設定
-BATCH_SIZE = 50  # 每批最多 50 檔（從 80 降回 50 以減少連線重置）
-BATCH_DELAY = 2.0  # 批次間隔秒數（從 1.5 增加）
-REQUEST_TIMEOUT = 8  # 請求超時秒數
+BATCH_SIZE = 100  # 每批最多 100 檔
+BATCH_DELAY = 1.0  # 批次間隔秒數
+REQUEST_TIMEOUT = 5  # 請求超時秒數
 MAX_RETRIES = 3  # 最大重試次數
 RETRY_DELAY = 1.0  # 重試延遲秒數
 
@@ -109,8 +108,8 @@ class RealtimeQuotesService:
         async with self._request_lock:
             now = time.time()
             elapsed = now - self._last_request_time
-            if elapsed < 1.0:  # 至少間隔 1 秒
-                await asyncio.sleep(1.0 - elapsed + random.uniform(0.1, 0.5))
+            if elapsed < 0.5:  # 至少間隔 0.5 秒
+                await asyncio.sleep(0.5 - elapsed + random.uniform(0.1, 0.2))
             self._last_request_time = time.time()
 
     def _parse_twse_quote(self, item: Dict) -> QuoteData:

@@ -9,10 +9,49 @@ const api = axios.create({
     timeout: 120000,  // 增加超時時間至 120 秒（5 年資料需要較長時間）
 });
 
-// 統一錯誤處理 interceptor
+// Retry configuration
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000; // Initial delay in ms
+
+// Helper to wait
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// 統一錯誤處理 interceptor with Retry Logic
 api.interceptors.response.use(
     (response) => response,
-    (error) => {
+    async (error) => {
+        const config = error.config;
+
+        // Check if we should retry
+        if (!config || !config.retryCount) {
+            config.retryCount = 0;
+        }
+
+        // Retry conditions:
+        // 1. Method is GET (idempotent)
+        // 2. Error is Network Error (ECONNABORTED, or no response) or 5xx Server Error
+        // 3. Not exceeded max retries
+        const shouldRetry =
+            config.method === 'get' &&
+            config.retryCount < MAX_RETRIES &&
+            (
+                !error.response || // Network error
+                (error.response.status >= 500 && error.response.status <= 599) // Server error
+            );
+
+        if (shouldRetry) {
+            config.retryCount += 1;
+
+            // Exponential backoff with jitter: delay * 2^retry * random(0.8-1.2)
+            const jitter = 0.8 + Math.random() * 0.4;
+            const delay = RETRY_DELAY * Math.pow(2, config.retryCount - 1) * jitter;
+
+            console.warn(`API retry attempt ${config.retryCount}/${MAX_RETRIES} for ${config.url} after ${Math.round(delay)}ms`);
+            await wait(delay);
+
+            return api(config);
+        }
+
         const message = error.response?.data?.detail
             || error.response?.data?.error
             || error.message
