@@ -23,11 +23,12 @@ async def _fetch_realtime_as_daily_for_symbol(symbol: str, date: str):
     try:
         from services.realtime_quotes import realtime_quotes_service
 
-        quotes = await realtime_quotes_service.get_quotes([symbol])
-        if not quotes:
+        result = await realtime_quotes_service.get_quotes([symbol])
+        # get_quotes returns {"success": True, "quotes": [...], ...}
+        if not result or not result.get("success") or not result.get("quotes"):
             return pd.DataFrame()
 
-        q = quotes[0]
+        q = result["quotes"][0]
         price = q.get("price") or q.get("close")
         if not price:
             return pd.DataFrame()
