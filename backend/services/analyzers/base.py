@@ -132,23 +132,27 @@ class BaseAnalyzer:
         from utils.date_utils import get_taiwan_today, get_market_status
 
         try:
+            today_str = get_taiwan_today().strftime("%Y-%m-%d")
+            market_status, should_have_today = get_market_status()
+
+            logger.info(f"Fetching daily data for {date}. Today={today_str}, status={market_status}")
+
             df = await self.data_fetcher.get_daily_data(date)
 
-            if df.empty:
-                # Check if we should try realtime quotes
-                today_str = get_taiwan_today().strftime("%Y-%m-%d")
-                market_status, should_have_today = get_market_status()
+            # 強制使用 realtime fallback 的條件：
+            # 1. DataFrame 為空
+            # 2. 或者請求的是今天的資料（不管 TWSE 返回什麼）
+            use_realtime = df.empty or (date == today_str and should_have_today)
 
-                logger.info(f"Daily data empty for {date}. Today={today_str}, status={market_status}, should_have={should_have_today}")
+            if use_realtime:
+                logger.info(f"Using realtime fallback for {date} (df.empty={df.empty}, is_today={date == today_str})")
+                realtime_df = await self._fetch_realtime_as_daily(date)
 
-                # 使用 realtime fallback 的條件放寬:
-                # 1. 請求的是今天的資料 且 市場已開盤或收盤
-                # 2. 或者請求的是今天且 should_have_today=True（即使狀態是 pre_market）
-                if date == today_str and (market_status in ("open", "closed") or should_have_today):
-                    logger.info(f"No daily data for {date}, trying realtime quotes")
-                    df = await self._fetch_realtime_as_daily(date)
-
-                if df.empty:
+                # 如果 realtime 有資料就用 realtime，否則用原本的 df（可能是昨日資料）
+                if not realtime_df.empty:
+                    logger.info(f"Realtime fallback success: {len(realtime_df)} stocks")
+                    df = realtime_df
+                elif df.empty:
                     logger.warning(f"No daily data for {date} (realtime fallback also failed)")
                     return pd.DataFrame()
 
