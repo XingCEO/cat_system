@@ -40,12 +40,12 @@ Violations waste tokens and context window. This file exists to prevent redundan
 ### Frontend Pattern
 
 ```typescript
-// 正確：使用 Asia/Taipei 時區
+// Correct: Use Asia/Taipei timezone
 const now = new Date();
 const taiwanTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
 
-// 錯誤：直接使用 new Date()
-const wrong = new Date().toISOString().split('T')[0];  // 會得到 UTC 日期
+// Incorrect: Directly use new Date()
+const wrong = new Date().toISOString().split('T')[0];  // Will get UTC date
 ```
 
 **Market Status Values:**
@@ -125,12 +125,12 @@ Convert to daily format → Return today's data ✅
 
 ### Affected Features (all now show today's data)
 
-- 周轉率前 200 名 (`/api/turnover/top20`)
-- 前 200 周轉漲停榜
-- 均線策略篩選 (`/api/turnover/ma-strategy/*`)
-- 股票篩選器 (`/api/stocks/filter`)
-- 單一股票詳情 (`/api/stocks/{symbol}`)
-- 盤中即時監控 (always realtime)
+- Top 200 Turnover (`/api/turnover/top20`)
+- Top 200 Turnover Limit-Up
+- MA Strategy Filter (`/api/turnover/ma-strategy/*`)
+- Stock Filter (`/api/stocks/filter`)
+- Single Stock Details (`/api/stocks/{symbol}`)
+- Intraday Reference (always realtime)
 
 ---
 
