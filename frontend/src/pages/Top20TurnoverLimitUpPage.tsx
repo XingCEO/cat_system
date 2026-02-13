@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Top20Charts } from '@/components/Top20Charts';
 import { StockAnalysisDialog } from '@/components/StockAnalysisDialog';
 import { formatPercent, formatNumber, formatPrice, getChangeColor } from '@/utils/format';
+import { normalizeFlexibleDateInput } from '@/utils/date';
 import { getTop20LimitUp, downloadExportFile, getTradingDate } from '@/services/api';
 import { useStore } from '@/store/store';
 import {
@@ -83,6 +84,11 @@ export function Top20TurnoverLimitUpPage() {
     ]);
     const [globalFilter, setGlobalFilter] = useState('');
     const [showTop20Full, setShowTop20Full] = useState(false);
+    const [dateInput, setDateInput] = useState('');
+    const [appliedDate, setAppliedDate] = useState('');
+    const [dateError, setDateError] = useState('');
+    const [dateNotice, setDateNotice] = useState('');
+    const [hasInitializedDate, setHasInitializedDate] = useState(false);
     // K-line chart dialog state
     const [selectedStock, setSelectedStock] = useState<{ symbol: string; name?: string } | null>(null);
     const [isChartDialogOpen, setIsChartDialogOpen] = useState(false);
@@ -103,23 +109,54 @@ export function Top20TurnoverLimitUpPage() {
         queryFn: getTradingDate,
     });
 
-    // 只有當全局日期為空時才設定初始值
+    // 初始化日期，僅執行一次以避免使用者手動輸入被覆蓋
     useEffect(() => {
-        if (tradingDateData?.latest_trading_day && !queryDate) {
-            setQueryDate(tradingDateData.latest_trading_day);
+        if (tradingDateData?.latest_trading_day && !hasInitializedDate) {
+            const initialDate = queryDate || tradingDateData.latest_trading_day;
+            setQueryDate(initialDate);
+            setDateInput(initialDate);
+            setAppliedDate(initialDate);
+            setHasInitializedDate(true);
         }
-    }, [tradingDateData, queryDate, setQueryDate]);
+    }, [tradingDateData, queryDate, setQueryDate, hasInitializedDate]);
+
+    const applyDateInput = (rawInput: string): boolean => {
+        const normalized = normalizeFlexibleDateInput(rawInput);
+        if (!normalized.normalized) {
+            setDateError('日期格式錯誤，可輸入：11/1、1101、20251101、1141101、今天、昨天');
+            setDateNotice('');
+            return false;
+        }
+
+        setDateError('');
+        setDateNotice(normalized.wasAdjusted ? '無效日已自動校正為該月最後一天' : '');
+        setDateInput(normalized.normalized);
+        setAppliedDate(normalized.normalized);
+        setQueryDate(normalized.normalized);
+        return true;
+    };
+
+    const handleSearch = () => {
+        if (!dateInput.trim()) {
+            setDateError('請輸入查詢日期');
+            setDateNotice('');
+            return;
+        }
+        applyDateInput(dateInput);
+    };
 
     // Fetch data
     const { data, isLoading, error, refetch } = useQuery({
-        queryKey: ['top20LimitUp', queryDate],
-        queryFn: () => getTop20LimitUp(queryDate),
-        enabled: !!queryDate,
+        queryKey: ['top20LimitUp', appliedDate],
+        queryFn: () => getTop20LimitUp(appliedDate),
+        enabled: !!appliedDate,
     });
 
     const stats: Stats | undefined = data?.stats;
     const stocks: TurnoverStock[] = data?.items || [];
     const top20FullList: TurnoverStock[] = data?.top20_full_list || [];
+
+    const resolvedQueryDate = stats?.query_date || appliedDate || queryDate;
 
     // Quick date buttons - 使用台灣時區
     const handleQuickDate = (type: string) => {
@@ -147,7 +184,7 @@ export function Top20TurnoverLimitUpPage() {
         const year = targetDate.getFullYear();
         const month = String(targetDate.getMonth() + 1).padStart(2, '0');
         const day = String(targetDate.getDate()).padStart(2, '0');
-        setQueryDate(`${year}-${month}-${day}`);
+        applyDateInput(`${year}-${month}-${day}`);
     };
 
     // Export functions
@@ -170,7 +207,7 @@ export function Top20TurnoverLimitUpPage() {
             連續上漲: s.consecutive_up_days || 0,
         }));
 
-        downloadExportFile(format, exportData, `top20_limit_up_${queryDate}`);
+        downloadExportFile(format, exportData, `top20_limit_up_${resolvedQueryDate}`);
     };
 
     // Table columns
@@ -377,18 +414,38 @@ export function Top20TurnoverLimitUpPage() {
                     <div className="flex items-center gap-2">
                         <Calendar className="w-4 h-4 text-muted-foreground" />
                         <Input
-                            type="date"
-                            value={queryDate}
-                            onChange={(e) => setQueryDate(e.target.value)}
+                            type="text"
+                            value={dateInput}
+                            onChange={(e) => {
+                                setDateInput(e.target.value);
+                                if (dateError) setDateError('');
+                            }}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSearch();
+                            }}
                             className="w-40"
+                            placeholder="11/1、1101、20251101、今天"
                         />
                     </div>
+                    <Button onClick={handleSearch} className="gap-1">
+                        <Search className="w-4 h-4" /> 查詢
+                    </Button>
                     <div className="flex gap-1">
                         <Button variant="outline" size="sm" onClick={() => handleQuickDate('today')}>今天</Button>
                         <Button variant="outline" size="sm" onClick={() => handleQuickDate('yesterday')}>昨天</Button>
                         <Button variant="outline" size="sm" onClick={() => handleQuickDate('lastWeek')}>上週</Button>
                         <Button variant="outline" size="sm" onClick={() => handleQuickDate('lastMonth')}>上月</Button>
                     </div>
+                    {(dateError || dateNotice) && (
+                        <div className={`w-full text-sm ${dateError ? 'text-red-500' : 'text-amber-500'}`}>
+                            {dateError || dateNotice}
+                        </div>
+                    )}
+                    {!dateError && !dateNotice && (
+                        <div className="w-full text-xs text-muted-foreground">
+                            支援快速輸入：11/1、1101、20251101、1141101、今天、昨天、前天
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -479,7 +536,7 @@ export function Top20TurnoverLimitUpPage() {
                                 符合條件股票清單
                             </CardTitle>
                             <CardDescription>
-                                共 {stocks.length} 檔股票符合條件（{queryDate}）
+                                共 {stocks.length} 檔股票符合條件（{resolvedQueryDate}）
                             </CardDescription>
                         </div>
 

@@ -2,8 +2,10 @@
 Test Validators
 """
 import pytest
+from datetime import date
 from utils.validators import (
     validate_symbol,
+    normalize_date_input,
     validate_date,
     validate_date_range,
     validate_percentage_range,
@@ -64,6 +66,30 @@ class TestValidateDate:
         assert "無效" in error
 
 
+class TestNormalizeDateInput:
+    def test_normalize_slash_and_clamp(self):
+        assert normalize_date_input("2025/11/31") == "2025-11-30"
+
+    def test_normalize_roc_date(self):
+        assert normalize_date_input("114/11/01") == "2025-11-01"
+
+    def test_normalize_compact_yyyymmdd(self):
+        assert normalize_date_input("20251101") == "2025-11-01"
+
+    def test_normalize_compact_roc_yyyymmdd(self):
+        assert normalize_date_input("1141101") == "2025-11-01"
+
+    def test_normalize_mmdd_current_year(self, monkeypatch):
+        monkeypatch.setattr("utils.date_utils.get_taiwan_today", lambda: date(2026, 2, 13))
+        assert normalize_date_input("11/1") == "2026-11-01"
+        assert normalize_date_input("1101") == "2026-11-01"
+
+    def test_normalize_relative_dates(self, monkeypatch):
+        monkeypatch.setattr("utils.date_utils.get_taiwan_today", lambda: date(2026, 2, 13))
+        assert normalize_date_input("today") == "2026-02-13"
+        assert normalize_date_input("yesterday") == "2026-02-12"
+
+
 class TestValidateDateRange:
     """Test date range validation"""
 
@@ -81,6 +107,11 @@ class TestValidateDateRange:
         is_valid, error = validate_date_range(None, None)
         assert is_valid is True
         assert error is None
+
+    def test_range_exceeds_max_days(self):
+        is_valid, error = validate_date_range("2024-01-01", "2025-01-01", max_days=365)
+        assert is_valid is False
+        assert "不可超過 365 天" in error
 
 
 class TestValidatePercentageRange:

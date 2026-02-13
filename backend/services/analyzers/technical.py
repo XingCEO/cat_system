@@ -5,7 +5,7 @@ Technical Analyzer Mixin - MA breakout and technical indicators
 import pandas as pd
 import asyncio
 from typing import Optional, Dict, List, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 
 from services.cache_manager import cache_manager
@@ -17,24 +17,32 @@ logger = logging.getLogger(__name__)
 class TechnicalAnalyzerMixin:
     """技術分析混入類 - 均線突破篩選"""
 
-    async def _fetch_yahoo_history_for_ma(self, symbol: str) -> pd.DataFrame:
+    async def _fetch_yahoo_history_for_ma(self, symbol: str, end_date: Optional[str] = None) -> pd.DataFrame:
         """
-        使用 EnhancedKLineService 獲取歷史資料（優先查資料庫快取）
+        使用 EnhancedKLineService 依查詢日獲取歷史資料（優先查資料庫快取）
         保留 method 名稱以相容既有程式碼
         """
         try:
             from services.enhanced_kline_service import enhanced_kline_service
-            from datetime import datetime, timedelta
-            from utils.date_utils import get_taiwan_today
+            from utils.date_utils import parse_date, format_date, get_previous_trading_day
 
-            # 設定範圍：過去 6 個月 (確保有足夠資料算 MA60)
-            today = get_taiwan_today()
-            start_date = (today - timedelta(days=180)).strftime("%Y-%m-%d")
-            
-            # 使用 enhanced_kline_service (自動處理 DB 快取與 API 備援)
+            query_day = parse_date(end_date) if end_date else None
+            if query_day is None:
+                query_day = get_previous_trading_day()
+
+            normalized_end_date = format_date(query_day)
+            cache_key = f"ma_history_{symbol}_{normalized_end_date}"
+            cached = cache_manager.get(cache_key, "historical")
+            if cached is not None:
+                return pd.DataFrame(cached)
+
+            # 取查詢日前約 8 個月，確保 MA20/MA60 計算有緩衝
+            start_date = (query_day - timedelta(days=240)).strftime("%Y-%m-%d")
+
             result = await enhanced_kline_service.get_kline_data_extended(
                 symbol=symbol,
                 start_date=start_date,
+                end_date=normalized_end_date,
                 period="day"
             )
 
@@ -48,14 +56,15 @@ class TechnicalAnalyzerMixin:
 
             # 轉換為 DataFrame
             df = pd.DataFrame(kline_data)
-            
-            # 確保欄位名稱一致 (original logic expects: date, close, open, low, volume)
-            # enhanced_kline already returns: date, open, high, low, close, volume (all lowercase)
-            
-            # 排序：原始邏輯需要「日期降序」（最新在最前）
+
             if "date" in df.columns:
+                # 僅保留查詢日以前資料，避免混入未來日期造成歷史查詢錯誤
+                df = df[df["date"] <= normalized_end_date]
                 df = df.sort_values("date", ascending=False)
-                
+
+            if not df.empty:
+                cache_manager.set(cache_key, df.to_dict("records"), "historical")
+
             return df
 
         except Exception as e:
@@ -66,12 +75,19 @@ class TechnicalAnalyzerMixin:
         self,
         date: Optional[str] = None,
         min_change: Optional[float] = None,
-        max_change: Optional[float] = None
+        max_change: Optional[float] = None,
+        shared_history_cache: Optional[Dict[str, pd.DataFrame]] = None,
+        shared_history_end_date: Optional[str] = None,
     ) -> Dict[str, Any]:
         """突破糾結均線篩選（週轉率前200名）- 優化版本使用並行處理"""
         if date is None:
             from utils.date_utils import get_latest_trading_day
             date = get_latest_trading_day()
+
+        cache_key = f"ma_breakout_{date}_{min_change}_{max_change}"
+        cached = cache_manager.get(cache_key, "daily")
+        if cached is not None:
+            return cached
 
         top200_result = await self.get_top20_turnover(date)
         if not top200_result.get("success"):
@@ -96,6 +112,23 @@ class TechnicalAnalyzerMixin:
 
         total = len(filtered_stocks)
         logger.info(f"MA Breakout: Processing {total} stocks for {date}")
+        history_cache = shared_history_cache if shared_history_cache is not None else {}
+        history_fetch_end_date = shared_history_end_date or date
+
+        # 批次預載本地 K 線資料（缺漏才逐檔 fallback），大幅降低逐檔抓歷史延遲
+        symbols_to_prefetch = [
+            stock["symbol"]
+            for stock in filtered_stocks
+            if stock.get("symbol") and history_cache.get(stock["symbol"]) is None
+        ]
+        if symbols_to_prefetch:
+            prefetched_map = await self._prefetch_history_from_kline_cache(
+                symbols_to_prefetch,
+                history_fetch_end_date,
+                lookback_days=320,
+            )
+            if prefetched_map:
+                history_cache.update(prefetched_map)
 
         # 使用 semaphore 控制並發數量（最多 10 個並行請求）
         semaphore = asyncio.Semaphore(10)
@@ -108,7 +141,14 @@ class TechnicalAnalyzerMixin:
                 current_close = stock.get("close_price", 0) or 0
 
                 try:
-                    history_df = await self._fetch_yahoo_history_for_ma(symbol)
+                    history_df = history_cache.get(symbol)
+                    if history_df is None:
+                        history_df = await self._fetch_yahoo_history_for_ma(symbol, history_fetch_end_date)
+                        history_cache[symbol] = history_df
+
+                    # 在日期區間模式下，共用歷史資料並按當天切片，避免重複抓取
+                    if shared_history_cache is not None and not history_df.empty and "date" in history_df.columns:
+                        history_df = history_df[history_df["date"] <= date]
 
                     if history_df.empty or len(history_df) < 20:
                         return None
@@ -196,13 +236,15 @@ class TechnicalAnalyzerMixin:
 
         logger.info(f"MA Breakout completed: {len(breakout_stocks)} stocks found")
 
-        return {
+        result = {
             "success": True,
             "query_date": date,
             "filter": {"min_change": min_change, "max_change": max_change},
             "breakout_count": len(breakout_stocks),
             "items": breakout_stocks,
         }
+        cache_manager.set(cache_key, result, "daily")
+        return result
 
     async def get_above_ma20_uptrend(self, date: Optional[str] = None) -> Dict[str, Any]:
         """篩選：當日股價 >= MA20 且 MA20 向上趨勢"""
@@ -224,7 +266,6 @@ class TechnicalAnalyzerMixin:
             return {"success": False, "error": "無有效資料"}
 
         matched_stocks = []
-        processed = 0
         total = len(stocks_to_check)
 
         logger.info(f"MA20 Uptrend Filter: Processing {total} stocks for {date}")
@@ -269,10 +310,6 @@ class TechnicalAnalyzerMixin:
                 logger.debug(f"Error processing MA20 for {symbol}: {e}")
                 continue
 
-            processed += 1
-            if processed % 10 == 0:
-                await asyncio.sleep(0.05)
-
         matched_stocks.sort(key=lambda x: x.get("change_percent", 0), reverse=True)
 
         result = {
@@ -290,7 +327,9 @@ class TechnicalAnalyzerMixin:
     async def get_volume_surge(
         self,
         date: Optional[str] = None,
-        volume_ratio: float = 1.5
+        volume_ratio: float = 1.5,
+        shared_history_cache: Optional[Dict[str, pd.DataFrame]] = None,
+        shared_history_end_date: Optional[str] = None,
     ) -> Dict[str, Any]:
         """成交量放大篩選（週轉率前200名且成交量 >= 昨日成交量 * 倍數）"""
         if date is None:
@@ -310,38 +349,88 @@ class TechnicalAnalyzerMixin:
         if not stocks_to_check:
             return {"success": False, "error": "無有效資料"}
 
-        surge_stocks = []
-        for stock in stocks_to_check:
-            symbol = stock["symbol"]
-            today_volume = stock.get("volume", 0) or 0
+        history_cache = shared_history_cache if shared_history_cache is not None else {}
+        history_fetch_end_date = shared_history_end_date or date
+        surge_stocks: List[Dict[str, Any]] = []
+        semaphore = asyncio.Semaphore(10)
 
-            if today_volume <= 0:
-                continue
+        symbols_to_prefetch = [
+            stock["symbol"]
+            for stock in stocks_to_check
+            if stock.get("symbol") and history_cache.get(stock["symbol"]) is None
+        ]
+        if symbols_to_prefetch:
+            prefetched_map = await self._prefetch_history_from_kline_cache(
+                symbols_to_prefetch,
+                history_fetch_end_date,
+                lookback_days=40,
+            )
+            if prefetched_map:
+                history_cache.update(prefetched_map)
 
-            try:
-                history_df = await self._fetch_yahoo_history_for_ma(symbol)
-                if history_df.empty or len(history_df) < 2:
-                    continue
+        async def check_single_stock(stock: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+            async with semaphore:
+                symbol = stock["symbol"]
+                today_volume = stock.get("volume", 0) or 0
+                if today_volume <= 0:
+                    return None
 
-                if "volume" in history_df.columns:
-                    volumes = history_df["volume"].dropna().tolist()[:5]
-                else:
-                    continue
+                try:
+                    history_df = history_cache.get(symbol)
+                    if history_df is None:
+                        history_df = await self._fetch_yahoo_history_for_ma(symbol, history_fetch_end_date)
+                        history_cache[symbol] = history_df
 
-                if len(volumes) >= 2:
-                    yesterday_volume = volumes[1] if volumes[1] else 0
+                    if history_df.empty or len(history_df) < 2 or "volume" not in history_df.columns:
+                        return None
+
+                    candidate_df = history_df
+                    if shared_history_cache is not None and "date" in candidate_df.columns:
+                        candidate_df = candidate_df[candidate_df["date"] <= date]
+                    if candidate_df.empty:
+                        return None
+
+                    if "date" in candidate_df.columns:
+                        candidate_df = candidate_df.sort_values("date", ascending=False).reset_index(drop=True)
+                    else:
+                        candidate_df = candidate_df.reset_index(drop=True)
+
+                    if len(candidate_df) < 2:
+                        return None
+
+                    target_index = 0
+                    if "date" in candidate_df.columns:
+                        exact_matches = candidate_df.index[candidate_df["date"] == date].tolist()
+                        if exact_matches:
+                            target_index = exact_matches[0]
+
+                    if target_index + 1 >= len(candidate_df):
+                        return None
+
+                    yesterday_volume_raw = candidate_df.at[target_index + 1, "volume"]
+                    if yesterday_volume_raw is None or pd.isna(yesterday_volume_raw):
+                        return None
+
+                    yesterday_volume = float(yesterday_volume_raw)
                     yesterday_volume_lots = yesterday_volume / 1000
-                    if yesterday_volume_lots > 0 and today_volume >= yesterday_volume_lots * volume_ratio:
-                        stock["yesterday_volume"] = int(yesterday_volume_lots)
-                        stock["volume_ratio_calc"] = round(today_volume / yesterday_volume_lots, 2)
-                        stock["is_volume_surge"] = True
-                        surge_stocks.append(stock)
+                    if yesterday_volume_lots <= 0:
+                        return None
 
-            except Exception as e:
-                logger.debug(f"Error processing volume surge for {symbol}: {e}")
-                continue
+                    if today_volume >= yesterday_volume_lots * volume_ratio:
+                        row = stock.copy()
+                        row["yesterday_volume"] = int(yesterday_volume_lots)
+                        row["volume_ratio_calc"] = round(today_volume / yesterday_volume_lots, 2)
+                        row["is_volume_surge"] = True
+                        return row
+                except Exception as e:
+                    logger.debug(f"Error processing volume surge for {symbol}: {e}")
+                return None
 
-            await asyncio.sleep(0.05)
+        batch_size = 25
+        for i in range(0, len(stocks_to_check), batch_size):
+            batch = stocks_to_check[i:i + batch_size]
+            results = await asyncio.gather(*[check_single_stock(stock) for stock in batch])
+            surge_stocks.extend([row for row in results if row is not None])
 
         surge_stocks.sort(key=lambda x: x.get("volume_ratio_calc", 0), reverse=True)
 
@@ -355,6 +444,68 @@ class TechnicalAnalyzerMixin:
 
         cache_manager.set(cache_key, result, "daily")
         return result
+
+    async def get_volume_surge_range(
+        self,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        volume_ratio: float = 1.5,
+    ) -> Dict[str, Any]:
+        """成交量放大篩選（支援日期區間）。"""
+        dates = await self._get_date_range(start_date, end_date)
+        if not dates:
+            return {
+                "success": True,
+                "start_date": start_date or end_date,
+                "end_date": end_date or start_date,
+                "filter": {"volume_ratio": volume_ratio},
+                "total_days": 0,
+                "surge_count": 0,
+                "daily_stats": [],
+                "items": [],
+            }
+
+        cache_key = f"volume_surge_range_{dates[0]}_{dates[-1]}_{volume_ratio}"
+        cached = cache_manager.get(cache_key, "historical")
+        if cached is not None:
+            return cached
+
+        all_items: List[Dict[str, Any]] = []
+        daily_stats: List[Dict[str, Any]] = []
+        shared_history_cache: Dict[str, pd.DataFrame] = {}
+        shared_history_end_date = dates[-1]
+
+        for date in dates:
+            result = await self.get_volume_surge(
+                date=date,
+                volume_ratio=volume_ratio,
+                shared_history_cache=shared_history_cache,
+                shared_history_end_date=shared_history_end_date,
+            )
+            count = 0
+            if result.get("success"):
+                for item in result.get("items", []):
+                    row = item.copy()
+                    row["query_date"] = date
+                    all_items.append(row)
+                count = result.get("surge_count", 0)
+            daily_stats.append({
+                "date": date,
+                "count": count,
+            })
+
+        response = {
+            "success": True,
+            "start_date": dates[0],
+            "end_date": dates[-1],
+            "filter": {"volume_ratio": volume_ratio},
+            "total_days": len(dates),
+            "surge_count": len(all_items),
+            "daily_stats": daily_stats,
+            "items": all_items,
+        }
+        cache_manager.set(cache_key, response, "historical")
+        return response
 
     # ============ 均線策略篩選 ============
 
@@ -708,4 +859,3 @@ class TechnicalAnalyzerMixin:
                 for item in data.get("items", [])
             )),
         }
-

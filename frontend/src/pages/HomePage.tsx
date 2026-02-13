@@ -6,7 +6,8 @@ import { DashboardCharts } from '@/components/DashboardCharts';
 import { StockAnalysisDialog } from '@/components/StockAnalysisDialog';
 import { filterStocks, getTradingDate } from '@/services/api';
 import { useStore } from '@/store/store';
-import type { Stock } from '@/types';
+import type { Stock, FilterParams } from '@/types';
+import { normalizeFlexibleDateInput } from '@/utils/date';
 
 export function HomePage() {
     const { filterParams, setFilterParams, queryDate, setQueryDate } = useStore();
@@ -14,6 +15,8 @@ export function HomePage() {
     // K-line chart dialog state
     const [selectedStock, setSelectedStock] = useState<{ symbol: string; name?: string } | null>(null);
     const [isChartDialogOpen, setIsChartDialogOpen] = useState(false);
+    const [searchParams, setSearchParams] = useState<(Partial<FilterParams> & { date: string }) | null>(null);
+    const [dateError, setDateError] = useState<string>('');
 
     const openChartDialog = (symbol: string, name?: string) => {
         setSelectedStock({ symbol, name });
@@ -33,24 +36,37 @@ export function HomePage() {
 
     // 只有當全局日期為空時才設定初始值
     useEffect(() => {
-        if (tradingDateData?.latest_trading_day && !queryDate) {
-            setQueryDate(tradingDateData.latest_trading_day);
+        if (tradingDateData?.latest_trading_day && !searchParams) {
+            const latest = queryDate || tradingDateData.latest_trading_day;
+            setQueryDate(latest);
+            setSearchParams({ ...filterParams, date: latest });
         }
-    }, [tradingDateData, queryDate, setQueryDate]);
+    }, [tradingDateData, queryDate, setQueryDate, filterParams, searchParams]);
 
     // Filter stocks query
-    const { data, isLoading, refetch } = useQuery({
-        queryKey: ['stocks', filterParams, queryDate],
-        queryFn: () => filterStocks({ ...filterParams, date: queryDate }),
-        enabled: !!queryDate,
+    const { data, isLoading } = useQuery({
+        queryKey: ['stocks', searchParams],
+        queryFn: () => filterStocks(searchParams!),
+        enabled: !!searchParams,
     });
 
     const handleSearch = () => {
-        refetch();
+        const normalized = normalizeFlexibleDateInput(queryDate);
+        if (!normalized.normalized) {
+            setDateError('日期格式錯誤，可輸入：11/1、1101、20251101、1141101、今天、昨天');
+            return;
+        }
+        setDateError('');
+        setQueryDate(normalized.normalized);
+        setFilterParams({ page: 1 });
+        setSearchParams({ ...filterParams, page: 1, date: normalized.normalized });
     };
 
     const handlePageChange = (page: number) => {
         setFilterParams({ page });
+        if (searchParams) {
+            setSearchParams({ ...searchParams, page });
+        }
     };
 
     const handleStockClick = (stock: Stock) => {
@@ -87,7 +103,11 @@ export function HomePage() {
                 onSearch={handleSearch}
                 isLoading={isLoading}
                 queryDate={queryDate}
-                onDateChange={setQueryDate}
+                onDateChange={(date) => {
+                    setQueryDate(date);
+                    if (dateError) setDateError('');
+                }}
+                dateError={dateError}
             />
 
             {data && data.items.length > 0 && (

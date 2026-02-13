@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { StockAnalysisDialog } from '@/components/StockAnalysisDialog';
 import { formatPercent, formatNumber, formatPrice, getChangeColor } from '@/utils/format';
 import { getMaBreakout, getTradingDate } from '@/services/api';
+import { normalizeFlexibleDateInput } from '@/utils/date';
 import {
     Zap, ChevronLeft, LineChart, TrendingUp, Search, Calendar, Sparkles
 } from 'lucide-react';
@@ -29,6 +30,13 @@ interface BreakoutStock {
     query_date?: string;
 }
 
+interface MaBreakoutQueryParams {
+    startDate: string;
+    endDate: string;
+    minChange?: number;
+    maxChange?: number;
+}
+
 export function MaBreakoutPage() {
     // 日期區間狀態
     const [startDate, setStartDate] = useState<string>('');
@@ -37,9 +45,12 @@ export function MaBreakoutPage() {
     const [maxChange, setMaxChange] = useState<string>('');
     const [selectedStock, setSelectedStock] = useState<{ symbol: string; name?: string } | null>(null);
     const [isChartDialogOpen, setIsChartDialogOpen] = useState(false);
+    const [dateError, setDateError] = useState<string>('');
+    const [dateNotice, setDateNotice] = useState<string>('');
 
-    // 用於觸發查詢的 key
-    const [queryKey, setQueryKey] = useState(0);
+    // 提交查詢參數（僅按下查詢時更新）
+    const [queryParams, setQueryParams] = useState<MaBreakoutQueryParams | null>(null);
+    const [hasInitializedDates, setHasInitializedDates] = useState(false);
 
     // 取得最新交易日
     const { data: tradingDateData } = useQuery({
@@ -49,28 +60,79 @@ export function MaBreakoutPage() {
 
     // 初始化日期
     useEffect(() => {
-        if (tradingDateData?.latest_trading_day) {
-            if (!startDate) setStartDate(tradingDateData.latest_trading_day);
-            if (!endDate) setEndDate(tradingDateData.latest_trading_day);
+        if (tradingDateData?.latest_trading_day && !hasInitializedDates) {
+            const latest = tradingDateData.latest_trading_day;
+            const initialStart = startDate || latest;
+            const initialEnd = endDate || latest;
+
+            setStartDate(initialStart);
+            setEndDate(initialEnd);
+
+            if (!queryParams) {
+                setQueryParams({
+                    startDate: initialStart,
+                    endDate: initialEnd,
+                });
+            }
+            setHasInitializedDates(true);
         }
-    }, [tradingDateData, startDate, endDate]);
+    }, [tradingDateData, startDate, endDate, queryParams, hasInitializedDates]);
 
     // 手動觸發查詢
     const handleSearch = () => {
-        setQueryKey(prev => prev + 1);
+        if (!startDate || !endDate) {
+            setDateError('請輸入開始與結束日期');
+            return;
+        }
+
+        const start = normalizeFlexibleDateInput(startDate);
+        const end = normalizeFlexibleDateInput(endDate);
+        if (!start.normalized || !end.normalized) {
+            setDateError('日期格式錯誤，可輸入：11/1、1101、20251101、1141101、今天、昨天');
+            return;
+        }
+
+        let normalizedStart = start.normalized;
+        let normalizedEnd = end.normalized;
+        const notices: string[] = [];
+        if (start.wasAdjusted || end.wasAdjusted) {
+            notices.push('無效日已自動校正為該月最後一天');
+        }
+        if (normalizedStart > normalizedEnd) {
+            [normalizedStart, normalizedEnd] = [normalizedEnd, normalizedStart];
+            notices.push('起訖日期已自動交換');
+        }
+
+        setDateError('');
+        setDateNotice(notices.join('；'));
+        setStartDate(normalizedStart);
+        setEndDate(normalizedEnd);
+        setQueryParams({
+            startDate: normalizedStart,
+            endDate: normalizedEnd,
+            minChange: minChange ? parseFloat(minChange) : undefined,
+            maxChange: maxChange ? parseFloat(maxChange) : undefined,
+        });
     };
 
     // 突破糾結均線（支援日期區間和漲幅區間）
     const { data: breakoutData, isLoading } = useQuery({
-        queryKey: ['maBreakoutPage', startDate, endDate, minChange, maxChange, queryKey],
-        queryFn: () => getMaBreakout(startDate, endDate, minChange ? parseFloat(minChange) : undefined, maxChange ? parseFloat(maxChange) : undefined),
-        enabled: !!startDate && !!endDate,
+        queryKey: ['maBreakoutPage', queryParams],
+        queryFn: () => getMaBreakout(
+            queryParams!.startDate,
+            queryParams!.endDate,
+            queryParams!.minChange,
+            queryParams!.maxChange
+        ),
+        enabled: !!queryParams,
     });
 
     const stocks: BreakoutStock[] = breakoutData?.items || [];
     const breakoutCount = breakoutData?.breakout_count || 0;
     const totalDays = breakoutData?.total_days || 0;
-    const isDateRange = startDate !== endDate;
+    const resolvedStartDate = breakoutData?.start_date || queryParams?.startDate || startDate;
+    const resolvedEndDate = breakoutData?.end_date || queryParams?.endDate || endDate;
+    const isDateRange = resolvedStartDate !== resolvedEndDate;
 
     const openChartDialog = (symbol: string, name?: string) => {
         setSelectedStock({ symbol, name });
@@ -84,9 +146,9 @@ export function MaBreakoutPage() {
 
     // 格式化日期顯示
     const formatDateDisplay = () => {
-        if (!startDate) return '-';
-        if (startDate === endDate) return startDate;
-        return `${startDate} ~ ${endDate}`;
+        if (!resolvedStartDate) return '-';
+        if (resolvedStartDate === resolvedEndDate) return resolvedStartDate;
+        return `${resolvedStartDate} ~ ${resolvedEndDate}`;
     };
 
     return (
@@ -116,10 +178,14 @@ export function MaBreakoutPage() {
                                 <Calendar className="w-3 h-3" /> 開始日期
                             </Label>
                             <Input
-                                type="date"
+                                type="text"
                                 value={startDate}
-                                onChange={(e) => setStartDate(e.target.value)}
+                                onChange={(e) => {
+                                    setStartDate(e.target.value);
+                                    if (dateError) setDateError('');
+                                }}
                                 className="w-44"
+                                placeholder="11/1、1101、20251101、今天"
                             />
                         </div>
 
@@ -128,10 +194,14 @@ export function MaBreakoutPage() {
                                 <Calendar className="w-3 h-3" /> 結束日期
                             </Label>
                             <Input
-                                type="date"
+                                type="text"
                                 value={endDate}
-                                onChange={(e) => setEndDate(e.target.value)}
+                                onChange={(e) => {
+                                    setEndDate(e.target.value);
+                                    if (dateError) setDateError('');
+                                }}
                                 className="w-44"
+                                placeholder="11/30、1130、20251130、昨天"
                             />
                         </div>
 
@@ -163,6 +233,17 @@ export function MaBreakoutPage() {
                             <Search className="w-4 h-4" /> 查詢
                         </Button>
                     </div>
+
+                    {(dateError || dateNotice) && (
+                        <div className={`mt-3 text-sm ${dateError ? 'text-red-500' : 'text-amber-500'}`}>
+                            {dateError || dateNotice}
+                        </div>
+                    )}
+                    {!dateError && !dateNotice && (
+                        <div className="mt-3 text-xs text-muted-foreground">
+                            支援快速輸入：11/1、1101、20251101、1141101、今天、昨天、前天
+                        </div>
+                    )}
 
                     {/* 說明 */}
                     <div className="mt-4 pt-4 border-t">

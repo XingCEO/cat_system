@@ -2,6 +2,7 @@
 Stock Filter - Filter stocks based on various criteria
 """
 import pandas as pd
+import numpy as np
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 import logging
@@ -30,10 +31,30 @@ class StockFilter:
         Returns:
             Dict with items, total count, and query metadata
         """
-        from utils.date_utils import get_taiwan_today, get_market_status
+        from utils.date_utils import (
+            get_taiwan_today,
+            get_market_status,
+            parse_date,
+            is_trading_day,
+            get_previous_trading_day,
+            format_date,
+        )
 
         # Get trading date
         trade_date = params.date or await self.data_fetcher.get_latest_trading_date()
+        requested_date = params.date
+
+        # 若使用者指定非交易日，自動回退到最近交易日（避免查不到資料）
+        if requested_date:
+            requested_dt = parse_date(requested_date)
+            if requested_dt and not is_trading_day(requested_dt):
+                adjusted = get_previous_trading_day(requested_dt)
+                adjusted_date = format_date(adjusted)
+                logger.info(
+                    f"StockFilter: {requested_date} is non-trading day, fallback to {adjusted_date}"
+                )
+                trade_date = adjusted_date
+
         today_str = get_taiwan_today().strftime("%Y-%m-%d")
         market_status, should_have_today = get_market_status()
 
@@ -42,10 +63,8 @@ class StockFilter:
         # Fetch daily data
         daily_df = await self.data_fetcher.get_daily_data(trade_date)
 
-        # 強制使用 realtime fallback：
-        # 1. DataFrame 為空
-        # 2. 或者請求的是今天的資料且應該有今日資料
-        use_realtime = daily_df.empty or (trade_date == today_str and should_have_today)
+        # 只在查詢「今天」時才使用 realtime fallback，避免歷史/非交易日查詢卡慢
+        use_realtime = (trade_date == today_str) and (daily_df.empty or should_have_today)
 
         if use_realtime:
             logger.info(f"StockFilter: Using realtime fallback (df.empty={daily_df.empty}, is_today={trade_date == today_str})")
@@ -132,7 +151,12 @@ class StockFilter:
         # Calculate change percent if not present
         if "spread" in df.columns and "close" in df.columns:
             # FinMind format
-            df["change_percent"] = (df["close"] - (df["close"] - df["spread"])) / (df["close"] - df["spread"]) * 100
+            prev_close_series = df["close"] - df["spread"]
+            df["change_percent"] = np.where(
+                prev_close_series != 0,
+                df["spread"] / prev_close_series * 100,
+                0
+            )
         elif "close" in df.columns and "open" in df.columns:
             df["prev_close"] = df["close"].shift(1)
         
@@ -148,7 +172,7 @@ class StockFilter:
         # Filter: Change percent range
         if "spread" in df.columns and "close" in df.columns:
             prev_close = df["close"] - df["spread"]
-            df["change_percent"] = df["spread"] / prev_close * 100
+            df["change_percent"] = np.where(prev_close != 0, df["spread"] / prev_close * 100, 0)
         
         if "change_percent" in df.columns:
             if params.change_min is not None:
@@ -177,7 +201,11 @@ class StockFilter:
         if params.close_above_prev_min is not None or params.close_above_prev_max is not None:
             if "spread" in df.columns and "close" in df.columns:
                 prev_close = df["close"] - df["spread"]
-                df["close_above_prev_pct"] = (df["close"] - prev_close) / prev_close * 100
+                df["close_above_prev_pct"] = np.where(
+                    prev_close != 0,
+                    (df["close"] - prev_close) / prev_close * 100,
+                    0
+                )
                 if params.close_above_prev_min is not None:
                     df = df[df["close_above_prev_pct"] >= params.close_above_prev_min]
                 if params.close_above_prev_max is not None:
@@ -274,20 +302,15 @@ class StockFilter:
             ]
             logger.info(f"StockFilter: Found {len(symbols)} symbols")
 
-            # Batch fetch realtime quotes (increased limit)
-            batch_size = 80
+            # 單次呼叫 realtime service（service 內部已做分批與節流）
+            target_symbols = symbols[:1500]
             all_quotes = []
-
-            for i in range(0, min(len(symbols), 1500), batch_size):
-                batch = symbols[i:i + batch_size]
-                try:
-                    result = await realtime_quotes_service.get_quotes(batch)
-                    # get_quotes returns {"success": True, "quotes": [...], ...}
-                    if result and result.get("success") and result.get("quotes"):
-                        all_quotes.extend(result["quotes"])
-                except Exception as e:
-                    logger.warning(f"Realtime batch {i} failed: {e}")
-                    continue
+            try:
+                result = await realtime_quotes_service.get_quotes(target_symbols)
+                if result and result.get("success") and result.get("quotes"):
+                    all_quotes = result["quotes"]
+            except Exception as e:
+                logger.warning(f"Realtime fetch failed: {e}")
 
             logger.info(f"StockFilter: Got {len(all_quotes)} realtime quotes")
 

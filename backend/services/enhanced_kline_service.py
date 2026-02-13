@@ -82,35 +82,47 @@ class EnhancedKLineService:
         market_status, should_have_today = get_market_status()
         latest_trading_day = get_latest_trading_day()
 
-        # 先嘗試從快取取得任何可用資料
+        # 先讀可用快取（避免每次重抓完整歷史）
         cached_any = await self._get_from_cache_any(symbol)
         if cached_any is not None and len(cached_any) > 0:
             logger.info(f"使用快取資料: {len(cached_any)} 筆")
             df = pd.DataFrame(cached_any)
-
-            # 關鍵修復：檢查快取是否缺少今日數據
-            if should_have_today:
-                df = await self._ensure_today_candle(symbol, df, latest_trading_day, market_status)
         else:
-            # 嘗試從快取取得指定範圍
+            # 若全量快取不存在，再嘗試範圍快取
             cached_data = await self._get_from_cache(symbol, start_dt, end_dt)
-
             if cached_data is not None and len(cached_data) > 0:
-                logger.info(f"從快取取得 {len(cached_data)} 筆資料")
+                logger.info(f"從範圍快取取得 {len(cached_data)} 筆資料")
                 df = pd.DataFrame(cached_data)
             else:
-                # 從 API 抓取並快取
-                df = await self._fetch_and_cache(symbol, start_date, end_date)
+                df = pd.DataFrame()
 
+        # 若快取不足 requested range，只補缺口（避免月月重抓）
+        missing_ranges = self._get_missing_ranges(df, start_dt, end_dt)
+        for missing_start, missing_end in missing_ranges:
+            fetched = await self._fetch_and_cache(
+                symbol,
+                missing_start.strftime("%Y-%m-%d"),
+                missing_end.strftime("%Y-%m-%d"),
+            )
+            if not fetched.empty:
                 if df.empty:
-                    return {"error": f"無法取得 {symbol} 的歷史資料，API 暫時無法使用"}
+                    df = fetched
+                else:
+                    df = pd.concat([df, fetched], ignore_index=True)
+                    if "date" in df.columns:
+                        df = df.drop_duplicates(subset=["date"], keep="last")
 
-            # 關鍵修復：這個路徑也要檢查今日數據
-            if should_have_today:
-                df = await self._ensure_today_candle(symbol, df, latest_trading_day, market_status)
+        if df.empty:
+            return {"error": f"無法取得 {symbol} 的歷史資料，API 暫時無法使用"}
+
+        # 僅當請求範圍包含最新交易日，才補今日即時蠟燭
+        latest_trading_dt = datetime.strptime(latest_trading_day, "%Y-%m-%d").date()
+        if should_have_today and end_dt >= latest_trading_dt:
+            df = await self._ensure_today_candle(symbol, df, latest_trading_day, market_status)
 
         # 資料驗證與清理
         df = self._validate_and_clean_data(df)
+        df = self._clip_to_date_range(df, start_dt, end_dt)
         
         if df.empty:
             return {"error": "資料驗證後無有效資料"}
@@ -413,52 +425,42 @@ class EnhancedKLineService:
         start_date: str, 
         end_date: str
     ) -> pd.DataFrame:
-        """從 API 抓取資料並快取"""
-        # 批次按月抓取
+        """從 API 抓取資料並快取（優先單次抓取，失敗才月度回退）"""
+        # Fast path: 一次抓完整區間，避免 60 次月度 round-trip
+        try:
+            fast_df = await self.data_fetcher.get_historical_data(symbol, start_date, end_date)
+            if not fast_df.empty:
+                prepared = self._prepare_dataframe(fast_df)
+                if not prepared.empty:
+                    await self._save_to_cache(symbol, prepared)
+                    return prepared
+        except Exception as e:
+            logger.warning(f"完整區間抓取失敗，改用月度回退: {e}")
+
+        # Fallback: 逐月抓取
         start_dt = datetime.strptime(start_date, "%Y-%m-%d")
         end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-        
+
         all_data = []
         current = start_dt
-        
         while current <= end_dt:
-            month_end = min(
-                current + relativedelta(months=1) - timedelta(days=1),
-                end_dt
-            )
-            
+            month_end = min(current + relativedelta(months=1) - timedelta(days=1), end_dt)
             try:
                 month_start_str = current.strftime("%Y-%m-%d")
                 month_end_str = month_end.strftime("%Y-%m-%d")
-                
-                df = await self.data_fetcher.get_historical_data(
-                    symbol, month_start_str, month_end_str
-                )
-                
+                df = await self.data_fetcher.get_historical_data(symbol, month_start_str, month_end_str)
                 if not df.empty:
                     all_data.append(df)
-                    logger.debug(f"抓取 {symbol} {current.strftime('%Y-%m')}: {len(df)} 筆")
-                    
             except Exception as e:
                 logger.warning(f"抓取 {symbol} {current.strftime('%Y-%m')} 失敗: {e}")
-            
             current = current + relativedelta(months=1)
-            
-            # 避免 API 限流
-            await asyncio.sleep(0.1)
-        
+
         if not all_data:
             return pd.DataFrame()
-        
-        # 合併資料
+
         df = pd.concat(all_data, ignore_index=True)
-        
-        # 準備資料框
         df = self._prepare_dataframe(df)
-        
-        # 儲存到快取
         await self._save_to_cache(symbol, df)
-        
         return df
     
     async def _save_to_cache(self, symbol: str, df: pd.DataFrame) -> None:
@@ -484,41 +486,30 @@ class EnhancedKLineService:
                     }
                     records.append(record)
                 
-                # 使用 upsert - 自動選擇正確的資料庫方言
+                # 使用 upsert - 自動選擇正確的資料庫方言（批次寫入避免逐筆 execute）
                 settings = get_settings()
                 is_postgresql = settings.database_url and settings.database_url.startswith("postgresql")
 
-                for record in records:
+                chunk_size = 500
+                for i in range(0, len(records), chunk_size):
+                    chunk = records[i:i + chunk_size]
                     if is_postgresql:
-                        # PostgreSQL 使用 ON CONFLICT DO UPDATE
-                        stmt = pg_insert(KLineCache).values(**record)
-                        stmt = stmt.on_conflict_do_update(
-                            index_elements=["symbol", "date"],
-                            set_={
-                                "open": stmt.excluded.open,
-                                "high": stmt.excluded.high,
-                                "low": stmt.excluded.low,
-                                "close": stmt.excluded.close,
-                                "volume": stmt.excluded.volume,
-                                "cached_at": stmt.excluded.cached_at,
-                                "is_valid": stmt.excluded.is_valid,
-                            }
-                        )
+                        stmt = pg_insert(KLineCache).values(chunk)
                     else:
-                        # SQLite 使用 INSERT OR REPLACE
-                        stmt = sqlite_insert(KLineCache).values(**record)
-                        stmt = stmt.on_conflict_do_update(
-                            index_elements=["symbol", "date"],
-                            set_={
-                                "open": stmt.excluded.open,
-                                "high": stmt.excluded.high,
-                                "low": stmt.excluded.low,
-                                "close": stmt.excluded.close,
-                                "volume": stmt.excluded.volume,
-                                "cached_at": stmt.excluded.cached_at,
-                                "is_valid": stmt.excluded.is_valid,
-                            }
-                        )
+                        stmt = sqlite_insert(KLineCache).values(chunk)
+
+                    stmt = stmt.on_conflict_do_update(
+                        index_elements=["symbol", "date"],
+                        set_={
+                            "open": stmt.excluded.open,
+                            "high": stmt.excluded.high,
+                            "low": stmt.excluded.low,
+                            "close": stmt.excluded.close,
+                            "volume": stmt.excluded.volume,
+                            "cached_at": stmt.excluded.cached_at,
+                            "is_valid": stmt.excluded.is_valid,
+                        }
+                    )
                     await session.execute(stmt)
                 
                 await session.commit()
@@ -594,6 +585,43 @@ class EnhancedKLineService:
             logger.info(f"資料清理: {original_count} -> {cleaned_count} 筆")
         
         return df
+
+    def _clip_to_date_range(self, df: pd.DataFrame, start_date: date, end_date: date) -> pd.DataFrame:
+        """確保輸出資料嚴格落在請求區間內"""
+        if df.empty or "date" not in df.columns:
+            return df
+
+        clipped = df.copy()
+        clipped["date"] = pd.to_datetime(clipped["date"]).dt.date
+        clipped = clipped[(clipped["date"] >= start_date) & (clipped["date"] <= end_date)]
+        return clipped.sort_values("date").reset_index(drop=True)
+
+    def _get_missing_ranges(
+        self,
+        df: pd.DataFrame,
+        start_date: date,
+        end_date: date
+    ) -> List[Tuple[date, date]]:
+        """
+        判斷快取缺口（僅補邊界缺口，避免回傳缺去年資料）
+        """
+        if df.empty or "date" not in df.columns:
+            return [(start_date, end_date)]
+
+        parsed = pd.to_datetime(df["date"], errors="coerce").dropna()
+        if parsed.empty:
+            return [(start_date, end_date)]
+
+        min_cached = parsed.min().date()
+        max_cached = parsed.max().date()
+        missing: List[Tuple[date, date]] = []
+
+        if min_cached > start_date:
+            missing.append((start_date, min_cached - timedelta(days=1)))
+        if max_cached < end_date:
+            missing.append((max_cached + timedelta(days=1), end_date))
+
+        return [(s, e) for s, e in missing if s <= e]
     
     def _calculate_all_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """計算所有技術指標"""

@@ -2,8 +2,104 @@
 Validators - 輸入資料驗證工具
 """
 import re
+import calendar
 from typing import Tuple, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
+
+
+def _format_iso_date(year: int, month: int, day: int) -> str:
+    return f"{year:04d}-{month:02d}-{day:02d}"
+
+
+def _normalize_ymd(year: int, month: int, day: int) -> Optional[str]:
+    if month < 1 or month > 12:
+        return None
+    if year < 1:
+        return None
+
+    last_day = calendar.monthrange(year, month)[1]
+    clamped_day = min(max(day, 1), last_day)
+    return _format_iso_date(year, month, clamped_day)
+
+
+def normalize_date_input(date_str: Optional[str]) -> Optional[str]:
+    """
+    正規化日期輸入，支援:
+    - YYYY-MM-DD
+    - YYYY/MM/DD
+    - YYYYMMDD
+    - 民國年 (如 114/11/01)
+    - 民國年緊湊格式 (如 1141101)
+    - MM/DD (以今年補年)
+    - MMDD (以今年補年)
+    - 今天/昨天/前天 (today/yesterday)
+
+    回傳標準格式 YYYY-MM-DD；若無法解析則回傳原字串（交由 validate_date 回報錯誤）
+    """
+    if date_str is None:
+        return None
+    if not isinstance(date_str, str):
+        return date_str
+
+    cleaned = date_str.strip()
+    if not cleaned:
+        return cleaned
+
+    lowered = cleaned.lower()
+    from utils.date_utils import get_taiwan_today
+
+    today = get_taiwan_today()
+    if lowered in {"今天", "今日", "today", "now"}:
+        return today.strftime("%Y-%m-%d")
+    if lowered in {"昨天", "昨日", "yesterday"}:
+        return (today - timedelta(days=1)).strftime("%Y-%m-%d")
+    if lowered in {"前天"}:
+        return (today - timedelta(days=2)).strftime("%Y-%m-%d")
+
+    cleaned = cleaned.replace("/", "-")
+
+    ymd = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})$", cleaned)
+    if ymd:
+        normalized = _normalize_ymd(int(ymd.group(1)), int(ymd.group(2)), int(ymd.group(3)))
+        return normalized or cleaned
+
+    roc = re.match(r"^(\d{2,3})-(\d{1,2})-(\d{1,2})$", cleaned)
+    if roc:
+        normalized = _normalize_ymd(int(roc.group(1)) + 1911, int(roc.group(2)), int(roc.group(3)))
+        return normalized or cleaned
+
+    yyyymmdd = re.match(r"^(\d{4})(\d{2})(\d{2})$", cleaned)
+    if yyyymmdd:
+        normalized = _normalize_ymd(int(yyyymmdd.group(1)), int(yyyymmdd.group(2)), int(yyyymmdd.group(3)))
+        return normalized or cleaned
+
+    roc_compact = re.match(r"^(\d{3})(\d{2})(\d{2})$", cleaned)
+    if roc_compact:
+        normalized = _normalize_ymd(
+            int(roc_compact.group(1)) + 1911,
+            int(roc_compact.group(2)),
+            int(roc_compact.group(3)),
+        )
+        return normalized or cleaned
+
+    short = re.match(r"^(\d{1,2})-(\d{1,2})$", cleaned)
+    if short:
+        normalized = _normalize_ymd(today.year, int(short.group(1)), int(short.group(2)))
+        return normalized or cleaned
+
+    compact = re.match(r"^(\d{3,4})$", cleaned)
+    if compact:
+        text = compact.group(1)
+        if len(text) == 3:
+            month = int(text[:1])
+            day = int(text[1:])
+        else:
+            month = int(text[:2])
+            day = int(text[2:])
+        normalized = _normalize_ymd(today.year, month, day)
+        return normalized or cleaned
+
+    return cleaned
 
 
 def validate_date(date_str: Optional[str]) -> Tuple[bool, Optional[str]]:
@@ -56,7 +152,8 @@ def validate_symbol(symbol: str) -> Tuple[bool, Optional[str]]:
 
 def validate_date_range(
     start_date: Optional[str],
-    end_date: Optional[str]
+    end_date: Optional[str],
+    max_days: Optional[int] = None
 ) -> Tuple[bool, Optional[str]]:
     """
     驗證日期範圍
@@ -80,6 +177,11 @@ def validate_date_range(
         
         if start_dt > end_dt:
             return False, "起始日期不能晚於結束日期"
+
+        if max_days is not None and max_days > 0:
+            span_days = (end_dt - start_dt).days + 1
+            if span_days > max_days:
+                return False, f"日期區間不可超過 {max_days} 天"
     
     return True, None
 

@@ -1,7 +1,6 @@
 """
 Combo Filter Mixin - 複合篩選器
 """
-import asyncio
 from typing import Optional, Dict, Any
 import logging
 
@@ -35,6 +34,23 @@ class ComboFilterMixin:
 
         dates = await self._get_date_range(start_date, end_date)
         all_items = []
+        history_cache: Dict[str, Any] = {}
+        history_fetch_end_date = dates[-1] if dates else end_date
+
+        async def _get_history(symbol: str, query_date: str):
+            history_df = history_cache.get(symbol)
+            if history_df is None:
+                history_df = await self._fetch_yahoo_history_for_ma(symbol, history_fetch_end_date)
+                history_cache[symbol] = history_df
+
+            if history_df.empty:
+                return history_df
+
+            scoped = history_df
+            if "date" in scoped.columns:
+                scoped = scoped[scoped["date"] <= query_date]
+                scoped = scoped.sort_values("date", ascending=False)
+            return scoped
 
         for date in dates:
             top200_result = await self.get_top20_turnover(date)
@@ -54,6 +70,13 @@ class ComboFilterMixin:
                 turnover_rate = stock.get("turnover_rate", 0) or 0
                 change_pct = stock.get("change_percent", 0) or 0
                 today_volume = stock.get("volume", 0) or 0
+                needs_history = (
+                    volume_ratio is not None
+                    or is_5day_high is True
+                    or is_5day_low is True
+                    or is_ma20_uptrend is True
+                )
+                history_df = None
 
                 # 條件1: 周轉率區間
                 if turnover_min is not None and turnover_rate < turnover_min:
@@ -77,15 +100,23 @@ class ComboFilterMixin:
                     stock["foreign_buy"] = inst_info.get("foreign_buy", 0)
                     stock["trust_buy"] = inst_info.get("trust_buy", 0)
 
+                if needs_history:
+                    try:
+                        history_df = await _get_history(symbol, date)
+                    except Exception as e:
+                        logger.debug(f"Error loading history for {symbol}: {e}")
+                        continue
+                    if history_df is None or history_df.empty:
+                        continue
+
                 # 條件4: 成交量倍數
                 if volume_ratio is not None and today_volume > 0:
                     try:
-                        history_df = await self._fetch_yahoo_history_for_ma(symbol)
-                        if history_df.empty or len(history_df) < 2:
+                        if len(history_df) < 2:
                             continue
 
                         if "volume" in history_df.columns:
-                            volumes = history_df["volume"].tolist()[:5]
+                            volumes = history_df["volume"].dropna().tolist()[:5]
                             if len(volumes) >= 2 and volumes[1] is not None:
                                 yesterday_volume = volumes[1] / 1000
                                 if yesterday_volume > 0:
@@ -106,8 +137,7 @@ class ComboFilterMixin:
                 # 條件5: 五日創新高
                 if is_5day_high is True:
                     try:
-                        history_df = await self._fetch_yahoo_history_for_ma(symbol)
-                        if history_df.empty or len(history_df) < 6:
+                        if len(history_df) < 6:
                             continue
                         closes = history_df["close"].tolist()[:6]
                         today_close = closes[0] if closes[0] is not None else 0
@@ -122,8 +152,7 @@ class ComboFilterMixin:
                 # 條件6: 五日創新低
                 if is_5day_low is True:
                     try:
-                        history_df = await self._fetch_yahoo_history_for_ma(symbol)
-                        if history_df.empty or len(history_df) < 6:
+                        if len(history_df) < 6:
                             continue
                         closes = history_df["close"].tolist()[:6]
                         today_close = closes[0] if closes[0] is not None else float('inf')
@@ -138,8 +167,7 @@ class ComboFilterMixin:
                 # 條件7: 股價>=MA20 且 MA20向上
                 if is_ma20_uptrend is True:
                     try:
-                        history_df = await self._fetch_yahoo_history_for_ma(symbol)
-                        if history_df.empty or len(history_df) < 21:
+                        if len(history_df) < 21:
                             continue
                         closes = history_df["close"].tolist()[:25]
                         if len(closes) < 21:

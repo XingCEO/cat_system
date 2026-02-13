@@ -2,10 +2,11 @@
  * 均線策略篩選頁面
  * 提供 4 種均線策略篩選：極強勢多頭、穩健多頭、波段支撐、均線糾結突破
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
     Table,
@@ -22,12 +23,15 @@ import {
     Target,
     Loader2,
     RefreshCw,
+    Search,
     ArrowUp,
     ArrowDown,
     LineChart,
 } from 'lucide-react';
 import axios from 'axios';
 import { StockAnalysisDialog } from '@/components/StockAnalysisDialog';
+import { normalizeFlexibleDateInput } from '@/utils/date';
+import { getTradingDate } from '@/services/api';
 
 interface StrategyStock {
     symbol: string;
@@ -96,7 +100,45 @@ const strategies = [
 export default function MaStrategyPage() {
     const [activeStrategy, setActiveStrategy] = useState('extreme');
     const [selectedStock, setSelectedStock] = useState<{ symbol: string; name: string } | null>(null);
-    const [queryDate, setQueryDate] = useState<string>(''); // Default to empty (today)
+    const [queryDate, setQueryDate] = useState<string>('');
+    const [dateInput, setDateInput] = useState<string>('');
+    const [dateError, setDateError] = useState<string>('');
+    const [dateNotice, setDateNotice] = useState<string>('');
+    const [hasInitializedDate, setHasInitializedDate] = useState(false);
+
+    const { data: tradingDateData } = useQuery({
+        queryKey: ['tradingDate'],
+        queryFn: getTradingDate,
+    });
+
+    useEffect(() => {
+        if (tradingDateData?.latest_trading_day && !hasInitializedDate) {
+            const initialDate = queryDate || tradingDateData.latest_trading_day;
+            setQueryDate(initialDate);
+            setDateInput(initialDate);
+            setHasInitializedDate(true);
+        }
+    }, [tradingDateData, queryDate, hasInitializedDate]);
+
+    const handleSearch = () => {
+        if (!dateInput.trim()) {
+            setDateError('請輸入查詢日期');
+            setDateNotice('');
+            return;
+        }
+
+        const normalized = normalizeFlexibleDateInput(dateInput);
+        if (!normalized.normalized) {
+            setDateError('日期格式錯誤，可輸入：11/1、1101、20251101、1141101、今天、昨天');
+            setDateNotice('');
+            return;
+        }
+
+        setDateError('');
+        setDateNotice(normalized.wasAdjusted ? '無效日已自動校正為該月最後一天' : '');
+        setDateInput(normalized.normalized);
+        setQueryDate(normalized.normalized);
+    };
 
     const { data, isLoading, error, refetch, isFetching } = useQuery<StrategyResult>({
         queryKey: ['ma-strategy', activeStrategy, queryDate],
@@ -128,22 +170,28 @@ export default function MaStrategyPage() {
                 <div className="flex items-center gap-2">
                     <div className="flex items-center gap-2 bg-background border rounded-md px-3 py-1">
                         <span className="text-sm text-muted-foreground whitespace-nowrap">查詢日期:</span>
-                        <input
-                            type="date"
-                            className="bg-transparent text-sm focus:outline-none"
-                            value={queryDate}
-                            onChange={(e) => setQueryDate(e.target.value)}
-                            max={(() => {
-                                // 使用台灣時區計算今天日期
-                                const now = new Date();
-                                const taiwanTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
-                                const year = taiwanTime.getFullYear();
-                                const month = String(taiwanTime.getMonth() + 1).padStart(2, '0');
-                                const day = String(taiwanTime.getDate()).padStart(2, '0');
-                                return `${year}-${month}-${day}`;
-                            })()}
+                        <Input
+                            type="text"
+                            className="h-8 border-0 bg-transparent px-0 font-mono text-sm focus-visible:ring-0"
+                            value={dateInput}
+                            onChange={(e) => {
+                                setDateInput(e.target.value);
+                                if (dateError) setDateError('');
+                            }}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSearch();
+                            }}
+                            placeholder="11/1、1101、20251101、今天"
                         />
                     </div>
+                    <Button
+                        size="sm"
+                        onClick={handleSearch}
+                        disabled={isFetching}
+                    >
+                        <Search className="h-4 w-4 mr-2" />
+                        查詢
+                    </Button>
                     <Button
                         variant="outline"
                         size="sm"
@@ -155,6 +203,16 @@ export default function MaStrategyPage() {
                     </Button>
                 </div>
             </div>
+            {(dateError || dateNotice) && (
+                <div className={`text-sm ${dateError ? 'text-red-500' : 'text-amber-500'}`}>
+                    {dateError || dateNotice}
+                </div>
+            )}
+            {!dateError && !dateNotice && (
+                <div className="text-xs text-muted-foreground">
+                    支援快速輸入：11/1、1101、20251101、1141101、今天、昨天、前天
+                </div>
+            )}
 
             {/* 策略選擇 Tabs */}
             <Tabs value={activeStrategy} onValueChange={setActiveStrategy}>

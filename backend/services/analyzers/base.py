@@ -5,11 +5,16 @@ Base Analyzer - Core turnover analysis functionality
 import pandas as pd
 import numpy as np
 from typing import Optional, Dict, List, Any
+from datetime import timedelta
+import hashlib
 import logging
+from sqlalchemy import select, func
 
 from services.data_fetcher import data_fetcher
 from services.cache_manager import cache_manager
 from services.calculator import StockCalculator
+from database import async_session_maker
+from models.turnover import FloatShares, TurnoverRanking
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +91,9 @@ class BaseAnalyzer:
             all_stocks_df = await self._fetch_daily_data(date)
 
             if all_stocks_df.empty:
-                return {"success": False, "error": "無法取得當日股票資料"}
+                result = {"success": False, "error": "無法取得當日股票資料", "query_date": date}
+                cache_manager.set(cache_key, result, "daily")
+                return result
 
             float_shares_map = await self._get_float_shares()
 
@@ -95,7 +102,9 @@ class BaseAnalyzer:
             )
 
             if not stocks_with_turnover:
-                return {"success": False, "error": "無有效周轉率資料"}
+                result = {"success": False, "error": "無有效周轉率資料", "query_date": date}
+                cache_manager.set(cache_key, result, "daily")
+                return result
 
             sorted_stocks = sorted(
                 stocks_with_turnover,
@@ -125,7 +134,9 @@ class BaseAnalyzer:
 
         except Exception as e:
             logger.error(f"Error getting top20 turnover: {e}", exc_info=True)
-            return {"success": False, "error": str(e)}
+            result = {"success": False, "error": str(e), "query_date": date}
+            cache_manager.set(cache_key, result, "daily")
+            return result
 
     async def _fetch_daily_data(self, date: str) -> pd.DataFrame:
         """取得當日所有股票資料，若無則使用即時報價"""
@@ -139,10 +150,8 @@ class BaseAnalyzer:
 
             df = await self.data_fetcher.get_daily_data(date)
 
-            # 強制使用 realtime fallback 的條件：
-            # 1. DataFrame 為空
-            # 2. 或者請求的是今天的資料（不管 TWSE 返回什麼）
-            use_realtime = df.empty or (date == today_str and should_have_today)
+            # 只在查詢今天時才使用 realtime fallback，避免歷史日期請求拖慢
+            use_realtime = (date == today_str) and (df.empty or should_have_today)
 
             if use_realtime:
                 logger.info(f"Using realtime fallback for {date} (df.empty={df.empty}, is_today={date == today_str})")
@@ -168,13 +177,18 @@ class BaseAnalyzer:
 
             stock_list = await self.data_fetcher.get_stock_list()
             if not stock_list.empty:
+                if "stock_id" not in df.columns and "symbol" in df.columns:
+                    df = df.rename(columns={"symbol": "stock_id"})
                 if "stock_name" in df.columns:
                     df = df.drop(columns=["stock_name"])
-                df = df.merge(
-                    stock_list[["stock_id", "stock_name", "industry_category"]],
-                    on="stock_id",
-                    how="left"
-                )
+                if "stock_id" in df.columns:
+                    df = df.merge(
+                        stock_list[["stock_id", "stock_name", "industry_category"]],
+                        on="stock_id",
+                        how="left"
+                    )
+                else:
+                    logger.warning("Daily data missing stock_id/symbol columns; skipping stock list merge")
 
             return df
 
@@ -202,6 +216,7 @@ class BaseAnalyzer:
             logger.info(f"Found {len(symbols)} symbols for realtime fetch")
 
             # Batch fetch realtime quotes (use service's internal batching)
+            all_quotes = []
             try:
                 # Limit to 1500 symbols max
                 target_symbols = symbols[:1500]
@@ -264,39 +279,170 @@ class BaseAnalyzer:
             logger.error(f"Error fetching realtime as daily: {e}")
             return pd.DataFrame()
 
+    async def _prefetch_history_from_kline_cache(
+        self,
+        symbols: List[str],
+        end_date: str,
+        lookback_days: int = 260,
+    ) -> Dict[str, pd.DataFrame]:
+        """批次從本地 kline_cache 載入多檔歷史資料，降低逐檔抓取延遲。"""
+        try:
+            from utils.date_utils import parse_date, format_date
+            from models.kline_cache import KLineCache
+
+            normalized_symbols = sorted({
+                str(symbol).strip()
+                for symbol in symbols
+                if symbol and str(symbol).strip()
+            })
+            if not normalized_symbols:
+                return {}
+
+            query_day = parse_date(end_date)
+            if query_day is None:
+                return {}
+
+            normalized_end = format_date(query_day)
+            symbol_digest = hashlib.sha1(",".join(normalized_symbols).encode("utf-8")).hexdigest()[:16]
+            cache_key = f"kline_batch_{normalized_end}_{lookback_days}_{symbol_digest}"
+            cached = cache_manager.get(cache_key, "historical")
+            if cached is not None:
+                return {
+                    symbol: pd.DataFrame(rows)
+                    for symbol, rows in cached.items()
+                }
+
+            start_day = query_day - timedelta(days=lookback_days)
+            async with async_session_maker() as session:
+                stmt = select(
+                    KLineCache.symbol.label("symbol"),
+                    KLineCache.date.label("date"),
+                    KLineCache.open.label("open"),
+                    KLineCache.high.label("high"),
+                    KLineCache.low.label("low"),
+                    KLineCache.close.label("close"),
+                    KLineCache.volume.label("volume"),
+                    KLineCache.ma5.label("ma5"),
+                    KLineCache.ma10.label("ma10"),
+                    KLineCache.ma20.label("ma20"),
+                    KLineCache.ma60.label("ma60"),
+                ).where(
+                    KLineCache.symbol.in_(normalized_symbols),
+                    KLineCache.date >= start_day,
+                    KLineCache.date <= query_day,
+                    KLineCache.is_valid == 1,
+                ).order_by(KLineCache.symbol, KLineCache.date.desc())
+
+                rows = (await session.execute(stmt)).mappings().all()
+
+            if not rows:
+                return {}
+
+            df = pd.DataFrame(rows)
+            if df.empty:
+                return {}
+
+            df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
+            history_map: Dict[str, pd.DataFrame] = {}
+            cache_payload: Dict[str, List[Dict[str, Any]]] = {}
+
+            for symbol, symbol_df in df.groupby("symbol", sort=False):
+                sorted_df = symbol_df.sort_values("date", ascending=False).reset_index(drop=True)
+                history_map[str(symbol)] = sorted_df
+                cache_payload[str(symbol)] = sorted_df.to_dict("records")
+
+            cache_manager.set(cache_key, cache_payload, "historical")
+            return history_map
+
+        except Exception as e:
+            logger.debug(f"Batch kline prefetch failed: {e}")
+            return {}
+
     async def _get_float_shares(self) -> Dict[str, float]:
         """取得各股票流通股數"""
         cache_key = "float_shares_map"
-        cached = cache_manager.get(cache_key, "stock_info")
+        cached = cache_manager.get(cache_key, "industry")
         if cached is not None:
             return cached
 
         try:
             stock_list = await data_fetcher.get_stock_list()
 
-            if stock_list.empty:
-                logger.warning("Stock list is empty, using fallback float shares")
-                return {}
-
             float_shares_map = {}
-            for _, row in stock_list.iterrows():
-                symbol = row.get("stock_id", "")
-                shares = row.get("float_shares", 0)
-                if symbol and shares > 0:
-                    float_shares_map[symbol] = shares
+            if not stock_list.empty:
+                for _, row in stock_list.iterrows():
+                    symbol = row.get("stock_id", "")
+                    shares = row.get("float_shares", 0)
+                    if symbol and shares > 0:
+                        float_shares_map[symbol] = shares
 
             if float_shares_map:
                 logger.info(f"Loaded float shares for {len(float_shares_map)} stocks")
-                cache_manager.set(cache_key, float_shares_map, "stock_info")
-            else:
-                logger.warning("No float shares data, using fallback")
-                return {}
+                cache_manager.set(cache_key, float_shares_map, "industry")
+                return float_shares_map
 
-            return float_shares_map
+            db_fallback = await self._load_float_shares_from_db()
+            if db_fallback:
+                logger.info(f"Loaded float shares fallback from DB for {len(db_fallback)} stocks")
+                cache_manager.set(cache_key, db_fallback, "industry")
+                return db_fallback
+
+            logger.warning("No float shares data available, using empty fallback")
+            cache_manager.set(cache_key, {}, "industry")
+            return {}
 
         except Exception as e:
             logger.error(f"Error getting float shares: {e}")
+            cache_manager.set(cache_key, {}, "industry")
             return {}
+
+    async def _load_float_shares_from_db(self) -> Dict[str, float]:
+        """從本地資料庫回退流通股數，提升外部 API 不穩定時可用性。"""
+        try:
+            async with async_session_maker() as session:
+                direct_stmt = select(FloatShares.symbol, FloatShares.float_shares).where(
+                    FloatShares.float_shares.is_not(None),
+                    FloatShares.float_shares > 0,
+                )
+                direct_rows = (await session.execute(direct_stmt)).all()
+                if direct_rows:
+                    return {
+                        str(symbol): float(shares)
+                        for symbol, shares in direct_rows
+                        if symbol and shares and shares > 0
+                    }
+
+                latest_dates_subquery = (
+                    select(
+                        TurnoverRanking.symbol.label("symbol"),
+                        func.max(TurnoverRanking.date).label("max_date"),
+                    )
+                    .group_by(TurnoverRanking.symbol)
+                    .subquery()
+                )
+                ranking_stmt = (
+                    select(TurnoverRanking.symbol, TurnoverRanking.float_shares)
+                    .join(
+                        latest_dates_subquery,
+                        (TurnoverRanking.symbol == latest_dates_subquery.c.symbol)
+                        & (TurnoverRanking.date == latest_dates_subquery.c.max_date),
+                    )
+                    .where(
+                        TurnoverRanking.float_shares.is_not(None),
+                        TurnoverRanking.float_shares > 0,
+                    )
+                )
+                ranking_rows = (await session.execute(ranking_stmt)).all()
+                if ranking_rows:
+                    return {
+                        str(symbol): float(shares)
+                        for symbol, shares in ranking_rows
+                        if symbol and shares and shares > 0
+                    }
+        except Exception as e:
+            logger.debug(f"Load float shares from DB failed: {e}")
+
+        return {}
 
     def _calculate_turnover_rates(
         self,

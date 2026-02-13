@@ -11,7 +11,7 @@ from schemas.common import APIResponse
 from services.stock_filter import stock_filter
 from services.data_fetcher import data_fetcher
 from services.calculator import calculator
-from utils.validators import validate_date, validate_symbol
+from utils.validators import validate_date, validate_symbol, normalize_date_input
 from utils.date_utils import get_previous_trading_day, format_date
 
 router = APIRouter(prefix="/api/stocks", tags=["stocks"])
@@ -85,6 +85,13 @@ async def filter_stocks(
     - 股價 >= 10 元
     - 排除 ETF 和特別股
     """
+    # Normalize + validate date input (supports YYYY/MM/DD)
+    if date:
+        date = normalize_date_input(date)
+        valid, error = validate_date(date)
+        if not valid:
+            raise HTTPException(status_code=400, detail=error)
+
     # Parse industries from comma-separated string
     industry_list = industries.split(",") if industries else None
     
@@ -207,7 +214,10 @@ async def get_stock_detail(symbol: str):
         # Calculate prev_close and metrics
         if "spread" in row:
             result["prev_close"] = row["close"] - row["spread"]
-            result["change_percent"] = round(row["spread"] / result["prev_close"] * 100, 2)
+            if result["prev_close"] and result["prev_close"] != 0:
+                result["change_percent"] = round(row["spread"] / result["prev_close"] * 100, 2)
+            else:
+                result["change_percent"] = 0.0
         
         # Enrich with calculations
         if not hist_df.empty:
@@ -236,6 +246,17 @@ async def get_stock_history(
     valid, error = validate_symbol(symbol)
     if not valid:
         raise HTTPException(status_code=400, detail=error)
+
+    if start_date:
+        start_date = normalize_date_input(start_date)
+        ok, err = validate_date(start_date)
+        if not ok:
+            raise HTTPException(status_code=400, detail=f"start_date: {err}")
+    if end_date:
+        end_date = normalize_date_input(end_date)
+        ok, err = validate_date(end_date)
+        if not ok:
+            raise HTTPException(status_code=400, detail=f"end_date: {err}")
     
     try:
         from datetime import datetime, timedelta

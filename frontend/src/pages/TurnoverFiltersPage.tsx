@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { StockAnalysisDialog } from '@/components/StockAnalysisDialog';
 import { formatPercent, formatNumber, formatPrice, getChangeColor } from '@/utils/format';
+import { normalizeFlexibleDateInput } from '@/utils/date';
 import {
     getTop200LimitUp,
     getTop200ChangeRange,
@@ -49,6 +50,41 @@ interface TurnoverStock {
     foreign_buy?: number;
     trust_buy?: number;
     query_date?: string;
+}
+
+interface TurnoverFilterQueryParams {
+    startDate: string;
+    endDate: string;
+    activeFilter: FilterType;
+    changeMin?: number;
+    changeMax?: number;
+    maChangeMin?: number;
+    maChangeMax?: number;
+    volumeRatio: number;
+    minBuyDays: number;
+    comboTurnoverMin?: number;
+    comboTurnoverMax?: number;
+    comboChangeMin?: number;
+    comboChangeMax?: number;
+    comboMinBuyDays?: number;
+    comboVolumeRatio?: number;
+    combo5dayHigh?: boolean;
+    combo5dayLow?: boolean;
+    comboMa20Uptrend?: boolean;
+}
+
+function parseOptionalNumber(value: string): number | undefined {
+    const text = value.trim();
+    if (!text) return undefined;
+    const parsed = Number(text);
+    return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseOptionalInteger(value: string): number | undefined {
+    const text = value.trim();
+    if (!text) return undefined;
+    const parsed = Number.parseInt(text, 10);
+    return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 const FILTER_CONFIG: Record<FilterType, {
@@ -148,9 +184,10 @@ export function TurnoverFiltersPage() {
     const [comboMa20Uptrend, setComboMa20Uptrend] = useState<boolean>(false);
     const [selectedStock, setSelectedStock] = useState<{ symbol: string; name?: string } | null>(null);
     const [isChartDialogOpen, setIsChartDialogOpen] = useState(false);
-
-    // 用於觸發查詢的 key
-    const [queryKey, setQueryKey] = useState(0);
+    const [dateError, setDateError] = useState<string>('');
+    const [dateNotice, setDateNotice] = useState<string>('');
+    const [hasInitializedDates, setHasInitializedDates] = useState(false);
+    const [queryParams, setQueryParams] = useState<TurnoverFilterQueryParams | null>(null);
 
     // 取得最新交易日
     const { data: tradingDateData } = useQuery({
@@ -158,85 +195,176 @@ export function TurnoverFiltersPage() {
         queryFn: getTradingDate,
     });
 
-    // 初始化日期
+    // 初始化日期（僅執行一次，避免後續手動調整被覆蓋）
     useEffect(() => {
-        if (tradingDateData?.latest_trading_day) {
-            if (!startDate) setStartDate(tradingDateData.latest_trading_day);
-            if (!endDate) setEndDate(tradingDateData.latest_trading_day);
+        if (tradingDateData?.latest_trading_day && !hasInitializedDates) {
+            const initialStartDate = startDate || tradingDateData.latest_trading_day;
+            const initialEndDate = endDate || tradingDateData.latest_trading_day;
+
+            setStartDate(initialStartDate);
+            setEndDate(initialEndDate);
+            if (!queryParams) {
+                setQueryParams({
+                    startDate: initialStartDate,
+                    endDate: initialEndDate,
+                    activeFilter,
+                    volumeRatio: 1.5,
+                    minBuyDays: 3,
+                });
+            }
+            setHasInitializedDates(true);
         }
-    }, [tradingDateData, startDate, endDate]);
+    }, [tradingDateData, startDate, endDate, queryParams, activeFilter, hasInitializedDates]);
+
+    // 切換篩選器時，沿用最近一次查詢條件
+    useEffect(() => {
+        if (!queryParams || queryParams.activeFilter === activeFilter) {
+            return;
+        }
+        setQueryParams((prev) => {
+            if (!prev) return prev;
+            return { ...prev, activeFilter };
+        });
+    }, [activeFilter, queryParams]);
 
     // 手動觸發查詢
     const handleSearch = () => {
-        setQueryKey(prev => prev + 1);
+        if (!startDate.trim() || !endDate.trim()) {
+            setDateError('請輸入開始與結束日期');
+            setDateNotice('');
+            return;
+        }
+
+        const normalizedStart = normalizeFlexibleDateInput(startDate);
+        const normalizedEnd = normalizeFlexibleDateInput(endDate);
+        if (!normalizedStart.normalized || !normalizedEnd.normalized) {
+            setDateError('日期格式錯誤，可輸入：11/1、1101、20251101、1141101、今天、昨天');
+            setDateNotice('');
+            return;
+        }
+
+        let start = normalizedStart.normalized;
+        let end = normalizedEnd.normalized;
+        const notices: string[] = [];
+        if (normalizedStart.wasAdjusted || normalizedEnd.wasAdjusted) {
+            notices.push('無效日已自動校正為該月最後一天');
+        }
+        if (start > end) {
+            [start, end] = [end, start];
+            notices.push('起訖日期已自動交換');
+        }
+
+        setDateError('');
+        setDateNotice(notices.join('；'));
+        setStartDate(start);
+        setEndDate(end);
+
+        setQueryParams({
+            startDate: start,
+            endDate: end,
+            activeFilter,
+            changeMin: parseOptionalNumber(changeMin),
+            changeMax: parseOptionalNumber(changeMax),
+            maChangeMin: parseOptionalNumber(maChangeMin),
+            maChangeMax: parseOptionalNumber(maChangeMax),
+            volumeRatio: parseOptionalNumber(volumeRatio) ?? 1.5,
+            minBuyDays: parseOptionalInteger(minBuyDays) ?? 3,
+            comboTurnoverMin: parseOptionalNumber(comboTurnoverMin),
+            comboTurnoverMax: parseOptionalNumber(comboTurnoverMax),
+            comboChangeMin: parseOptionalNumber(comboChangeMin),
+            comboChangeMax: parseOptionalNumber(comboChangeMax),
+            comboMinBuyDays: parseOptionalInteger(comboMinBuyDays),
+            comboVolumeRatio: parseOptionalNumber(comboVolumeRatio),
+            combo5dayHigh: combo5dayHigh ? true : undefined,
+            combo5dayLow: combo5dayLow ? true : undefined,
+            comboMa20Uptrend: comboMa20Uptrend ? true : undefined,
+        });
     };
 
     // 週轉率前200名且漲停股
     const { data: limitUpData, isLoading: loadingLimitUp } = useQuery({
-        queryKey: ['top200LimitUp', startDate, endDate, queryKey],
-        queryFn: () => getTop200LimitUp(startDate, endDate),
-        enabled: !!startDate && !!endDate && activeFilter === 'limit_up',
+        queryKey: ['top200LimitUp', queryParams],
+        queryFn: () => getTop200LimitUp(queryParams!.startDate, queryParams!.endDate),
+        enabled: !!queryParams && queryParams.activeFilter === 'limit_up',
     });
 
     // 週轉率前200名且漲幅區間
     const { data: changeRangeData, isLoading: loadingChangeRange } = useQuery({
-        queryKey: ['top200ChangeRange', startDate, endDate, changeMin, changeMax, queryKey],
-        queryFn: () => getTop200ChangeRange(startDate, endDate, changeMin ? parseFloat(changeMin) : undefined, changeMax ? parseFloat(changeMax) : undefined),
-        enabled: !!startDate && !!endDate && activeFilter === 'change_range',
+        queryKey: ['top200ChangeRange', queryParams],
+        queryFn: () => getTop200ChangeRange(
+            queryParams!.startDate,
+            queryParams!.endDate,
+            queryParams!.changeMin,
+            queryParams!.changeMax
+        ),
+        enabled: !!queryParams && queryParams.activeFilter === 'change_range',
     });
 
     // 週轉率前200名且五日創新高
     const { data: fiveDayHighData, isLoading: loadingFiveDayHigh } = useQuery({
-        queryKey: ['top200_5DayHigh', startDate, endDate, queryKey],
-        queryFn: () => getTop200_5DayHigh(startDate, endDate),
-        enabled: !!startDate && !!endDate && activeFilter === '5day_high',
+        queryKey: ['top200_5DayHigh', queryParams],
+        queryFn: () => getTop200_5DayHigh(queryParams!.startDate, queryParams!.endDate),
+        enabled: !!queryParams && queryParams.activeFilter === '5day_high',
     });
 
     // 週轉率前200名且五日創新低
     const { data: fiveDayLowData, isLoading: loadingFiveDayLow } = useQuery({
-        queryKey: ['top200_5DayLow', startDate, endDate, queryKey],
-        queryFn: () => getTop200_5DayLow(startDate, endDate),
-        enabled: !!startDate && !!endDate && activeFilter === '5day_low',
+        queryKey: ['top200_5DayLow', queryParams],
+        queryFn: () => getTop200_5DayLow(queryParams!.startDate, queryParams!.endDate),
+        enabled: !!queryParams && queryParams.activeFilter === '5day_low',
     });
 
     // 突破糾結均線
     const { data: maBreakoutData, isLoading: loadingMaBreakout } = useQuery({
-        queryKey: ['maBreakout', startDate, endDate, maChangeMin, maChangeMax, queryKey],
-        queryFn: () => getMaBreakout(startDate, endDate, maChangeMin ? parseFloat(maChangeMin) : undefined, maChangeMax ? parseFloat(maChangeMax) : undefined),
-        enabled: !!startDate && !!endDate && activeFilter === 'ma_breakout',
+        queryKey: ['maBreakout', queryParams],
+        queryFn: () => getMaBreakout(
+            queryParams!.startDate,
+            queryParams!.endDate,
+            queryParams!.maChangeMin,
+            queryParams!.maChangeMax
+        ),
+        enabled: !!queryParams && queryParams.activeFilter === 'ma_breakout',
     });
 
     // 成交量放大
     const { data: volumeSurgeData, isLoading: loadingVolumeSurge } = useQuery({
-        queryKey: ['volumeSurge', startDate, endDate, volumeRatio, queryKey],
-        queryFn: () => getVolumeSurge(startDate, endDate, volumeRatio ? parseFloat(volumeRatio) : 1.5),
-        enabled: !!startDate && !!endDate && activeFilter === 'volume_surge',
+        queryKey: ['volumeSurge', queryParams],
+        queryFn: () => getVolumeSurge(
+            queryParams!.startDate,
+            queryParams!.endDate,
+            queryParams!.volumeRatio
+        ),
+        enabled: !!queryParams && queryParams.activeFilter === 'volume_surge',
     });
 
     // 法人連買
     const { data: institutionalBuyData, isLoading: loadingInstitutionalBuy } = useQuery({
-        queryKey: ['institutionalBuy', startDate, endDate, minBuyDays, queryKey],
-        queryFn: () => getInstitutionalBuy(startDate, endDate, minBuyDays ? parseInt(minBuyDays) : 3),
-        enabled: !!startDate && !!endDate && activeFilter === 'institutional_buy',
+        queryKey: ['institutionalBuy', queryParams],
+        queryFn: () => getInstitutionalBuy(
+            queryParams!.startDate,
+            queryParams!.endDate,
+            queryParams!.minBuyDays
+        ),
+        enabled: !!queryParams && queryParams.activeFilter === 'institutional_buy',
     });
 
     // 複合篩選
     const { data: comboData, isLoading: loadingCombo } = useQuery({
-        queryKey: ['comboFilter', startDate, endDate, comboTurnoverMin, comboTurnoverMax, comboChangeMin, comboChangeMax, comboMinBuyDays, comboVolumeRatio, combo5dayHigh, combo5dayLow, comboMa20Uptrend, queryKey],
+        queryKey: ['comboFilter', queryParams],
         queryFn: () => getComboFilter(
-            startDate,
-            endDate,
-            comboTurnoverMin ? parseFloat(comboTurnoverMin) : undefined,
-            comboTurnoverMax ? parseFloat(comboTurnoverMax) : undefined,
-            comboChangeMin ? parseFloat(comboChangeMin) : undefined,
-            comboChangeMax ? parseFloat(comboChangeMax) : undefined,
-            comboMinBuyDays ? parseInt(comboMinBuyDays) : undefined,
-            comboVolumeRatio ? parseFloat(comboVolumeRatio) : undefined,
-            combo5dayHigh ? true : undefined,
-            combo5dayLow ? true : undefined,
-            comboMa20Uptrend ? true : undefined
+            queryParams!.startDate,
+            queryParams!.endDate,
+            queryParams!.comboTurnoverMin,
+            queryParams!.comboTurnoverMax,
+            queryParams!.comboChangeMin,
+            queryParams!.comboChangeMax,
+            queryParams!.comboMinBuyDays,
+            queryParams!.comboVolumeRatio,
+            queryParams!.combo5dayHigh,
+            queryParams!.combo5dayLow,
+            queryParams!.comboMa20Uptrend
         ),
-        enabled: !!startDate && !!endDate && activeFilter === 'combo',
+        enabled: !!queryParams && queryParams.activeFilter === 'combo',
     });
 
     // 根據 activeFilter 選擇對應的資料
@@ -247,65 +375,83 @@ export function TurnoverFiltersPage() {
                     items: limitUpData?.items || [],
                     count: limitUpData?.limit_up_count || 0,
                     loading: loadingLimitUp,
-                    totalDays: limitUpData?.total_days || 0
+                    totalDays: limitUpData?.total_days || 0,
+                    startDate: limitUpData?.start_date,
+                    endDate: limitUpData?.end_date
                 };
             case 'change_range':
                 return {
                     items: changeRangeData?.items || [],
                     count: changeRangeData?.filtered_count || 0,
                     loading: loadingChangeRange,
-                    totalDays: changeRangeData?.total_days || 0
+                    totalDays: changeRangeData?.total_days || 0,
+                    startDate: changeRangeData?.start_date,
+                    endDate: changeRangeData?.end_date
                 };
             case '5day_high':
                 return {
                     items: fiveDayHighData?.items || [],
                     count: fiveDayHighData?.new_high_count || 0,
                     loading: loadingFiveDayHigh,
-                    totalDays: fiveDayHighData?.total_days || 0
+                    totalDays: fiveDayHighData?.total_days || 0,
+                    startDate: fiveDayHighData?.start_date,
+                    endDate: fiveDayHighData?.end_date
                 };
             case '5day_low':
                 return {
                     items: fiveDayLowData?.items || [],
                     count: fiveDayLowData?.new_low_count || 0,
                     loading: loadingFiveDayLow,
-                    totalDays: fiveDayLowData?.total_days || 0
+                    totalDays: fiveDayLowData?.total_days || 0,
+                    startDate: fiveDayLowData?.start_date,
+                    endDate: fiveDayLowData?.end_date
                 };
             case 'ma_breakout':
                 return {
                     items: maBreakoutData?.items || [],
                     count: maBreakoutData?.breakout_count || 0,
                     loading: loadingMaBreakout,
-                    totalDays: maBreakoutData?.total_days || 0
+                    totalDays: maBreakoutData?.total_days || 0,
+                    startDate: maBreakoutData?.start_date,
+                    endDate: maBreakoutData?.end_date
                 };
             case 'volume_surge':
                 return {
                     items: volumeSurgeData?.items || [],
                     count: volumeSurgeData?.surge_count || 0,
                     loading: loadingVolumeSurge,
-                    totalDays: volumeSurgeData?.total_days || 0
+                    totalDays: volumeSurgeData?.total_days || 0,
+                    startDate: volumeSurgeData?.start_date,
+                    endDate: volumeSurgeData?.end_date
                 };
             case 'institutional_buy':
                 return {
                     items: institutionalBuyData?.items || [],
                     count: institutionalBuyData?.buy_count || 0,
                     loading: loadingInstitutionalBuy,
-                    totalDays: institutionalBuyData?.total_days || 0
+                    totalDays: institutionalBuyData?.total_days || 0,
+                    startDate: institutionalBuyData?.start_date,
+                    endDate: institutionalBuyData?.end_date
                 };
             case 'combo':
                 return {
                     items: comboData?.items || [],
                     count: comboData?.filtered_count || 0,
                     loading: loadingCombo,
-                    totalDays: comboData?.total_days || 0
+                    totalDays: comboData?.total_days || 0,
+                    startDate: comboData?.start_date,
+                    endDate: comboData?.end_date
                 };
             default:
-                return { items: [], count: 0, loading: false, totalDays: 0 };
+                return { items: [], count: 0, loading: false, totalDays: 0, startDate: undefined, endDate: undefined };
         }
     };
 
-    const { items: stocks, count, loading: isLoading, totalDays } = getCurrentData();
+    const { items: stocks, count, loading: isLoading, totalDays, startDate: responseStartDate, endDate: responseEndDate } = getCurrentData();
     const config = FILTER_CONFIG[activeFilter];
-    const isDateRange = startDate !== endDate;
+    const resolvedStartDate = responseStartDate || queryParams?.startDate || startDate;
+    const resolvedEndDate = responseEndDate || queryParams?.endDate || endDate;
+    const isDateRange = resolvedStartDate !== resolvedEndDate;
 
     const openChartDialog = (symbol: string, name?: string) => {
         setSelectedStock({ symbol, name });
@@ -319,9 +465,9 @@ export function TurnoverFiltersPage() {
 
     // 格式化日期顯示
     const formatDateDisplay = () => {
-        if (!startDate) return '-';
-        if (startDate === endDate) return startDate;
-        return `${startDate} ~ ${endDate}`;
+        if (!resolvedStartDate) return '-';
+        if (resolvedStartDate === resolvedEndDate) return resolvedStartDate;
+        return `${resolvedStartDate} ~ ${resolvedEndDate}`;
     };
 
     return (
@@ -371,10 +517,17 @@ export function TurnoverFiltersPage() {
                                 <Calendar className="w-3.5 h-3.5" /> 開始日期
                             </Label>
                             <Input
-                                type="date"
+                                type="text"
                                 value={startDate}
-                                onChange={(e) => setStartDate(e.target.value)}
+                                onChange={(e) => {
+                                    setStartDate(e.target.value);
+                                    if (dateError) setDateError('');
+                                }}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSearch();
+                                }}
                                 className="w-44 font-mono text-sm"
+                                placeholder="11/1、1101、20251101、今天"
                             />
                         </div>
                         <div className="space-y-1.5">
@@ -382,10 +535,17 @@ export function TurnoverFiltersPage() {
                                 <Calendar className="w-3.5 h-3.5" /> 結束日期
                             </Label>
                             <Input
-                                type="date"
+                                type="text"
                                 value={endDate}
-                                onChange={(e) => setEndDate(e.target.value)}
+                                onChange={(e) => {
+                                    setEndDate(e.target.value);
+                                    if (dateError) setDateError('');
+                                }}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSearch();
+                                }}
                                 className="w-44 font-mono text-sm"
+                                placeholder="11/30、1130、20251130、昨天"
                             />
                         </div>
 
@@ -585,6 +745,16 @@ export function TurnoverFiltersPage() {
                             <Search className="w-4 h-4" /> 查詢
                         </Button>
                     </div>
+                    {(dateError || dateNotice) && (
+                        <div className={`mt-3 text-sm ${dateError ? 'text-red-500' : 'text-amber-500'}`}>
+                            {dateError || dateNotice}
+                        </div>
+                    )}
+                    {!dateError && !dateNotice && (
+                        <div className="mt-3 text-xs text-muted-foreground">
+                            支援快速輸入：11/1、1101、20251101、1141101、今天、昨天、前天
+                        </div>
+                    )}
                 </CardContent>
             </Card>
 

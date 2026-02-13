@@ -6,12 +6,13 @@ import type {
 
 const api = axios.create({
     baseURL: '/api',
-    timeout: 120000,  // 增加超時時間至 120 秒（5 年資料需要較長時間）
+    // 預設超時控制在 45 秒，避免網路異常時前端長時間卡住
+    timeout: 45000,
 });
 
 // Retry configuration
-const MAX_RETRIES = 3;
-const RETRY_DELAY = 1000; // Initial delay in ms
+const MAX_RETRIES = 1;
+const RETRY_DELAY = 800;
 
 // Helper to wait
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -21,23 +22,36 @@ api.interceptors.response.use(
     (response) => response,
     async (error) => {
         const config = error.config;
+        if (!config) {
+            const message = error.response?.data?.detail
+                || error.response?.data?.error
+                || error.message
+                || '請求失敗，請稍後再試';
+            return Promise.reject(new Error(message));
+        }
 
         // Check if we should retry
-        if (!config || !config.retryCount) {
+        if (!config.retryCount) {
             config.retryCount = 0;
         }
 
+        const isRetryableNetworkError =
+            !error.response &&
+            error.code !== 'ECONNABORTED' &&
+            error.code !== 'ERR_CANCELED';
+
+        const status = error.response?.status;
+        const isRetryableServerError =
+            status === 429 || (status !== undefined && status >= 500 && status <= 599);
+
         // Retry conditions:
         // 1. Method is GET (idempotent)
-        // 2. Error is Network Error (ECONNABORTED, or no response) or 5xx Server Error
+        // 2. Error is retryable network error (excluding timeout/cancel) or 429/5xx
         // 3. Not exceeded max retries
         const shouldRetry =
             config.method === 'get' &&
             config.retryCount < MAX_RETRIES &&
-            (
-                !error.response || // Network error
-                (error.response.status >= 500 && error.response.status <= 599) // Server error
-            );
+            (isRetryableNetworkError || isRetryableServerError);
 
         if (shouldRetry) {
             config.retryCount += 1;

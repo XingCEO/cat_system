@@ -2,17 +2,49 @@
 Turnover Router - API endpoints for high turnover rate limit-up analysis
 """
 from fastapi import APIRouter, Query, HTTPException
-from typing import Optional, List
+from typing import Optional
 
 from services.high_turnover_analyzer import high_turnover_analyzer
 from services.turnover_tracker import turnover_tracker
+from utils.validators import normalize_date_input, validate_date
 from schemas.turnover import (
     HighTurnoverLimitUpResponse, Top20Response, TurnoverStats,
     TurnoverHistoryResponse, SymbolTurnoverHistoryResponse,
-    HighTurnoverFilterParams, TrackRequest, TrackStatsResponse
+    TrackRequest, TrackStatsResponse
 )
 
 router = APIRouter(prefix="/api/turnover", tags=["高周轉漲停分析"])
+
+
+def _normalize_and_validate_optional_date(date_str: Optional[str], field_name: str) -> Optional[str]:
+    """Normalize date input and validate YYYY-MM-DD."""
+    if date_str is None:
+        return None
+    normalized = normalize_date_input(date_str)
+    ok, err = validate_date(normalized)
+    if not ok:
+        raise HTTPException(status_code=400, detail=f"{field_name}: {err}")
+    return normalized
+
+
+def _normalize_and_validate_date_range(
+    start_date: Optional[str],
+    end_date: Optional[str],
+) -> tuple[Optional[str], Optional[str]]:
+    return (
+        _normalize_and_validate_optional_date(start_date, "start_date"),
+        _normalize_and_validate_optional_date(end_date, "end_date"),
+    )
+
+
+def _normalize_required_date_range(
+    start_date: str,
+    end_date: str,
+) -> tuple[str, str]:
+    normalized_start, normalized_end = _normalize_and_validate_date_range(start_date, end_date)
+    if normalized_start is None or normalized_end is None:
+        raise HTTPException(status_code=400, detail="start_date 與 end_date 不可為空")
+    return normalized_start, normalized_end
 
 
 @router.get("/limit-up", response_model=HighTurnoverLimitUpResponse)
@@ -55,7 +87,8 @@ async def get_high_turnover_limit_up(
         filters["volume_min"] = volume_min
     if preset:
         filters["preset"] = preset
-    
+
+    date = _normalize_and_validate_optional_date(date, "date")
     result = await high_turnover_analyzer.get_high_turnover_limit_up(
         date=date,
         filters=filters if filters else None
@@ -81,6 +114,7 @@ async def get_limit_up_stats(
     - 平均周轉率
     - 總成交金額
     """
+    date = _normalize_and_validate_optional_date(date, "date")
     result = await high_turnover_analyzer.get_high_turnover_limit_up(date=date)
     
     if not result.get("success"):
@@ -98,6 +132,7 @@ async def get_top20_turnover(
     
     顯示所有前20名股票，並標註哪些有漲停
     """
+    date = _normalize_and_validate_optional_date(date, "date")
     result = await high_turnover_analyzer.get_top20_turnover(date=date)
     
     if not result.get("success"):
@@ -184,6 +219,7 @@ async def get_track_stats(
     - 隔日平均漲跌幅
     - 7日後平均報酬
     """
+    start_date, end_date = _normalize_and_validate_date_range(start_date, end_date)
     result = await turnover_tracker.get_track_stats(
         start_date=start_date,
         end_date=end_date
@@ -219,6 +255,7 @@ async def get_strong_retail(date: Optional[str] = Query(None)):
     超強游資股
     周轉率>20% + 漲停 + 開板<=1次
     """
+    date = _normalize_and_validate_optional_date(date, "date")
     return await high_turnover_analyzer.get_high_turnover_limit_up(
         date=date,
         filters={"preset": "strong_retail"}
@@ -231,6 +268,7 @@ async def get_demon_stocks(date: Optional[str] = Query(None)):
     妖股候選
     周轉率前20 + 連續漲停>=2天
     """
+    date = _normalize_and_validate_optional_date(date, "date")
     return await high_turnover_analyzer.get_high_turnover_limit_up(
         date=date,
         filters={"preset": "demon"}
@@ -243,6 +281,7 @@ async def get_big_player(date: Optional[str] = Query(None)):
     大戶進場
     周轉率>15% + 封單>5000張
     """
+    date = _normalize_and_validate_optional_date(date, "date")
     return await high_turnover_analyzer.get_high_turnover_limit_up(
         date=date,
         filters={"preset": "big_player"}
@@ -255,6 +294,7 @@ async def get_low_price_stocks(date: Optional[str] = Query(None)):
     低價飆股
     周轉率前20 + 漲停 + 股價<30元
     """
+    date = _normalize_and_validate_optional_date(date, "date")
     return await high_turnover_analyzer.get_high_turnover_limit_up(
         date=date,
         filters={"preset": "low_price"}
@@ -275,6 +315,7 @@ async def get_top20_limit_up(
     - 完整前20名清單
     - 詳細統計數據
     """
+    date = _normalize_and_validate_optional_date(date, "date")
     result = await high_turnover_analyzer.get_top20_limit_up_enhanced(date=date)
     
     if not result.get("success"):
@@ -296,6 +337,7 @@ async def get_top20_limit_up_batch(
     - 各日期符合條件的股票
     - 重複出現的股票統計
     """
+    start_date, end_date = _normalize_required_date_range(start_date, end_date)
     result = await high_turnover_analyzer.get_top20_limit_up_batch(
         start_date=start_date,
         end_date=end_date,
@@ -318,6 +360,7 @@ async def get_top200_limit_up(
     """
     週轉率前200名且漲停股（支援日期區間）
     """
+    start_date, end_date = _normalize_and_validate_date_range(start_date, end_date)
     result = await high_turnover_analyzer.get_top200_limit_up_range(
         start_date=start_date,
         end_date=end_date
@@ -341,6 +384,7 @@ async def get_top200_change_range(
 
     範例：change_min=1&change_max=3 取得漲幅1%~3%的股票
     """
+    start_date, end_date = _normalize_and_validate_date_range(start_date, end_date)
     result = await high_turnover_analyzer.get_top200_change_range_batch(
         start_date=start_date,
         end_date=end_date,
@@ -362,6 +406,7 @@ async def get_top200_5day_high(
     """
     週轉率前200名且收盤價五日內創新高（支援日期區間）
     """
+    start_date, end_date = _normalize_and_validate_date_range(start_date, end_date)
     result = await high_turnover_analyzer.get_top200_5day_high_range(
         start_date=start_date,
         end_date=end_date
@@ -381,6 +426,7 @@ async def get_top200_5day_low(
     """
     週轉率前200名且收盤價五日內創新低（支援日期區間）
     """
+    start_date, end_date = _normalize_and_validate_date_range(start_date, end_date)
     result = await high_turnover_analyzer.get_top200_5day_low_range(
         start_date=start_date,
         end_date=end_date
@@ -405,6 +451,8 @@ async def get_ma_breakout(
     糾結均線定義：5日、10日、20日均線在3%範圍內糾結，今日收盤突破
     範例：min_change=1&max_change=5 取得漲幅1%~5%的突破股
     """
+    start_date, end_date = _normalize_and_validate_date_range(start_date, end_date)
+
     result = await high_turnover_analyzer.get_ma_breakout_range(
         start_date=start_date,
         end_date=end_date,
@@ -429,8 +477,10 @@ async def get_volume_surge(
 
     範例：volume_ratio=1.5 取得成交量>=昨日1.5倍的股票
     """
-    result = await high_turnover_analyzer.get_volume_surge(
-        date=start_date,
+    start_date, end_date = _normalize_and_validate_date_range(start_date, end_date)
+    result = await high_turnover_analyzer.get_volume_surge_range(
+        start_date=start_date,
+        end_date=end_date,
         volume_ratio=volume_ratio
     )
 
@@ -451,8 +501,10 @@ async def get_institutional_buy(
 
     範例：min_days=3 取得法人連續買超3天以上的股票
     """
-    result = await high_turnover_analyzer.get_institutional_buy(
-        date=start_date,
+    start_date, end_date = _normalize_and_validate_date_range(start_date, end_date)
+    result = await high_turnover_analyzer.get_institutional_buy_range(
+        start_date=start_date,
+        end_date=end_date,
         min_consecutive_days=min_days
     )
 
@@ -475,6 +527,7 @@ async def get_above_ma20_uptrend(
 
     從週轉率前200名中篩選
     """
+    date = _normalize_and_validate_optional_date(date, "date")
     result = await high_turnover_analyzer.get_above_ma20_uptrend(date=date)
 
     if not result.get("success"):
@@ -503,6 +556,7 @@ async def get_combo_filter(
     範例：turnover_min=1&turnover_max=3&min_buy_days=3&volume_ratio=1.5&is_5day_high=true
     取得週轉率1~3%、法人連買3日、成交量>昨日1.5倍、五日創新高的股票
     """
+    start_date, end_date = _normalize_and_validate_date_range(start_date, end_date)
     result = await high_turnover_analyzer.get_combo_filter(
         start_date=start_date,
         end_date=end_date,
@@ -539,6 +593,7 @@ async def get_ma_strategy(
     - support: 波段支撐 (多頭排列 + 均線向上 + Close > MA60)
     - tangled: 均線糾結突破 (均線間距 < 1% + Close > max(MA))
     """
+    date = _normalize_and_validate_optional_date(date, "date")
     result = await high_turnover_analyzer.get_ma_strategy(strategy, date)
 
     if not result.get("success"):
@@ -560,6 +615,7 @@ async def get_all_ma_strategies(
     - support: 波段支撐
     - tangled: 均線糾結突破
     """
+    date = _normalize_and_validate_optional_date(date, "date")
     result = await high_turnover_analyzer.get_all_ma_strategies(date)
 
     if not result.get("success"):

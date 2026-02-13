@@ -11,9 +11,10 @@ interface FilterPanelProps {
     isLoading: boolean;
     queryDate: string;
     onDateChange: (date: string) => void;
+    dateError?: string;
 }
 
-export function FilterPanel({ onSearch, isLoading, queryDate, onDateChange }: FilterPanelProps) {
+export function FilterPanel({ onSearch, isLoading, queryDate, onDateChange, dateError }: FilterPanelProps) {
     const { filterParams, setFilterParams, resetFilterParams } = useStore();
     const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -49,7 +50,14 @@ export function FilterPanel({ onSearch, isLoading, queryDate, onDateChange }: Fi
                     {/* 日期 */}
                     <div className="space-y-2">
                         <Label>查詢日期</Label>
-                        <Input type="date" value={queryDate} onChange={(e) => onDateChange(e.target.value)} />
+                        <Input
+                            type="text"
+                            value={queryDate}
+                            onChange={(e) => onDateChange(e.target.value)}
+                            placeholder="11/1、1101、20251101、今天"
+                        />
+                        {!dateError && <p className="text-xs text-muted-foreground">支援：11/1、1101、今天、昨天</p>}
+                        {dateError && <p className="text-xs text-red-500">{dateError}</p>}
                     </div>
 
                     {/* 漲幅區間 */}

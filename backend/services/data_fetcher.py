@@ -8,6 +8,8 @@ from datetime import datetime, date, timedelta
 from typing import Optional, List, Dict, Any, Union
 import asyncio
 import logging
+import time
+from urllib.parse import urlparse
 
 from config import get_settings
 from services.cache_manager import cache_manager
@@ -33,6 +35,9 @@ class DataFetcher:
 
     # Class-level flag to skip FinMind when it's unavailable
     _finmind_available = True
+    # Host-level circuit breaker for temporary network failures
+    _host_backoff_until: Dict[str, float] = {}
+    _host_backoff_seconds: int = 60
     # Shared HTTP client for connection pooling
     _http_client: Optional[httpx.AsyncClient] = None
     _client_lock = asyncio.Lock()
@@ -52,6 +57,7 @@ class DataFetcher:
                 if cls._http_client is None or cls._http_client.is_closed:
                     cls._http_client = httpx.AsyncClient(
                         timeout=30.0,
+                        follow_redirects=True,
                         limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
                         headers={
                             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
@@ -65,15 +71,57 @@ class DataFetcher:
         if cls._http_client and not cls._http_client.is_closed:
             await cls._http_client.aclose()
             cls._http_client = None
+
+    @classmethod
+    def _host_key(cls, url: str) -> str:
+        parsed = urlparse(url)
+        return parsed.netloc or parsed.path or url
+
+    @classmethod
+    def _is_host_in_backoff(cls, url: str) -> bool:
+        host = cls._host_key(url)
+        until = cls._host_backoff_until.get(host)
+        return until is not None and until > time.monotonic()
+
+    @classmethod
+    def _mark_host_backoff(cls, url: str):
+        host = cls._host_key(url)
+        cls._host_backoff_until[host] = time.monotonic() + cls._host_backoff_seconds
     
     async def fetch_with_retry(self, url: str, params: dict) -> Optional[dict]:
         """Fetch data with retry logic using shared client"""
+        if self._is_host_in_backoff(url):
+            logger.debug(f"Skipping request to {url} due to temporary host backoff")
+            return None
+
         client = await self.get_client()
         for attempt in range(self.retry_count):
             try:
                 response = await client.get(url, params=params)
                 response.raise_for_status()
                 return response.json()
+            except httpx.ConnectError as e:
+                # DNS/connectivity failures should fast-fail to avoid amplifying latency
+                self._mark_host_backoff(url)
+                logger.warning(f"Connection failed for {url}: {e}. Entering host backoff.")
+                return None
+            except httpx.HTTPStatusError as e:
+                status = e.response.status_code if e.response is not None else None
+                # 3xx here means redirects were not resolved; fail fast and backoff host
+                if status is not None and 300 <= status < 400:
+                    self._mark_host_backoff(url)
+                    logger.warning(f"Redirect HTTP {status} for {url}, entering host backoff")
+                    return None
+                # 4xx are non-retryable here
+                if status is not None and 400 <= status < 500:
+                    logger.warning(f"Non-retryable HTTP {status} for {url}")
+                    return None
+                logger.warning(f"Attempt {attempt + 1} failed with HTTP error: {e}")
+                if attempt < self.retry_count - 1:
+                    await asyncio.sleep(self.retry_delay)
+                else:
+                    logger.error(f"All retry attempts failed for {url}")
+                    return None
             except Exception as e:
                 logger.warning(f"Attempt {attempt + 1} failed: {e}")
                 if attempt < self.retry_count - 1:
@@ -105,6 +153,9 @@ class DataFetcher:
 
         # Use TWSE OpenAPI for stock info
         twse_openapi_url = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
+        if self._is_host_in_backoff(twse_openapi_url):
+            logger.debug("Skipping stock list fetch due to TWSE host backoff")
+            return pd.DataFrame()
 
         try:
             client = await self.get_client()
@@ -155,9 +206,12 @@ class DataFetcher:
                 cache_manager.set(cache_key, df.to_dict("records"), "industry")
                 return df
                 
+        except httpx.ConnectError as e:
+            self._mark_host_backoff(twse_openapi_url)
+            logger.error(f"TWSE OpenAPI failed (connect): {e}")
         except Exception as e:
             logger.error(f"TWSE OpenAPI failed: {e}")
-        
+
         return pd.DataFrame()
     
     async def get_daily_data(self, trade_date: str) -> pd.DataFrame:
@@ -172,9 +226,21 @@ class DataFetcher:
         if cached is not None:
             return pd.DataFrame(cached)
 
+        today_str = get_taiwan_today().strftime("%Y-%m-%d")
+        is_today_query = trade_date == today_str
+
         # Skip FinMind if unavailable
         if not DataFetcher._finmind_available:
             logger.debug("Skipping FinMind (unavailable), using TWSE for daily data")
+            if not is_today_query:
+                return await self._get_historical_daily_data(trade_date, cache_key)
+            return await self._fetch_twse_daily_openapi(trade_date)
+
+        # FinMind token not configured: skip FinMind to avoid repeated 400s
+        if not self.token:
+            logger.debug("FinMind token missing, using TWSE fallback for daily data")
+            if not is_today_query:
+                return await self._get_historical_daily_data(trade_date, cache_key)
             return await self._fetch_twse_daily_openapi(trade_date)
 
         params = {
@@ -186,31 +252,149 @@ class DataFetcher:
             params["token"] = self.token
 
         # Try FinMind with single attempt
-        try:
-            client = await self.get_client()
-            response = await client.get(self.finmind_url, params=params, timeout=10.0)
-            if response.status_code in (400, 402, 403, 429):
-                # 400: Bad request (date too new/invalid)
-                # 402: Quota exceeded
-                # 403: Forbidden
-                # 429: Rate limited
-                if response.status_code == 402:
-                    DataFetcher._finmind_available = False
-                    logger.warning("FinMind API quota exceeded, switching to TWSE")
-                else:
-                    logger.warning(f"FinMind API returned {response.status_code}, using TWSE fallback")
-                return await self._fetch_twse_daily_openapi(trade_date)
-            response.raise_for_status()
-            data = response.json()
-            if data and data.get("status") == 200 and data.get("data"):
-                df = pd.DataFrame(data["data"])
-                cache_manager.set(cache_key, df.to_dict("records"), "daily")
-                return df
-        except Exception as e:
-            logger.warning(f"FinMind daily data failed: {e}")
+        if not self._is_host_in_backoff(self.finmind_url):
+            try:
+                client = await self.get_client()
+                response = await client.get(self.finmind_url, params=params, timeout=10.0)
+                if response.status_code in (400, 402, 403, 429):
+                    # 400: Bad request (date too new/invalid)
+                    # 402: Quota exceeded
+                    # 403: Forbidden
+                    # 429: Rate limited
+                    if response.status_code == 402:
+                        DataFetcher._finmind_available = False
+                        logger.warning("FinMind API quota exceeded, switching to TWSE")
+                    else:
+                        # Avoid repeating known-bad FinMind calls for each date in range queries
+                        self._mark_host_backoff(self.finmind_url)
+                        logger.warning(f"FinMind API returned {response.status_code}, using TWSE fallback")
+                    if not is_today_query:
+                        return await self._get_historical_daily_data(trade_date, cache_key)
+                    return await self._fetch_twse_daily_openapi(trade_date)
+                response.raise_for_status()
+                data = response.json()
+                if data and data.get("status") == 200 and data.get("data"):
+                    df = pd.DataFrame(data["data"])
+                    cache_manager.set(cache_key, df.to_dict("records"), "daily")
+                    return df
+            except httpx.ConnectError as e:
+                self._mark_host_backoff(self.finmind_url)
+                logger.warning(f"FinMind daily data connect failed: {e}")
+            except Exception as e:
+                logger.warning(f"FinMind daily data failed: {e}")
+        else:
+            logger.debug("Skipping FinMind daily fetch due to host backoff")
 
-        # Fallback to TWSE OpenAPI
+        # Fallback to TWSE: past date 優先可指定日期 endpoint
+        if not is_today_query:
+            return await self._get_historical_daily_data(trade_date, cache_key)
+
         return await self._fetch_twse_daily_openapi(trade_date)
+
+    async def _get_historical_daily_data(self, trade_date: str, cache_key: str) -> pd.DataFrame:
+        """Get historical daily data with stable fallback chain."""
+        # 1) Local K-line cache first (most stable, no external dependency)
+        local_df = await self._fetch_daily_from_kline_cache(trade_date)
+        if not local_df.empty:
+            cache_manager.set(cache_key, local_df.to_dict("records"), "daily")
+            return local_df
+
+        # 2) TWSE daily endpoint
+        historical_df = await self._fetch_twse_daily(trade_date)
+        if not historical_df.empty:
+            cache_manager.set(cache_key, historical_df.to_dict("records"), "daily")
+            return historical_df
+
+        # 3) Negative cache to avoid repeated slow retries
+        cache_manager.set(cache_key, [], "daily")
+        return pd.DataFrame()
+
+    async def _fetch_daily_from_kline_cache(self, trade_date: str) -> pd.DataFrame:
+        """Build daily market snapshot from local kline_cache for a specific date."""
+        try:
+            from sqlalchemy import select
+            from sqlalchemy.orm import aliased
+            from database import async_session_maker
+            from models.kline_cache import KLineCache
+            from utils.date_utils import parse_date
+
+            target_date = parse_date(trade_date)
+            if target_date is None:
+                return pd.DataFrame()
+
+            current_row = aliased(KLineCache)
+            previous_row = aliased(KLineCache)
+            previous_close_subquery = (
+                select(previous_row.close)
+                .where(
+                    previous_row.symbol == current_row.symbol,
+                    previous_row.date < target_date,
+                    previous_row.is_valid == 1,
+                )
+                .order_by(previous_row.date.desc())
+                .limit(1)
+                .scalar_subquery()
+            )
+
+            async with async_session_maker() as session:
+                stmt = select(
+                    current_row.symbol.label("symbol"),
+                    current_row.date.label("date"),
+                    current_row.open.label("open"),
+                    current_row.high.label("high"),
+                    current_row.low.label("low"),
+                    current_row.close.label("close"),
+                    current_row.volume.label("volume"),
+                    current_row.change_percent.label("change_percent"),
+                    previous_close_subquery.label("prev_close"),
+                ).where(
+                    current_row.date == target_date,
+                    current_row.is_valid == 1,
+                ).order_by(current_row.symbol)
+
+                result = await session.execute(stmt)
+                rows = result.mappings().all()
+
+            if not rows:
+                return pd.DataFrame()
+
+            df = pd.DataFrame(rows)
+            if df.empty:
+                return pd.DataFrame()
+
+            snapshot_df = df[df["close"].notna() & df["volume"].notna()].copy()
+            if snapshot_df.empty:
+                return pd.DataFrame()
+
+            snapshot_df["spread"] = snapshot_df["close"] - snapshot_df["prev_close"]
+            if "change_percent" in snapshot_df.columns:
+                cp = pd.to_numeric(snapshot_df["change_percent"], errors="coerce")
+                denom = 1 + (cp / 100.0)
+                derived_prev = snapshot_df["close"] / denom
+                derived_spread = snapshot_df["close"] - derived_prev
+                mask = snapshot_df["spread"].isna() & denom.notna() & (denom != 0)
+                snapshot_df.loc[mask, "spread"] = derived_spread[mask]
+
+            snapshot_df["spread"] = snapshot_df["spread"].fillna(0.0)
+            snapshot_df["stock_id"] = snapshot_df["symbol"].astype(str)
+            snapshot_df["stock_name"] = snapshot_df["symbol"].astype(str)
+            snapshot_df["Trading_Volume"] = pd.to_numeric(snapshot_df["volume"], errors="coerce").fillna(0).astype(int)
+            snapshot_df["max"] = pd.to_numeric(snapshot_df["high"], errors="coerce")
+            snapshot_df["min"] = pd.to_numeric(snapshot_df["low"], errors="coerce")
+            snapshot_df["date"] = trade_date
+
+            snapshot = snapshot_df[
+                ["stock_id", "stock_name", "Trading_Volume", "open", "max", "min", "close", "spread", "date"]
+            ].copy()
+            snapshot = snapshot[snapshot["Trading_Volume"] > 0]
+
+            if not snapshot.empty:
+                logger.info(f"Loaded {len(snapshot)} stocks from local kline_cache for {trade_date}")
+            return snapshot
+
+        except Exception as e:
+            logger.debug(f"Local kline cache daily fallback failed for {trade_date}: {e}")
+            return pd.DataFrame()
 
     async def _fetch_twse_daily_openapi(self, trade_date: str) -> pd.DataFrame:
         """Fetch daily data from TWSE OpenAPI (more reliable)
@@ -222,11 +406,13 @@ class DataFetcher:
         We MUST validate the returned date matches the requested date.
         """
         cache_key = f"daily_{trade_date}"
+        url = "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
+        if self._is_host_in_backoff(url):
+            logger.debug("Skipping TWSE OpenAPI daily fetch due to host backoff")
+            return pd.DataFrame()
 
         try:
             # Use TWSE OpenAPI - returns latest available data (NOT necessarily today)
-            url = "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
-
             client = await self.get_client()
             response = await client.get(url)
             response.raise_for_status()
@@ -311,6 +497,9 @@ class DataFetcher:
                     cache_manager.set(cache_key, df.to_dict("records"), "daily")
                     return df
 
+        except httpx.ConnectError as e:
+            self._mark_host_backoff(url)
+            logger.error(f"TWSE OpenAPI daily fetch failed (connect): {e}")
         except Exception as e:
             logger.error(f"TWSE OpenAPI daily fetch failed: {e}")
 
@@ -340,6 +529,10 @@ class DataFetcher:
             logger.debug(f"Skipping FinMind (unavailable), using TWSE for {symbol}")
             return await self._fetch_twse_historical(symbol, start_date, end_date)
 
+        if not self.token:
+            logger.debug(f"FinMind token missing, using TWSE fallback for {symbol}")
+            return await self._fetch_twse_historical(symbol, start_date, end_date)
+
         params = {
             "dataset": "TaiwanStockPrice",
             "data_id": symbol,
@@ -362,6 +555,7 @@ class DataFetcher:
                     DataFetcher._finmind_available = False
                     logger.warning("FinMind API quota exceeded (402), switching to TWSE fallback for all requests")
                 else:
+                    self._mark_host_backoff(self.finmind_url)
                     logger.warning(f"FinMind API returned {response.status_code} for {symbol}, using TWSE fallback")
                 return await self._fetch_twse_historical(symbol, start_date, end_date)
             response.raise_for_status()
@@ -797,4 +991,3 @@ class DataFetcher:
 
 # Global instance
 data_fetcher = DataFetcher()
-

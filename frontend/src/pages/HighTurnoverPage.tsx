@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { TurnoverCharts } from '@/components/TurnoverCharts';
 import { StockAnalysisDialog } from '@/components/StockAnalysisDialog';
 import { formatPercent, formatNumber, formatPrice, getChangeColor } from '@/utils/format';
+import { normalizeFlexibleDateInput } from '@/utils/date';
 import { getHighTurnoverLimitUp, getTop20Turnover, getTradingDate } from '@/services/api';
 import { useStore } from '@/store/store';
 import {
@@ -49,6 +50,11 @@ interface TurnoverStats {
 
 export function HighTurnoverPage() {
     const { queryDate, setQueryDate } = useStore();
+    const [dateInput, setDateInput] = useState('');
+    const [appliedDate, setAppliedDate] = useState('');
+    const [dateError, setDateError] = useState('');
+    const [dateNotice, setDateNotice] = useState('');
+    const [hasInitializedDate, setHasInitializedDate] = useState(false);
     const [showFilters, setShowFilters] = useState(false);
     const [viewMode, setViewMode] = useState<'limit_up' | 'top20'>('limit_up');
     const [filters, setFilters] = useState({
@@ -72,16 +78,16 @@ export function HighTurnoverPage() {
 
     // 取得高周轉漲停股
     const { data: limitUpData, isLoading: loadingLimitUp, refetch: refetchLimitUp } = useQuery({
-        queryKey: ['highTurnoverLimitUp', queryDate],
-        queryFn: () => getHighTurnoverLimitUp(queryDate),
-        enabled: !!queryDate,
+        queryKey: ['highTurnoverLimitUp', appliedDate],
+        queryFn: () => getHighTurnoverLimitUp(appliedDate),
+        enabled: !!appliedDate,
     });
 
     // 取得周轉率前20完整名單
-    const { data: top20Data, isLoading: loadingTop20 } = useQuery({
-        queryKey: ['top20Turnover', queryDate],
-        queryFn: () => getTop20Turnover(queryDate),
-        enabled: !!queryDate && viewMode === 'top20',
+    const { data: top20Data, isLoading: loadingTop20, refetch: refetchTop20 } = useQuery({
+        queryKey: ['top20Turnover', appliedDate],
+        queryFn: () => getTop20Turnover(appliedDate),
+        enabled: !!appliedDate && viewMode === 'top20',
     });
 
     // 取得最新交易日
@@ -90,19 +96,86 @@ export function HighTurnoverPage() {
         queryFn: getTradingDate,
     });
 
-    // 只有當全局日期為空時才設定初始值
+    // 初始化日期，僅執行一次以避免使用者手動輸入被覆蓋
     useEffect(() => {
-        if (tradingDateData?.latest_trading_day && !queryDate) {
-            setQueryDate(tradingDateData.latest_trading_day);
+        if (tradingDateData?.latest_trading_day && !hasInitializedDate) {
+            const initialDate = queryDate || tradingDateData.latest_trading_day;
+            setQueryDate(initialDate);
+            setDateInput(initialDate);
+            setAppliedDate(initialDate);
+            setHasInitializedDate(true);
         }
-    }, [tradingDateData, queryDate, setQueryDate]);
+    }, [tradingDateData, queryDate, setQueryDate, hasInitializedDate]);
+
+    const applyDateInput = (rawInput: string): boolean => {
+        const normalized = normalizeFlexibleDateInput(rawInput);
+        if (!normalized.normalized) {
+            setDateError('日期格式錯誤，可輸入：11/1、1101、20251101、1141101、今天、昨天');
+            setDateNotice('');
+            return false;
+        }
+
+        setDateError('');
+        setDateNotice(normalized.wasAdjusted ? '無效日已自動校正為該月最後一天' : '');
+        setDateInput(normalized.normalized);
+        setAppliedDate(normalized.normalized);
+        setQueryDate(normalized.normalized);
+        return true;
+    };
+
+    const handleSearch = () => {
+        if (!dateInput.trim()) {
+            setDateError('請輸入查詢日期');
+            setDateNotice('');
+            return;
+        }
+        applyDateInput(dateInput);
+    };
+
+    const handleRefresh = () => {
+        if (viewMode === 'top20') {
+            refetchTop20();
+            return;
+        }
+        refetchLimitUp();
+    };
 
     const stats: TurnoverStats | undefined = limitUpData?.stats;
-    const stocks: TurnoverStock[] = viewMode === 'limit_up'
-        ? (limitUpData?.items || [])
-        : (top20Data?.items || []);
+    const stocks = useMemo<TurnoverStock[]>(
+        () => (viewMode === 'limit_up'
+            ? (limitUpData?.items || [])
+            : (top20Data?.items || [])),
+        [viewMode, limitUpData, top20Data]
+    );
+    const resolvedQueryDate = (viewMode === 'limit_up'
+        ? stats?.query_date
+        : top20Data?.query_date) || appliedDate || queryDate;
 
     const isLoading = viewMode === 'limit_up' ? loadingLimitUp : loadingTop20;
+    const filteredStocks = useMemo(() => {
+        const minTurnoverRate = filters.min_turnover_rate.trim()
+            ? Number(filters.min_turnover_rate)
+            : undefined;
+        const maxPrice = filters.price_max.trim()
+            ? Number(filters.price_max)
+            : undefined;
+        const maxOpenCount = filters.max_open_count.trim()
+            ? Number.parseInt(filters.max_open_count, 10)
+            : undefined;
+
+        return stocks.filter((stock) => {
+            if (minTurnoverRate !== undefined && Number.isFinite(minTurnoverRate)) {
+                if ((stock.turnover_rate || 0) < minTurnoverRate) return false;
+            }
+            if (maxPrice !== undefined && Number.isFinite(maxPrice)) {
+                if ((stock.close_price || 0) > maxPrice) return false;
+            }
+            if (maxOpenCount !== undefined && Number.isFinite(maxOpenCount)) {
+                if ((stock.open_count || 0) > maxOpenCount) return false;
+            }
+            return true;
+        });
+    }, [stocks, filters]);
 
     // 快速預設
     const handlePreset = (preset: string) => {
@@ -135,7 +208,7 @@ export function HighTurnoverPage() {
                     </h1>
                     <p className="text-sm text-muted-foreground mt-1">
                         顯示當日周轉率排名前200的股票中，達到漲停的股票
-                        <span className="ml-2 font-mono text-xs bg-muted px-2 py-0.5 rounded-full">{queryDate}</span>
+                        <span className="ml-2 font-mono text-xs bg-muted px-2 py-0.5 rounded-full">{resolvedQueryDate}</span>
                     </p>
                 </div>
             </div>
@@ -185,12 +258,22 @@ export function HighTurnoverPage() {
                         <div className="space-y-1.5">
                             <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">查詢日期</Label>
                             <Input
-                                type="date"
-                                value={queryDate}
-                                onChange={(e) => setQueryDate(e.target.value)}
+                                type="text"
+                                value={dateInput}
+                                onChange={(e) => {
+                                    setDateInput(e.target.value);
+                                    if (dateError) setDateError('');
+                                }}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSearch();
+                                }}
                                 className="w-44 font-mono text-sm"
+                                placeholder="11/1、1101、20251101、今天"
                             />
                         </div>
+                        <Button onClick={handleSearch} className="transition-all duration-200">
+                            <Activity className="w-4 h-4 mr-1.5" /> 查詢
+                        </Button>
 
                         <div className="flex gap-2">
                             <Button
@@ -213,10 +296,20 @@ export function HighTurnoverPage() {
                             <Filter className="w-4 h-4 mr-1.5" /> 篩選
                         </Button>
 
-                        <Button onClick={() => refetchLimitUp()} className="shadow-sm hover:shadow-md transition-all duration-200">
+                        <Button onClick={handleRefresh} className="shadow-sm hover:shadow-md transition-all duration-200">
                             <Activity className="w-4 h-4 mr-1.5" /> 重新查詢
                         </Button>
                     </div>
+                    {(dateError || dateNotice) && (
+                        <div className={`mt-3 text-sm ${dateError ? 'text-red-500' : 'text-amber-500'}`}>
+                            {dateError || dateNotice}
+                        </div>
+                    )}
+                    {!dateError && !dateNotice && (
+                        <div className="mt-3 text-xs text-muted-foreground">
+                            支援快速輸入：11/1、1101、20251101、1141101、今天、昨天、前天
+                        </div>
+                    )}
 
                     {/* 快速預設 */}
                     <div className="flex flex-wrap gap-2 mt-5 pt-5 border-t border-border/50">
@@ -270,7 +363,7 @@ export function HighTurnoverPage() {
             </Card>
 
             {/* 圖表區 */}
-            {stocks.length > 0 && <TurnoverCharts stocks={stocks} />}
+            {filteredStocks.length > 0 && <TurnoverCharts stocks={filteredStocks} />}
 
             {/* 結果表格 */}
             <Card className="border-border/50 shadow-sm overflow-hidden">
@@ -284,7 +377,7 @@ export function HighTurnoverPage() {
                             )}
                         </span>
                         <span className="text-sm font-normal text-muted-foreground bg-muted/50 px-3 py-1 rounded-full">
-                            共 {stocks.length} 檔
+                            共 {filteredStocks.length} 檔
                         </span>
                     </CardTitle>
                 </CardHeader>
@@ -294,9 +387,9 @@ export function HighTurnoverPage() {
                             <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-3"></div>
                             <p>載入中...</p>
                         </div>
-                    ) : stocks.length === 0 ? (
+                    ) : filteredStocks.length === 0 ? (
                         <div className="py-20 text-center text-muted-foreground">
-                            {viewMode === 'limit_up' ? '今日周轉率前200名中無漲停股票' : '查無資料'}
+                            {stocks.length > 0 ? '目前篩選條件下無符合股票' : (viewMode === 'limit_up' ? '今日周轉率前200名中無漲停股票' : '查無資料')}
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
@@ -319,7 +412,7 @@ export function HighTurnoverPage() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-border/30">
-                                    {stocks.map((stock) => (
+                                    {filteredStocks.map((stock) => (
                                         <tr
                                             key={stock.symbol}
                                             className={`hover:bg-muted/40 transition-colors duration-150 ${stock.is_limit_up ? 'bg-orange-500/5' : ''} ${stock.turnover_rank <= 10 ? 'font-medium bg-amber-500/5' : ''}`}

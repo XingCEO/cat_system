@@ -3,8 +3,12 @@ Export Service - 匯出功能
 """
 import csv
 import io
+import json
+from datetime import datetime
 from typing import List, Dict, Any
 import logging
+
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +85,27 @@ class ExportService:
         }
         
         return self.export_to_csv(stocks, columns, headers)
+
+    def to_csv(self, data: List[Dict[str, Any]]) -> str:
+        """相容舊路由的 CSV 匯出接口。"""
+        return self.export_to_csv(data)
+
+    def to_excel(self, data: List[Dict[str, Any]]) -> bytes:
+        """將資料匯出為 Excel bytes。"""
+        df = pd.DataFrame(data or [])
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            df.to_excel(writer, index=False, sheet_name="stocks")
+        return output.getvalue()
+
+    def to_json(self, data: List[Dict[str, Any]]) -> str:
+        """將資料匯出為 JSON 字串。"""
+        return json.dumps(data or [], ensure_ascii=False, indent=2)
+
+    def generate_filename(self, prefix: str, ext: str) -> str:
+        """產生帶時間戳的檔名。"""
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        return f"{prefix}_{ts}.{ext}"
 
 
 # 全域實例
