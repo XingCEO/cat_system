@@ -58,11 +58,7 @@ async def load_latest_data(db: AsyncSession) -> pd.DataFrame:
     if not price_rows:
         return pd.DataFrame()
 
-    df = pd.DataFrame(price_rows, columns=[
-        "ticker_id", "date", "open", "high", "low", "close", "volume",
-        "ma5", "ma10", "ma20", "ma60", "rsi14", "pe_ratio", "eps",
-        "change_percent",
-    ])
+    df = pd.DataFrame([dict(r._mapping) for r in price_rows])
 
     # 載入股票基本資料
     ticker_query = select(Ticker.ticker_id, Ticker.name, Ticker.market_type, Ticker.industry)
@@ -70,7 +66,7 @@ async def load_latest_data(db: AsyncSession) -> pd.DataFrame:
     ticker_rows = ticker_result.fetchall()
 
     if ticker_rows:
-        ticker_df = pd.DataFrame(ticker_rows, columns=["ticker_id", "name", "market_type", "industry"])
+        ticker_df = pd.DataFrame([dict(r._mapping) for r in ticker_rows])
         df = df.merge(ticker_df, on="ticker_id", how="left")
 
     # 載入籌碼資料
@@ -87,7 +83,7 @@ async def load_latest_data(db: AsyncSession) -> pd.DataFrame:
     chip_rows = chip_result.fetchall()
 
     if chip_rows:
-        chip_df = pd.DataFrame(chip_rows, columns=["ticker_id", "foreign_buy", "trust_buy", "margin_balance"])
+        chip_df = pd.DataFrame([dict(r._mapping) for r in chip_rows])
         df = df.merge(chip_df, on="ticker_id", how="left")
 
     return df
