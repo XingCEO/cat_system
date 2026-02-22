@@ -64,6 +64,22 @@ npm run dev
 | `GET /api/v1/strategies` | 策略列表 |
 | `POST /api/v1/sync` | 手動資料同步 |
 
+## 部署
+
+### Zeabur (推薦)
+Push 到 GitHub 後 Zeabur 自動偵測 `zeabur.toml`，使用根目錄 Dockerfile 部署。
+
+### Docker
+```bash
+docker build -t cat-system .
+docker run -p 8000:8000 cat-system
+```
+
+### Docker Compose (含 PostgreSQL + Redis)
+```bash
+docker-compose up -d
+```
+
 ## 環境變數
 
 | 變數 | 說明 | 預設值 |

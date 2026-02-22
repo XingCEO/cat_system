@@ -30,6 +30,13 @@ frontend/
   src/services/api.ts              # Axios API client
 ```
 
+## Deployment
+- **Zeabur**: `zeabur.toml` → 根目錄 `Dockerfile` (multi-stage: build frontend → copy to static → uvicorn)
+- **Render**: `render.yaml` → 同上 Docker 部署
+- **Docker Compose**: `docker-compose.yml` → 前後端分離 + PostgreSQL + Redis
+- **Port**: 8000 (FastAPI serves both API + SPA)
+- **DB**: Zeabur/Render 用 PostgreSQL (asyncpg)，本地開發用 SQLite (aiosqlite)
+
 ## Commands
 ```bash
 # Backend
@@ -46,6 +53,9 @@ cd frontend && npm run build
 
 # Type check
 cd frontend && npx tsc --noEmit
+
+# Docker (local)
+docker build -t cat-system . && docker run -p 8000:8000 cat-system
 ```
 
 ## Key Conventions

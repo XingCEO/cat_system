@@ -1,7 +1,7 @@
 # 專案進度記錄
 
 ## 最後更新時間
-2026-01-31
+2026-02-22
 
 ---
 
@@ -89,17 +89,26 @@
 ## 重要檔案路徑
 
 ```
-/Users/xuser/Documents/貓星人賺大錢 2/
+cat_system/
+├── Dockerfile                                 # 統一部署 (multi-stage)
+├── zeabur.toml                                # Zeabur 部署設定
+├── docker-compose.yml                         # 本地全套 (PG+Redis)
+├── render.yaml                                # Render 部署設定
 ├── backend/
-│   ├── main.py                              # FastAPI 入口
-│   ├── routers/turnover.py                  # 週轉率相關 API 路由
-│   ├── services/high_turnover_analyzer.py   # 核心分析邏輯 (重要!)
-│   ├── services/data_fetcher.py             # 資料獲取
-│   └── services/cache_manager.py            # 快取管理
+│   ├── main.py                                # FastAPI 入口 (serves SPA)
+│   ├── config.py                              # Pydantic 設定 (v2.0.0)
+│   ├── database.py                            # Async SQLAlchemy
+│   ├── routers/turnover.py                    # 週轉率 API 路由
+│   ├── services/high_turnover_analyzer.py     # 核心分析邏輯
+│   ├── services/data_fetcher.py               # 資料獲取
+│   ├── app/engine/                            # v1 選股引擎
+│   ├── app/api/v1/                            # v1 API 路由
+│   └── tests/                                 # 單元測試 (31 tests)
 ├── frontend/
-│   ├── src/pages/TurnoverFiltersPage.tsx    # 週轉率篩選器頁面
-│   └── src/services/api.ts                  # API 呼叫函數
-└── PROGRESS_LOG.md                          # 本進度記錄
+│   ├── src/pages/                             # React 頁面
+│   ├── src/stores/store.ts                    # Zustand 狀態管理
+│   └── src/services/api.ts                    # API 呼叫
+└── PROGRESS_LOG.md                            # 本進度記錄
 ```
 
 ---
@@ -155,3 +164,40 @@ curl http://localhost:8000/api/cache/clear
 2. **FinMind API:** 對 2025/2026 年份的日期會返回 400 錯誤，已改用 Yahoo Finance
 
 3. **Yahoo Finance Rate Limit:** 已加入重試機制，但大量查詢時仍可能遇到 429 錯誤
+
+---
+
+## v2.0 全面檢修 (2026-02-22)
+
+### Bug 修復 (9 項)
+| 項目 | 修復內容 |
+|------|---------|
+| cross_up/cross_down | 不再汙染原始 DataFrame，改用局部變數 |
+| DataFrame 建構 | 3 處改為 dict-based，避免欄位錯位 |
+| end_date 參數 | volume-surge / institutional-buy 端點正確轉發 |
+| track 端點 | 從 TODO stub 改為實際呼叫 create_track / get_track_stats |
+| config 版本 | config.py 1.0.0 → 2.0.0，與 main.py 一致 |
+| store 目錄 | `store/` → `stores/`，5 個前端檔案 import 修正 |
+| Excel 匯出 | CSV 偽裝改為真正 XML Spreadsheet 格式 |
+| v1 資料管道 | 新增 data_sync.py (sync_tickers / sync_daily_prices) |
+| 啟動同步 | main.py lifespan 自動同步 v1 股票基本資料 |
+
+### 單元測試 (31 tests, 0.82s)
+- `test_operators.py` — 7 tests (cross 運算子不汙染、布林回傳)
+- `test_screener.py` — 11 tests (安全轉換、apply_rule 各運算子)
+- `test_data_sync.py` — 8 tests (safe_float/int 逗號、fallback、None)
+- `test_config_and_endpoints.py` — 5 tests (版本一致、end_date 簽名、track 方法)
+
+### 部署修復
+| 項目 | 修復內容 |
+|------|---------|
+| 根目錄 Dockerfile | multi-stage build (frontend → backend/static → uvicorn) |
+| zeabur.toml | 新增，指定 Dockerfile 部署 + port 8000 |
+| .dockerignore | 新增，排除 node_modules/venv/.db |
+| backend Dockerfile | Python 3.10 → 3.12 |
+| render.yaml | 改用 Docker 部署 |
+| requirements.txt | asyncpg 保留 (Zeabur 用 PostgreSQL) |
+
+### Repo 遷移
+- origin 從 `Cat-GoGo.git` 切換至 `cat_system.git`
+- 所有後續開發推送至 `https://github.com/XingCEO/cat_system`
