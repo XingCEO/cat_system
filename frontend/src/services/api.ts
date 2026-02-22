@@ -414,3 +414,10 @@ export async function clearCache(): Promise<{ success: boolean; message: string 
     const { data } = await api.get<any>('/cache/clear');
     return data;
 }
+
+// ===== Realtime API =====
+
+export async function getRealtimeQuotes(symbols: string[]): Promise<any> {
+    const { data } = await api.get<any>(`/stocks/realtime?symbols=${symbols.join(',')}`);
+    return data;
+}

@@ -30,6 +30,7 @@ class CacheManager:
         self.indicator_cache = TTLCache(maxsize=500, ttl=settings.cache_indicators)
         self.industry_cache = TTLCache(maxsize=100, ttl=settings.cache_industries)
         self.general_cache = TTLCache(maxsize=1000, ttl=300)
+        self.realtime_cache = TTLCache(maxsize=200, ttl=10)  # 即時報價 10 秒
     
     def get(self, key: str, cache_type: str = "general") -> Optional[Any]:
         """Get value from cache"""
@@ -58,6 +59,7 @@ class CacheManager:
             self.indicator_cache.clear()
             self.industry_cache.clear()
             self.general_cache.clear()
+            self.realtime_cache.clear()
     
     def _get_cache(self, cache_type: str) -> TTLCache:
         """Get the appropriate cache by type"""
@@ -66,7 +68,8 @@ class CacheManager:
             "historical": self.historical_cache,
             "indicator": self.indicator_cache,
             "industry": self.industry_cache,
-            "general": self.general_cache
+            "general": self.general_cache,
+            "realtime": self.realtime_cache
         }
         return caches.get(cache_type, self.general_cache)
     
@@ -78,6 +81,7 @@ class CacheManager:
             "indicator": {"size": len(self.indicator_cache), "maxsize": self.indicator_cache.maxsize},
             "industry": {"size": len(self.industry_cache), "maxsize": self.industry_cache.maxsize},
             "general": {"size": len(self.general_cache), "maxsize": self.general_cache.maxsize},
+            "realtime": {"size": len(self.realtime_cache), "maxsize": self.realtime_cache.maxsize},
         }
 
 

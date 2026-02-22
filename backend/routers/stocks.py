@@ -287,6 +287,18 @@ async def batch_compare_stocks(request: BatchCompareRequest):
         )
         
         return APIResponse.ok(data=response)
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/realtime")
+async def get_realtime_quotes(
+    symbols: str = Query(..., description="股票代號(逗號分隔，最多50檔)")
+):
+    """盤中即時報價 — TWSE MIS API"""
+    symbol_list = [s.strip() for s in symbols.split(",") if s.strip()][:50]
+    if not symbol_list:
+        raise HTTPException(status_code=400, detail="請提供至少一個股票代號")
+    results = await data_fetcher.get_realtime_quotes(symbol_list)
+    return {"success": True, "data": results, "count": len(results)}

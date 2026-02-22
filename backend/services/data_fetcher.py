@@ -750,6 +750,64 @@ class DataFetcher:
         return fallback
 
 
+    async def get_realtime_quotes(self, symbols: List[str]) -> List[Dict]:
+        """
+        盤中即時報價 — TWSE MIS API (免費、官方、無需註冊)
+        每次最多 50 檔，建議間隔 3 秒
+        """
+        cache_key = f"realtime_{'_'.join(sorted(symbols[:10]))}"
+        cached = cache_manager.get(cache_key, "realtime")
+        if cached:
+            return cached
+
+        # tse=上市, otc=上櫃; 預設用 tse，4碼數字開頭
+        ex_ch = "|".join(f"tse_{s}.tw" for s in symbols[:50])
+        url = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
+
+        try:
+            client = await self.get_client()
+            resp = await client.get(url, params={"ex_ch": ex_ch}, timeout=10.0)
+            resp.raise_for_status()
+            data = resp.json()
+
+            results = []
+            for item in data.get("msgArray", []):
+                z = item.get("z", "-")  # 成交價
+                if z == "-" or z == "":
+                    z = item.get("y", "0")  # 沒成交用昨收
+
+                try:
+                    close = float(z)
+                    yesterday = float(item.get("y", "0") or "0")
+                    change = round(close - yesterday, 2) if yesterday else 0
+                    change_pct = round(change / yesterday * 100, 2) if yesterday else 0
+                except (ValueError, ZeroDivisionError):
+                    close, change, change_pct = 0, 0, 0
+
+                results.append({
+                    "stock_id": item.get("c", ""),
+                    "stock_name": item.get("n", ""),
+                    "close": close,
+                    "open": float(item.get("o", "0") or "0"),
+                    "high": float(item.get("h", "0") or "0"),
+                    "low": float(item.get("l", "0") or "0"),
+                    "volume": int(float(item.get("v", "0") or "0")),
+                    "yesterday_close": yesterday,
+                    "change": change,
+                    "change_pct": change_pct,
+                    "time": item.get("t", ""),
+                    "realtime": True,
+                })
+
+            if results:
+                cache_manager.set(cache_key, results, "realtime")
+            return results
+
+        except Exception as e:
+            logger.warning(f"TWSE MIS realtime failed: {e}")
+            return []
+
+
 # Global instance
 data_fetcher = DataFetcher()
 
