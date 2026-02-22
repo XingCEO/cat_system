@@ -5,7 +5,7 @@ import { StockTable } from '@/components/StockTable';
 import { DashboardCharts } from '@/components/DashboardCharts';
 import { StockAnalysisDialog } from '@/components/StockAnalysisDialog';
 import { filterStocks, getTradingDate } from '@/services/api';
-import { useStore } from '@/store/store';
+import { useStore } from '@/stores/store';
 import type { Stock } from '@/types';
 
 export function HomePage() {

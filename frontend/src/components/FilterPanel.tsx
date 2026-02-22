@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useStore } from '@/store/store';
+import { useStore } from '@/stores/store';
 import { Search, RotateCcw, Download, Star, Zap } from 'lucide-react';
 
 interface FilterPanelProps {

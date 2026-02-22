@@ -120,11 +120,7 @@ async def load_multi_day_data(db: AsyncSession, days: int = 2) -> pd.DataFrame:
     if not rows:
         return pd.DataFrame()
 
-    df = pd.DataFrame(rows, columns=[
-        "ticker_id", "date", "open", "high", "low", "close", "volume",
-        "ma5", "ma10", "ma20", "ma60", "rsi14", "pe_ratio", "eps",
-        "change_percent",
-    ])
+    df = pd.DataFrame([dict(r._mapping) for r in rows])
 
     # 載入股票基本資料
     ticker_query = select(Ticker.ticker_id, Ticker.name, Ticker.market_type, Ticker.industry)
@@ -132,7 +128,7 @@ async def load_multi_day_data(db: AsyncSession, days: int = 2) -> pd.DataFrame:
     ticker_rows = ticker_result.fetchall()
 
     if ticker_rows:
-        ticker_df = pd.DataFrame(ticker_rows, columns=["ticker_id", "name", "market_type", "industry"])
+        ticker_df = pd.DataFrame([dict(r._mapping) for r in ticker_rows])
         df = df.merge(ticker_df, on="ticker_id", how="left")
 
     # 載入籌碼資料 (最新日期)
@@ -150,7 +146,7 @@ async def load_multi_day_data(db: AsyncSession, days: int = 2) -> pd.DataFrame:
     chip_rows = chip_result.fetchall()
 
     if chip_rows:
-        chip_df = pd.DataFrame(chip_rows, columns=["ticker_id", "foreign_buy", "trust_buy", "margin_balance"])
+        chip_df = pd.DataFrame([dict(r._mapping) for r in chip_rows])
         df = df.merge(chip_df, on="ticker_id", how="left")
 
     df = df.sort_values(["ticker_id", "date"]).reset_index(drop=True)

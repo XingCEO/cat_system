@@ -69,6 +69,18 @@ async def lifespan(app: FastAPI):
     logger.info("Starting Meow Money Maker...")
     await init_db()
     logger.info("Database initialized")
+
+    # 啟動時自動同步 v1 股票基本資料
+    try:
+        from database import async_session_maker
+        from app.engine.data_sync import sync_tickers
+        async with async_session_maker() as session:
+            count = await sync_tickers(session)
+            if count > 0:
+                logger.info(f"Auto-synced {count} tickers on startup")
+    except Exception as e:
+        logger.warning(f"Auto-sync tickers skipped: {e}")
+
     yield
     logger.info("Shutting down...")
     await close_db()

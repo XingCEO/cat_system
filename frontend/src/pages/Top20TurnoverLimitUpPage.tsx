@@ -18,7 +18,7 @@ import { Top20Charts } from '@/components/Top20Charts';
 import { StockAnalysisDialog } from '@/components/StockAnalysisDialog';
 import { formatPercent, formatNumber, formatPrice, getChangeColor } from '@/utils/format';
 import { getTop20LimitUp, downloadExportFile, getTradingDate } from '@/services/api';
-import { useStore } from '@/store/store';
+import { useStore } from '@/stores/store';
 import {
     ChevronLeft, ChevronRight, Flame, Trophy, Search,
     Download, Calendar, ArrowUpDown, AlertCircle, BarChart2, LineChart

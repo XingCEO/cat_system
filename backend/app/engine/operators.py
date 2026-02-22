@@ -40,19 +40,15 @@ def cross_up(
     黃金交叉：前日 field < target 且今日 field >= target
 
     如果 target 是字串，視為另一個欄位名稱。
-    需要 DataFrame 中包含 prev_{field} 或使用 shift 計算。
+    不會修改原始 DataFrame。
     """
-    prev_field = f"_prev_{field}"
-    if prev_field not in df.columns:
-        df[prev_field] = df.groupby("ticker_id")[field].shift(1)
+    prev_field = df.groupby("ticker_id")[field].shift(1)
 
     if isinstance(target, str):
-        prev_target = f"_prev_{target}"
-        if prev_target not in df.columns:
-            df[prev_target] = df.groupby("ticker_id")[target].shift(1)
-        mask = (df[prev_field] < df[prev_target]) & (df[field] >= df[target])
+        prev_target = df.groupby("ticker_id")[target].shift(1)
+        mask = (prev_field < prev_target) & (df[field] >= df[target])
     else:
-        mask = (df[prev_field] < target) & (df[field] >= target)
+        mask = (prev_field < target) & (df[field] >= target)
 
     return mask.fillna(False)
 
@@ -66,18 +62,15 @@ def cross_down(
     死亡交叉：前日 field > target 且今日 field <= target
 
     如果 target 是字串，視為另一個欄位名稱。
+    不會修改原始 DataFrame。
     """
-    prev_field = f"_prev_{field}"
-    if prev_field not in df.columns:
-        df[prev_field] = df.groupby("ticker_id")[field].shift(1)
+    prev_field = df.groupby("ticker_id")[field].shift(1)
 
     if isinstance(target, str):
-        prev_target = f"_prev_{target}"
-        if prev_target not in df.columns:
-            df[prev_target] = df.groupby("ticker_id")[target].shift(1)
-        mask = (df[prev_field] > df[prev_target]) & (df[field] <= df[target])
+        prev_target = df.groupby("ticker_id")[target].shift(1)
+        mask = (prev_field > prev_target) & (df[field] <= df[target])
     else:
-        mask = (df[prev_field] > target) & (df[field] <= target)
+        mask = (prev_field > target) & (df[field] <= target)
 
     return mask.fillna(False)
 

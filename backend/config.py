@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     
     # API Settings
     app_name: str = "TWSE Stock Filter API"
-    app_version: str = "1.0.0"
+    app_version: str = "2.0.0"
     debug: bool = False
     
     # Database

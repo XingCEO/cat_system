@@ -1346,6 +1346,7 @@ class HighTurnoverAnalyzer:
     async def get_volume_surge(
         self,
         date: Optional[str] = None,
+        end_date: Optional[str] = None,
         volume_ratio: float = 1.5
     ) -> Dict[str, Any]:
         """
@@ -1422,6 +1423,7 @@ class HighTurnoverAnalyzer:
     async def get_institutional_buy(
         self,
         date: Optional[str] = None,
+        end_date: Optional[str] = None,
         min_consecutive_days: int = 3
     ) -> Dict[str, Any]:
         """
@@ -1803,6 +1805,109 @@ class HighTurnoverAnalyzer:
             "total_days": len(dates),
             "filtered_count": len(all_items),
             "items": all_items,
+        }
+
+    async def create_track(
+        self,
+        date: str,
+        symbols: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        追蹤高周轉漲停股的後續表現
+        取得觸發日的漲停股，查詢其後續 1/3/5/7 日表現
+        """
+        # 取得觸發日漲停股
+        limit_up_result = await self.get_high_turnover_limit_up(date=date)
+        if not limit_up_result.get("success"):
+            return {"success": False, "error": "無法取得觸發日資料"}
+
+        items = limit_up_result.get("items", [])
+        if symbols:
+            items = [i for i in items if i["symbol"] in symbols]
+
+        if not items:
+            return {"success": True, "message": "無符合條件的股票", "date": date, "symbols": symbols or "all_limit_up"}
+
+        results = []
+        for stock in items:
+            symbol = stock["symbol"]
+            try:
+                history_df = await self._fetch_yahoo_history_for_ma(symbol)
+                if history_df.empty or len(history_df) < 2:
+                    continue
+
+                closes = history_df["close"].dropna().tolist() if "close" in history_df.columns else []
+                trigger_price = stock.get("close_price", closes[0] if closes else 0)
+
+                def calc_change(idx):
+                    if len(closes) > idx and trigger_price and trigger_price > 0:
+                        return round((closes[idx] - trigger_price) / trigger_price * 100, 2)
+                    return None
+
+                day1_change = calc_change(1)
+                results.append({
+                    "symbol": symbol,
+                    "trigger_date": date,
+                    "trigger_price": trigger_price or 0,
+                    "turnover_rank": stock.get("turnover_rank", 0),
+                    "day1_change": day1_change,
+                    "day1_limit_up": day1_change is not None and day1_change >= 9.5,
+                    "day3_change": calc_change(3),
+                    "day5_change": calc_change(5),
+                    "day7_change": calc_change(7),
+                })
+            except Exception as e:
+                logger.debug(f"Track error for {symbol}: {e}")
+                continue
+
+        return {
+            "success": True,
+            "message": "追蹤任務已建立",
+            "date": date,
+            "symbols": symbols or "all_limit_up",
+            "tracked_count": len(results),
+            "results": results,
+        }
+
+    async def get_track_stats(
+        self,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        取得追蹤統計：彙總多日追蹤結果
+        """
+        if not start_date:
+            from utils.date_utils import get_latest_trading_day
+            start_date = get_latest_trading_day()
+
+        track_result = await self.create_track(date=start_date)
+        results = track_result.get("results", [])
+
+        if not results:
+            return {
+                "success": True,
+                "total_tracked": 0,
+                "day1_continued_limit_up_ratio": None,
+                "day1_avg_change": None,
+                "day3_avg_change": None,
+                "day7_avg_change": None,
+                "results": [],
+            }
+
+        day1_changes = [r["day1_change"] for r in results if r["day1_change"] is not None]
+        day3_changes = [r["day3_change"] for r in results if r["day3_change"] is not None]
+        day7_changes = [r["day7_change"] for r in results if r["day7_change"] is not None]
+        day1_limit_ups = [r for r in results if r.get("day1_limit_up")]
+
+        return {
+            "success": True,
+            "total_tracked": len(results),
+            "day1_continued_limit_up_ratio": round(len(day1_limit_ups) / len(results) * 100, 2) if results else None,
+            "day1_avg_change": round(sum(day1_changes) / len(day1_changes), 2) if day1_changes else None,
+            "day3_avg_change": round(sum(day3_changes) / len(day3_changes), 2) if day3_changes else None,
+            "day7_avg_change": round(sum(day7_changes) / len(day7_changes), 2) if day7_changes else None,
+            "results": results,
         }
 
 

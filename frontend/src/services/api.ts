@@ -308,12 +308,20 @@ export function downloadExportFile(format: 'csv' | 'excel' | 'json', data: any[]
         mimeType = 'application/json';
         extension = 'json';
     } else {
-        // Excel format - use CSV for simplicity
-        const headers = Object.keys(data[0] || {}).join(',');
-        const rows = data.map(row => Object.values(row).map(v => `"${v}"`).join(','));
-        content = [headers, ...rows].join('\n');
-        mimeType = 'text/csv';
-        extension = 'csv';
+        // Excel format - generate real XLSX via simple XML spreadsheet
+        const headers = Object.keys(data[0] || {});
+        const escXml = (v: any) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const headerRow = headers.map(h => `<Cell><Data ss:Type="String">${escXml(h)}</Data></Cell>`).join('');
+        const dataRows = data.map(row =>
+            '<Row>' + headers.map(h => {
+                const v = (row as any)[h];
+                const isNum = typeof v === 'number' && isFinite(v);
+                return `<Cell><Data ss:Type="${isNum ? 'Number' : 'String'}">${escXml(v)}</Data></Cell>`;
+            }).join('') + '</Row>'
+        ).join('\n');
+        content = `<?xml version="1.0" encoding="UTF-8"?>\n<?mso-application progid="Excel.Sheet"?>\n<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n<Worksheet ss:Name="Sheet1"><Table>\n<Row>${headerRow}</Row>\n${dataRows}\n</Table></Worksheet></Workbook>`;
+        mimeType = 'application/vnd.ms-excel';
+        extension = 'xls';
     }
 
     const blob = new Blob(['\ufeff' + content], { type: `${mimeType};charset=utf-8` });

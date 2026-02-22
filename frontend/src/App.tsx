@@ -2,7 +2,7 @@ import { useEffect, lazy, Suspense, useState } from 'react';
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
-import { useStore } from '@/store/store';
+import { useStore } from '@/stores/store';
 import { Moon, Sun, TrendingUp, Flame, Trophy, Activity, Zap, Loader2, Menu, X, Search, BarChart3, BookMarked } from 'lucide-react';
 
 // Lazy load pages for code splitting

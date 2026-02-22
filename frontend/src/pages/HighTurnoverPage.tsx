@@ -8,7 +8,7 @@ import { TurnoverCharts } from '@/components/TurnoverCharts';
 import { StockAnalysisDialog } from '@/components/StockAnalysisDialog';
 import { formatPercent, formatNumber, formatPrice, getChangeColor } from '@/utils/format';
 import { getHighTurnoverLimitUp, getTop20Turnover, getTradingDate } from '@/services/api';
-import { useStore } from '@/store/store';
+import { useStore } from '@/stores/store';
 import {
     Activity, Flame, Award, Filter,
     ChevronLeft, Zap, BarChart2, LineChart
