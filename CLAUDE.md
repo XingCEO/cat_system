@@ -7,7 +7,7 @@ Dual architecture: Legacy API (`/api/...`) + v1 API (`/api/v1/...`).
 ## Tech Stack
 - **Backend**: Python 3.12 + FastAPI + SQLAlchemy (async) + SQLite (aiosqlite)
 - **Frontend**: React 18 + TypeScript + Vite + Tailwind CSS + Zustand + TanStack Query
-- **Data Sources**: FinMind API, Yahoo Finance, TWSE Open Data
+- **Data Sources**: FinMind API, Yahoo Finance, TWSE Open Data, TWSE MIS (盤中即時)
 - **UI**: shadcn/ui (Radix) + Recharts + Lightweight Charts
 
 ## Project Structure
@@ -65,3 +65,4 @@ docker build -t cat-system . && docker run -p 8000:8000 cat-system
 - Config version in `config.py` must match `main.py` FastAPI version (currently 2.0.0)
 - Store directory is `frontend/src/stores/` (not `store/`)
 - Excel export uses XML Spreadsheet format (.xls), not CSV
+- Realtime quotes use `realtime` cache type (10s TTL), not `general` (300s)

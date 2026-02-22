@@ -198,6 +198,13 @@ curl http://localhost:8000/api/cache/clear
 | render.yaml | 改用 Docker 部署 |
 | requirements.txt | asyncpg 保留 (Zeabur 用 PostgreSQL) |
 
+### 盤中即時報價 (TWSE MIS API)
+- 資料源: `https://mis.twse.com.tw/stock/api/getStockInfo.jsp` (免費、免認證)
+- 後端: `data_fetcher.py` `get_realtime_quotes()` + `stocks.py` `GET /api/stocks/realtime`
+- 前端: `api.ts` `getRealtimeQuotes()`
+- 快取: `realtime_cache` TTL 10 秒，最多 200 筆
+- 限制: 單次最多 50 檔，建議間隔 3 秒
+
 ### Repo 遷移
 - origin 從 `Cat-GoGo.git` 切換至 `cat_system.git`
 - 所有後續開發推送至 `https://github.com/XingCEO/cat_system`

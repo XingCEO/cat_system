@@ -20,7 +20,7 @@
 | 前端 | React 18 + TypeScript + Vite + Tailwind CSS |
 | 狀態管理 | Zustand + TanStack Query |
 | UI 元件 | shadcn/ui (Radix) + Recharts + Lightweight Charts |
-| 資料源 | FinMind API + Yahoo Finance + TWSE Open Data |
+| 資料源 | FinMind API + Yahoo Finance + TWSE Open Data + TWSE MIS (盤中即時) |
 
 ## 快速開始
 
@@ -53,6 +53,7 @@ npm run dev
 | `GET /api/turnover/ma-breakout` | 突破糾結均線 |
 | `GET /api/turnover/volume-surge` | 成交量放大 |
 | `GET /api/turnover/institutional-buy` | 法人連買 |
+| `GET /api/stocks/realtime` | 盤中即時報價 (TWSE MIS) |
 | `POST /api/backtest/run` | 執行回測 |
 
 ### v1 API (`/api/v1/...`)
