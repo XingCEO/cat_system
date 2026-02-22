@@ -114,7 +114,7 @@ export function StockTable({ stocks, total, page, pageSize, onPageChange, onStoc
                         </thead>
                         <tbody className="divide-y">
                             {sortedStocks.map((stock, idx) => (
-                                <tr key={stock.symbol} className={`hover:bg-muted/30 ${idx % 2 === 0 ? '' : 'bg-muted/10'}`}>
+                                <tr key={stock.symbol} className={`hover:bg-muted/50 cursor-pointer transition-colors duration-150 ${idx % 2 === 0 ? '' : 'bg-muted/10'}`} onClick={() => onStockClick(stock)}>
                                     <td className="px-3 py-3 font-mono font-medium">{stock.symbol}</td>
                                     <td className="px-3 py-3">{stock.name}</td>
                                     <td className="px-3 py-3 text-muted-foreground text-xs">{stock.industry || '-'}</td>

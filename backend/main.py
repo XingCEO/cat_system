@@ -1,5 +1,6 @@
 """
-TWSE Stock Filter API - Main Application
+喵喵選股 — 台股客製化選股系統 API
+(TWSE Stock Filter API + 喵喵選股 v1 API)
 """
 import os
 import sys
@@ -16,6 +17,10 @@ from routers import (
     stocks_router, analysis_router, backtest_router,
     watchlist_router, history_router, export_router, turnover_router
 )
+
+# 新架構 v1 API
+from app.api.v1.router import v1_router
+import app.models  # 確保新的 ORM 模型被載入
 
 # Configure logging
 logging.basicConfig(
@@ -71,9 +76,9 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI application
 app = FastAPI(
-    title=settings.app_name,
-    version=settings.app_version,
-    description="台股漲幅區間篩選器",
+    title="喵喵選股 API",
+    version="2.0.0",
+    description="台股客製化選股系統 — 支援多維度篩選、K 線圖表、策略管理",
     lifespan=lifespan
 )
 
@@ -103,6 +108,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # ============ API ROUTES (must be before static files) ============
+# 原有 API 路由 (保留)
 app.include_router(stocks_router)
 app.include_router(analysis_router)
 app.include_router(backtest_router)
@@ -110,6 +116,9 @@ app.include_router(watchlist_router)
 app.include_router(history_router)
 app.include_router(export_router)
 app.include_router(turnover_router)
+
+# 新架構 v1 API 路由
+app.include_router(v1_router, prefix="/api/v1")
 
 
 @app.get("/api/status")

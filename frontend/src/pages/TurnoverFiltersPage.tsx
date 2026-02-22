@@ -221,7 +221,7 @@ export function TurnoverFiltersPage() {
 
     // 複合篩選
     const { data: comboData, isLoading: loadingCombo } = useQuery({
-        queryKey: ['comboFilter', startDate, endDate, comboTurnoverMin, comboTurnoverMax, comboChangeMin, comboChangeMax, comboMinBuyDays, comboVolumeRatio, queryKey],
+        queryKey: ['comboFilter', startDate, endDate, comboTurnoverMin, comboTurnoverMax, comboChangeMin, comboChangeMax, comboMinBuyDays, comboVolumeRatio, combo5dayHigh, combo5dayLow, queryKey],
         queryFn: () => getComboFilter(
             startDate,
             endDate,
@@ -231,8 +231,8 @@ export function TurnoverFiltersPage() {
             comboChangeMax ? parseFloat(comboChangeMax) : undefined,
             comboMinBuyDays ? parseInt(comboMinBuyDays) : undefined,
             comboVolumeRatio ? parseFloat(comboVolumeRatio) : undefined,
-            combo5dayHigh || undefined,
-            combo5dayLow || undefined
+            combo5dayHigh ? true : undefined,
+            combo5dayLow ? true : undefined
         ),
         enabled: !!startDate && !!endDate && activeFilter === 'combo',
     });
@@ -552,9 +552,9 @@ export function TurnoverFiltersPage() {
                                         id="combo5dayHigh"
                                         checked={combo5dayHigh}
                                         onChange={(e) => setCombo5dayHigh(e.target.checked)}
-                                        className="w-4 h-4"
+                                        className="w-4 h-4 rounded border-border bg-background text-primary focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background cursor-pointer"
                                     />
-                                    <Label htmlFor="combo5dayHigh">五日創新高</Label>
+                                    <Label htmlFor="combo5dayHigh" className="cursor-pointer">五日創新高</Label>
                                 </div>
                                 <div className="flex items-center space-x-2">
                                     <input
@@ -562,9 +562,9 @@ export function TurnoverFiltersPage() {
                                         id="combo5dayLow"
                                         checked={combo5dayLow}
                                         onChange={(e) => setCombo5dayLow(e.target.checked)}
-                                        className="w-4 h-4"
+                                        className="w-4 h-4 rounded border-border bg-background text-primary focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background cursor-pointer"
                                     />
-                                    <Label htmlFor="combo5dayLow">五日創新低</Label>
+                                    <Label htmlFor="combo5dayLow" className="cursor-pointer">五日創新低</Label>
                                 </div>
                             </>
                         )}
