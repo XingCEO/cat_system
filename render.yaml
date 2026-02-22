@@ -1,17 +1,11 @@
 services:
   - type: web
     name: cat-money
-    runtime: python
+    runtime: docker
     region: singapore
-    rootDir: backend
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    dockerfilePath: ./Dockerfile
     envVars:
-      - key: PYTHON_VERSION
-        value: "3.11"
       - key: DATABASE_URL
         value: sqlite+aiosqlite:///./twse_filter.db
       - key: CORS_ORIGINS
         value: "*"
-      - key: DEBUG
-        value: "false"
