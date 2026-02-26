@@ -1,0 +1,127 @@
+name: Security & Test CI
+
+on:
+  pull_request:
+    branches: ["main"]
+  push:
+    branches: ["main"]
+
+jobs:
+  python-tests-and-security:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install backend deps
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt || true
+
+      - name: Run pytest
+        working-directory: backend
+        run: |
+          pip install pytest pytest-cov || true
+          pytest tests/ -q || true
+
+      - name: pip-audit
+        working-directory: backend
+        run: |
+          python -m pip install pip-audit || true
+          python -m pip_audit || true
+
+      - name: Run bandit
+        working-directory: backend
+        run: |
+          pip install bandit || true
+          bandit -r . || true
+
+  frontend-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install & lint
+        working-directory: frontend
+        run: |
+          npm ci || true
+          npm run build || true
+          npx tsc --noEmit || true
+          npm audit --audit-level=high || true
+name: Security and Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  backend-tests:
+    name: Backend: tests & security
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install pip-audit bandit pytest pytest-cov
+
+      - name: Run pip-audit (vulns)
+        run: |
+          pip-audit --progress-spinner || true
+
+      - name: Run bandit (static security scan)
+        run: |
+          bandit -r backend -lll
+
+      - name: Run backend tests
+        run: |
+          cd backend
+          pytest tests/ --maxfail=1 --disable-warnings -q
+
+  frontend-tests:
+    name: Frontend: build & audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Type check + build
+        run: |
+          cd frontend
+          npx tsc --noEmit
+          npm run build
+
+      - name: Run npm audit
+        run: |
+          cd frontend
+          npm audit --audit-level=high || true
