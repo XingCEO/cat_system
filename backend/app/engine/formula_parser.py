@@ -104,7 +104,7 @@ def safe_eval_formula(df: pd.DataFrame, name: str, formula: str) -> pd.DataFrame
         raise ValueError(f"公式驗證失敗: {error_msg}")
 
     try:
-        df[name] = df.eval(formula, engine="python")
+        df[name] = df.eval(formula, engine="numexpr")
         logger.info(f"自訂公式 '{name}' = '{formula}' 計算完成")
     except Exception as e:
         raise ValueError(f"公式執行失敗: {str(e)}")

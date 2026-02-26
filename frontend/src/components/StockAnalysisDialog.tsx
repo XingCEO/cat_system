@@ -27,6 +27,16 @@ import {
 } from 'lucide-react';
 import type { KLineResponse } from '@/types';
 
+/** HTML-escape to prevent XSS in document.write templates */
+function escapeHtml(str: string): string {
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 interface StockAnalysisDialogProps {
     open: boolean;
     onClose: () => void;
@@ -199,11 +209,15 @@ export function StockAnalysisDialog({ open, onClose, symbol, name }: StockAnalys
             const printWindow = window.open('', '_blank', 'width=1123,height=794');
 
             if (printWindow) {
+                const safeSymbol = escapeHtml(symbol);
+                const safeName = escapeHtml(stockName ?? '');
+                const safeIndustry = industry ? escapeHtml(industry) : '';
+                const safePeriodLabel = escapeHtml(periodLabel);
                 printWindow.document.write(`
                     <!DOCTYPE html>
                     <html>
                     <head>
-                        <title>${symbol} ${stockName} ${periodLabel}</title>
+                        <title>${safeSymbol} ${safeName} ${safePeriodLabel}</title>
                         <style>
                             @page { size: A4 landscape; margin: 8mm; }
                             * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -267,10 +281,10 @@ export function StockAnalysisDialog({ open, onClose, symbol, name }: StockAnalys
                         <div class="container">
                             <div class="header">
                                 <div class="title-group">
-                                    <span class="symbol">${symbol}</span>
-                                    <span class="name">${stockName}</span>
-                                    ${industry ? `<span style="font-size:12px; background:#eee; padding:2px 6px; border-radius:4px;">${industry}</span>` : ''}
-                                    <span style="font-size:14px; background:#3b82f6; color:white; padding:3px 10px; border-radius:4px; font-weight:600;">${periodLabel}</span>
+                                    <span class="symbol">${safeSymbol}</span>
+                                    <span class="name">${safeName}</span>
+                                    ${safeIndustry ? `<span style="font-size:12px; background:#eee; padding:2px 6px; border-radius:4px;">${safeIndustry}</span>` : ''}
+                                    <span style="font-size:14px; background:#3b82f6; color:white; padding:3px 10px; border-radius:4px; font-weight:600;">${safePeriodLabel}</span>
                                 </div>
                                 <div class="meta">資料日期：${printData?.date || '-'}</div>
                             </div>

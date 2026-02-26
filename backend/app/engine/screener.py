@@ -112,8 +112,12 @@ async def load_multi_day_data(db: AsyncSession, days: int = 2) -> pd.DataFrame:
             DailyPrice.change_percent,
         )
         .order_by(DailyPrice.date.desc())
-        .limit(days * 2000)  # 假設最多 2000 支股票
+        # 動態計算上限：先查實際股票數量
     )
+    # 取得實際 ticker 數量來設定合理上限
+    ticker_count_result = await db.execute(select(func.count(Ticker.ticker_id)))
+    ticker_count = ticker_count_result.scalar() or 2000
+    price_query = price_query.limit(days * ticker_count)
     result = await db.execute(price_query)
     rows = result.fetchall()
 
@@ -233,8 +237,8 @@ async def run_screen(request: ScreenRequest, db: AsyncSession) -> ScreenResponse
             continue
 
     # 如果是多天資料，只保留最新日期的記錄作為結果
+    latest_date = df["date"].max()
     if needs_multi_day:
-        latest_date = df["date"].max()
 
     # 套用所有規則
     masks = []

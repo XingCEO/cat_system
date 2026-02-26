@@ -6,8 +6,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.dialects.sqlite import insert as sqlite_upsert
-from sqlalchemy import select, func
+from sqlalchemy import select
 
 from app.models.ticker import Ticker
 from app.models.daily_price import DailyPrice
@@ -23,13 +22,15 @@ async def sync_tickers(db: AsyncSession) -> int:
     if stock_list.empty:
         return 0
 
+    # Bulk query existing ticker_ids to avoid N+1
+    all_ids = [str(row.get("stock_id", "")) for _, row in stock_list.iterrows() if row.get("stock_id")]
+    existing_result = await db.execute(select(Ticker.ticker_id).where(Ticker.ticker_id.in_(all_ids)))
+    existing_ids = set(existing_result.scalars().all())
+
     count = 0
     for _, row in stock_list.iterrows():
         ticker_id = str(row.get("stock_id", ""))
-        if not ticker_id:
-            continue
-        existing = await db.execute(select(Ticker).where(Ticker.ticker_id == ticker_id))
-        if existing.scalar_one_or_none():
+        if not ticker_id or ticker_id in existing_ids:
             continue
         db.add(Ticker(
             ticker_id=ticker_id,

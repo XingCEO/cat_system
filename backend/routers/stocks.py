@@ -2,8 +2,9 @@
 Stocks Router - API endpoints for stock filtering and data
 """
 from fastapi import APIRouter, Query, HTTPException, Depends
-from typing import Optional, List
+from typing import Optional, List, Literal
 from datetime import date
+import logging
 
 from schemas.stock import StockFilterParams, StockListResponse, StockResponse, StockDetailResponse
 from schemas.filter import BatchCompareRequest, BatchCompareResponse, BatchCompareItem
@@ -14,6 +15,7 @@ from services.calculator import calculator
 from utils.validators import validate_date, validate_symbol
 from utils.date_utils import get_previous_trading_day, format_date
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/stocks", tags=["stocks"])
 
 
@@ -37,8 +39,8 @@ async def filter_stocks(
     exclude_special: bool = Query(True, description="排除權證/特別股"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
-    sort_by: str = Query("change_percent", description="排序欄位"),
-    sort_order: str = Query("desc", description="排序方向")
+    sort_by: Literal["change_percent", "volume", "price", "amplitude", "volume_ratio", "consecutive_up_days", "symbol", "name"] = Query("change_percent", description="排序欄位"),
+    sort_order: Literal["asc", "desc"] = Query("desc", description="排序方向")
 ):
     """
     篩選符合條件的股票
@@ -108,7 +110,20 @@ async def filter_stocks(
         return APIResponse.ok(data=response_data)
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"filter_stocks error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="篩選股票時發生錯誤")
+
+
+@router.get("/realtime")
+async def get_realtime_quotes(
+    symbols: str = Query(..., description="股票代號(逗號分隔，最多50檔)")
+):
+    """盤中即時報價 — TWSE MIS API"""
+    symbol_list = [s.strip() for s in symbols.split(",") if s.strip()][:50]
+    if not symbol_list:
+        raise HTTPException(status_code=400, detail="請提供至少一個股票代號")
+    results = await data_fetcher.get_realtime_quotes(symbol_list)
+    return {"success": True, "data": results, "count": len(results)}
 
 
 @router.get("/{symbol}", response_model=APIResponse[StockDetailResponse])
@@ -160,7 +175,10 @@ async def get_stock_detail(symbol: str):
         # Calculate prev_close and metrics
         if "spread" in row:
             result["prev_close"] = row["close"] - row["spread"]
-            result["change_percent"] = round(row["spread"] / result["prev_close"] * 100, 2)
+            if result["prev_close"] and result["prev_close"] != 0:
+                result["change_percent"] = round(row["spread"] / result["prev_close"] * 100, 2)
+            else:
+                result["change_percent"] = 0.0
         
         # Enrich with calculations
         if not hist_df.empty:
@@ -173,7 +191,8 @@ async def get_stock_detail(symbol: str):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"get_stock_detail error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="取得股票詳細資料時發生錯誤")
 
 
 @router.get("/{symbol}/history")
@@ -219,7 +238,8 @@ async def get_stock_history(
         return APIResponse.ok(data=result)
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"get_stock_history error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="取得歷史資料時發生錯誤")
 
 
 @router.post("/batch-compare", response_model=APIResponse[BatchCompareResponse])
@@ -234,6 +254,8 @@ async def batch_compare_stocks(request: BatchCompareRequest):
         # Track occurrences
         occurrences = {}  # symbol -> list of dates
         stock_data = {}  # symbol -> latest data
+        stock_changes = {}  # symbol -> list of change_percent values
+        stock_volumes = {}  # symbol -> list of volume values
         
         for trade_date in request.dates:
             params = StockFilterParams(
@@ -256,7 +278,11 @@ async def batch_compare_stocks(request: BatchCompareRequest):
                 symbol = item["symbol"]
                 if symbol not in occurrences:
                     occurrences[symbol] = []
+                    stock_changes[symbol] = []
+                    stock_volumes[symbol] = []
                 occurrences[symbol].append(trade_date)
+                stock_changes[symbol].append(item.get("change_percent", 0))
+                stock_volumes[symbol].append(item.get("volume", 0))
                 stock_data[symbol] = item
         
         # Filter by minimum occurrence
@@ -264,14 +290,16 @@ async def batch_compare_stocks(request: BatchCompareRequest):
         for symbol, dates in occurrences.items():
             if len(dates) >= request.min_occurrence:
                 data = stock_data[symbol]
+                changes = stock_changes[symbol]
+                volumes = stock_volumes[symbol]
                 matches.append(BatchCompareItem(
                     symbol=symbol,
                     name=data.get("name", symbol),
                     industry=data.get("industry"),
                     occurrence_count=len(dates),
                     occurrence_dates=sorted(dates),
-                    avg_change=sum(d.get("change_percent", 0) for d in [stock_data[symbol]]) / len(dates),
-                    total_volume=sum(d.get("volume", 0) for d in [stock_data[symbol]]) * len(dates),
+                    avg_change=sum(changes) / len(changes) if changes else 0,
+                    total_volume=sum(volumes),
                     latest_price=data.get("close_price"),
                     latest_change=data.get("change_percent")
                 ))
@@ -289,16 +317,5 @@ async def batch_compare_stocks(request: BatchCompareRequest):
         return APIResponse.ok(data=response)
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/realtime")
-async def get_realtime_quotes(
-    symbols: str = Query(..., description="股票代號(逗號分隔，最多50檔)")
-):
-    """盤中即時報價 — TWSE MIS API"""
-    symbol_list = [s.strip() for s in symbols.split(",") if s.strip()][:50]
-    if not symbol_list:
-        raise HTTPException(status_code=400, detail="請提供至少一個股票代號")
-    results = await data_fetcher.get_realtime_quotes(symbol_list)
-    return {"success": True, "data": results, "count": len(results)}
+        logger.error(f"batch_compare error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="批次比對時發生錯誤")

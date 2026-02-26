@@ -2,7 +2,7 @@
 Query History Model
 """
 from sqlalchemy import Column, String, Integer, DateTime, JSON, Text
-from datetime import datetime
+from datetime import datetime, timezone
 from database import Base
 
 
@@ -34,7 +34,7 @@ class QueryHistory(Base):
     query_type = Column(String(50), default="filter")  # filter, batch_compare, backtest
     
     # Timestamps
-    executed_at = Column(DateTime, default=datetime.utcnow, index=True)
+    executed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     
     def __repr__(self):
         return f"<QueryHistory {self.id} @ {self.executed_at}>"

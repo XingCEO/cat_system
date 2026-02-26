@@ -4,13 +4,16 @@ Watchlist Router - Monitor stocks with conditions
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from pydantic import BaseModel
+import logging
 
 from database import get_db
 from models.watchlist import Watchlist, WatchlistItem
 from schemas.common import APIResponse
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/watchlist", tags=["watchlist"])
 
 
@@ -61,27 +64,28 @@ async def get_watchlists(db: AsyncSession = Depends(get_db)):
     取得所有監控清單
     """
     try:
-        stmt = select(Watchlist).order_by(Watchlist.created_at.desc())
+        stmt = (
+            select(Watchlist)
+            .options(selectinload(Watchlist.items))
+            .order_by(Watchlist.created_at.desc())
+        )
         result = await db.execute(stmt)
-        watchlists = result.scalars().all()
+        watchlists = result.scalars().unique().all()
         
         response_data = []
         for wl in watchlists:
-            items_stmt = select(WatchlistItem).where(WatchlistItem.watchlist_id == wl.id)
-            items_result = await db.execute(items_stmt)
-            items = items_result.scalars().all()
-            
             response_data.append(WatchlistResponse(
                 id=wl.id,
                 name=wl.name,
                 description=wl.description,
-                items=[WatchlistItemResponse.model_validate(item) for item in items]
+                items=[WatchlistItemResponse.model_validate(item) for item in wl.items]
             ))
         
         return APIResponse.ok(data=response_data)
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"get_watchlists error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="取得監控清單時發生錯誤")
 
 
 @router.post("", response_model=APIResponse[WatchlistResponse])
@@ -109,7 +113,8 @@ async def create_watchlist(
         ))
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"create_watchlist error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="建立監控清單時發生錯誤")
 
 
 @router.post("/{watchlist_id}/items", response_model=APIResponse[WatchlistItemResponse])
@@ -146,7 +151,8 @@ async def add_watchlist_item(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"add_watchlist_item error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="新增監控項目時發生錯誤")
 
 
 @router.put("/items/{item_id}", response_model=APIResponse[WatchlistItemResponse])
@@ -181,7 +187,8 @@ async def update_watchlist_item(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"update_watchlist_item error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="更新監控項目時發生錯誤")
 
 
 @router.delete("/items/{item_id}")
@@ -208,7 +215,8 @@ async def delete_watchlist_item(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"delete_watchlist_item error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="刪除監控項目時發生錯誤")
 
 
 @router.delete("/{watchlist_id}")

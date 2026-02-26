@@ -21,6 +21,7 @@ export default function StrategiesPage() {
 
     const [showModal, setShowModal] = useState(false);
     const [editingId, setEditingId] = useState<number | null>(null);
+    const [jsonError, setJsonError] = useState(false);
     const [form, setForm] = useState<StrategyCreate>({
         name: '', rules_json: { logic: 'AND', rules: [] },
         alert_enabled: false,
@@ -172,15 +173,19 @@ export default function StrategiesPage() {
                             />
                             <label>規則 JSON (進階)</label>
                             <textarea
-                                className="modal-textarea"
+                                className={`modal-textarea ${jsonError ? 'border-red-500' : ''}`}
                                 rows={8}
                                 value={JSON.stringify(form.rules_json, null, 2)}
                                 onChange={e => {
                                     try {
                                         setForm({ ...form, rules_json: JSON.parse(e.target.value) });
-                                    } catch { /* 忽略 JSON 解析錯誤 */ }
+                                        setJsonError(false);
+                                    } catch {
+                                        setJsonError(true);
+                                    }
                                 }}
                             />
+                            {jsonError && <span className="text-red-500 text-xs">JSON 格式不正確</span>}
                             <label className="alert-checkbox">
                                 <input
                                     type="checkbox"

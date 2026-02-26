@@ -1,9 +1,9 @@
 """
 Common Schemas
 """
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, Generic, TypeVar, List, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 T = TypeVar('T')
 
@@ -43,7 +43,7 @@ class APIResponse(BaseModel, Generic[T]):
     data: Optional[T] = None
     error: Optional[str] = None
     message: Optional[str] = None
-    timestamp: datetime = datetime.utcnow()
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     @classmethod
     def ok(cls, data: T = None, message: str = None):

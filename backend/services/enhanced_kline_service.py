@@ -5,7 +5,7 @@ Enhanced K-Line Service
 import pandas as pd
 import numpy as np
 from typing import Optional, Dict, List, Any, Literal, Tuple
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from dateutil.relativedelta import relativedelta
 import logging
 import asyncio
@@ -17,6 +17,10 @@ except ImportError:
 
 from sqlalchemy import select, delete
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+try:
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+except ImportError:
+    pg_insert = None
 
 from database import async_session_maker
 from models.kline_cache import KLineCache, KLineFetchProgress
@@ -268,13 +272,15 @@ class EnhancedKLineService:
                         "close": float(row["close"]) if pd.notna(row.get("close")) else None,
                         "volume": int(row["volume"]) if pd.notna(row.get("volume")) else None,
                         "is_valid": 1,
-                        "cached_at": datetime.utcnow(),
+                        "cached_at": datetime.now(timezone.utc),
                     }
                     records.append(record)
                 
-                # 使用 upsert
+                # 使用 upsert (自動偵測 SQLite / PostgreSQL)
+                dialect_name = session.bind.dialect.name if session.bind else "sqlite"
+                insert_fn = pg_insert if (dialect_name == "postgresql" and pg_insert) else sqlite_insert
                 for record in records:
-                    stmt = sqlite_insert(KLineCache).values(**record)
+                    stmt = insert_fn(KLineCache).values(**record)
                     stmt = stmt.on_conflict_do_update(
                         index_elements=["symbol", "date"],
                         set_={

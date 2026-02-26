@@ -2,7 +2,7 @@
 UserStrategy Model — 使用者儲存的篩選策略
 """
 from sqlalchemy import Column, String, Integer, Boolean, Text, DateTime, JSON
-from datetime import datetime
+from datetime import datetime, timezone
 from database import Base
 
 
@@ -15,8 +15,8 @@ class UserStrategy(Base):
     rules_json = Column(JSON, nullable=False, comment="篩選條件 JSON")
     alert_enabled = Column(Boolean, default=False, comment="是否開啟推播")
     line_notify_token = Column(Text, nullable=True, comment="Line Notify Token")
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     def __repr__(self):
         return f"<UserStrategy {self.id} - {self.name}>"

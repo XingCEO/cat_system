@@ -121,7 +121,7 @@ class DataFetcher:
                     shares_str = item.get("已發行普通股數或TDR原股發行股數", "0")
                     try:
                         float_shares = int(shares_str.replace(",", "")) // 1000  # Convert to 張(lots)
-                    except:
+                    except (ValueError, AttributeError):
                         float_shares = 0
                     
                     industry_code = item.get("產業別", "")
@@ -233,7 +233,7 @@ class DataFetcher:
                             val_str = str(val).replace(",", "")
                             try:
                                 return float(val_str) if to_float else int(float(val_str))
-                            except:
+                            except (ValueError, TypeError):
                                 return None
 
                         volume = parse_num(item.get("TradeVolume"))
@@ -391,81 +391,6 @@ class DataFetcher:
         
         return pd.DataFrame()
     
-    async def _fetch_twse_daily(self, trade_date: str) -> pd.DataFrame:
-        """Fallback: Fetch from TWSE Open Data"""
-        try:
-            # Convert date format for TWSE (YYYYMMDD)
-            date_obj = datetime.strptime(trade_date, "%Y-%m-%d")
-            twse_date = date_obj.strftime("%Y%m%d")
-
-            # Use STOCK_DAY_ALL endpoint for all stock daily data
-            url = f"{self.twse_url}/STOCK_DAY_ALL"
-            params = {
-                "response": "json",
-                "date": twse_date,
-            }
-
-            data = await self.fetch_with_retry(url, params)
-
-            if data and data.get("stat") == "OK" and data.get("data"):
-                # Parse TWSE STOCK_DAY_ALL format
-                # Columns: [0]代號, [1]名稱, [2]成交股數, [3]成交金額, [4]開盤, [5]最高, [6]最低, [7]收盤, [8]漲跌價差, [9]成交筆數
-                rows = data["data"]
-                stocks = []
-
-                # Parse values with comma removal
-                def parse_num(val, to_float=False):
-                    if val == "--" or val == "" or val is None:
-                        return None
-                    val_str = str(val).replace(",", "").replace("+", "").replace(" ", "")
-                    try:
-                        return float(val_str) if to_float else int(float(val_str))
-                    except:
-                        return None
-
-                for row in rows:
-                    try:
-                        symbol = str(row[0]).strip()
-                        # Skip ETFs (0050, 006208, etc) and special securities
-                        if symbol.startswith("00") or len(symbol) > 6:
-                            continue
-                        # Skip special types (warrants start with 7, etc)
-                        if symbol.startswith("7") or symbol.startswith("9"):
-                            continue
-
-                        volume = parse_num(row[2])
-                        if volume is None or volume < 1000:  # Skip low volume
-                            continue
-
-                        close_price = parse_num(row[7], True)  # Column 7 is 收盤價
-                        if close_price is None:
-                            continue
-
-                        # Calculate spread from change string (Column 8)
-                        spread = parse_num(row[8], True) or 0
-
-                        stocks.append({
-                            "stock_id": symbol,
-                            "stock_name": str(row[1]).strip(),
-                            "Trading_Volume": volume,
-                            "open": parse_num(row[4], True),   # Column 4 is 開盤
-                            "max": parse_num(row[5], True),    # Column 5 is 最高
-                            "min": parse_num(row[6], True),    # Column 6 is 最低
-                            "close": close_price,              # Column 7 is 收盤
-                            "spread": spread,                  # Column 8 is 漲跌價差
-                            "date": trade_date
-                        })
-                    except (ValueError, IndexError, TypeError) as e:
-                        continue
-
-                logger.info(f"Loaded {len(stocks)} stocks from TWSE for {trade_date}")
-                return pd.DataFrame(stocks)
-
-        except Exception as e:
-            logger.error(f"TWSE fallback failed: {e}")
-
-        return pd.DataFrame()
-
     async def _fetch_twse_historical(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
         """Fallback: Fetch historical data - try TWSE first, then Yahoo Finance for full range"""
         # 直接先嘗試 Yahoo Finance 抓取完整資料（更穩定）
@@ -514,7 +439,7 @@ class DataFetcher:
                         consecutive_failures = 0
                         try:
                             data = response.json()
-                        except:
+                        except (ValueError, Exception):
                             current = self._next_month(current)
                             continue
 
@@ -628,7 +553,8 @@ class DataFetcher:
 
                             for i, ts in enumerate(timestamps):
                                 try:
-                                    dt = datetime.fromtimestamp(ts)
+                                    from datetime import timezone
+                                    dt = datetime.fromtimestamp(ts, tz=timezone.utc)
                                     # Filter by date range
                                     if start_dt.date() <= dt.date() <= end_dt.date():
                                         open_val = opens[i] if i < len(opens) else None
@@ -650,7 +576,7 @@ class DataFetcher:
                                             "close": close_val,
                                             "Trading_Volume": vol_val,
                                         })
-                                except:
+                                except (ValueError, TypeError, IndexError):
                                     continue
 
                             if records:
@@ -755,7 +681,7 @@ class DataFetcher:
         盤中即時報價 — TWSE MIS API (免費、官方、無需註冊)
         每次最多 50 檔，建議間隔 3 秒
         """
-        cache_key = f"realtime_{'_'.join(sorted(symbols[:10]))}"
+        cache_key = f"realtime_{'_'.join(sorted(symbols))}"
         cached = cache_manager.get(cache_key, "realtime")
         if cached:
             return cached

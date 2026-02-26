@@ -1,7 +1,8 @@
 """
 API v1 Router — 聚合所有 v1 子路由
 """
-from fastapi import APIRouter, Depends
+import time
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.screen import router as screen_router
@@ -18,9 +19,20 @@ v1_router.include_router(strategies_router, tags=["策略"])
 v1_router.include_router(tickers_router, tags=["股票"])
 
 
+# Rate limit state for sync endpoint
+_sync_last = 0.0
+_SYNC_COOLDOWN = 300  # 5 minutes
+
+
 @v1_router.post("/sync", tags=["資料同步"])
 async def sync_data(date: str = None, db: AsyncSession = Depends(get_db)):
     """手動觸發 v1 資料同步（股票基本資料 + 日K線）"""
+    global _sync_last
+    now = time.monotonic()
+    if now - _sync_last < _SYNC_COOLDOWN:
+        remaining = int(_SYNC_COOLDOWN - (now - _sync_last))
+        raise HTTPException(status_code=429, detail=f"同步冷卻中，請等待 {remaining} 秒")
+    _sync_last = now
     from app.engine.data_sync import sync_tickers, sync_daily_prices
     ticker_count = await sync_tickers(db)
     price_count = await sync_daily_prices(db, trade_date=date)

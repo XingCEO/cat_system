@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List
 import json
+import logging
 
 from database import get_db
 from schemas.backtest import BacktestRequest, BacktestResponse, BacktestSummary
@@ -14,6 +15,7 @@ from services.backtest_engine import backtest_engine
 from models.backtest import BacktestResult
 from utils.validators import validate_date_range
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/backtest", tags=["backtest"])
 
 
@@ -68,7 +70,8 @@ async def run_backtest(
         return APIResponse.ok(data=result)
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"run_backtest error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="執行回測時發生錯誤")
 
 
 @router.get("/results/{result_id}", response_model=APIResponse[BacktestResponse])
@@ -106,7 +109,8 @@ async def get_backtest_result(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"get_backtest_result error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="取得回測結果時發生錯誤")
 
 
 @router.get("/history", response_model=APIResponse[List[BacktestSummary]])

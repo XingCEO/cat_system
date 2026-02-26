@@ -4,6 +4,17 @@ import type {
     TechnicalIndicators, BacktestRequest, BacktestResult, Watchlist, Favorite, BatchCompareItem
 } from '@/types';
 
+/** 歷史日K資料 (TODO: move to @/types) */
+export interface StockHistoryRecord {
+    date: string;
+    open: number | null;
+    high: number | null;
+    low: number | null;
+    close: number | null;
+    volume: number | null;
+    change_percent?: number | null;
+}
+
 const api = axios.create({
     baseURL: '/api',
     timeout: 120000,  // 增加超時時間至 120 秒（5 年資料需要較長時間）
@@ -52,8 +63,8 @@ export async function getStockDetail(symbol: string): Promise<StockDetail> {
     return data.data!;
 }
 
-export async function getStockHistory(symbol: string, days = 60): Promise<any[]> {
-    const { data } = await api.get<APIResponse<any[]>>(`/stocks/${symbol}/history?days=${days}`);
+export async function getStockHistory(symbol: string, days = 60): Promise<StockHistoryRecord[]> {
+    const { data } = await api.get<APIResponse<StockHistoryRecord[]>>(`/stocks/${symbol}/history?days=${days}`);
     return data.data!;
 }
 

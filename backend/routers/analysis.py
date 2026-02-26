@@ -47,7 +47,8 @@ async def get_stock_indicators(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"get_stock_indicators error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="取得技術指標時發生錯誤")
 
 
 @router.get("/stocks/{symbol}/kline")
@@ -135,7 +136,7 @@ async def get_kline_data(
         raise
     except Exception as e:
         logger.error(f"K線資料取得失敗: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="取得K線資料時發生錯誤")
 
 
 async def _clear_db_cache(symbol: str) -> None:
@@ -179,7 +180,8 @@ async def clear_kline_cache(symbol: str):
         return APIResponse.ok(data={"message": f"已清除 {symbol} 的所有快取"})
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"clear_kline_cache error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="清除快取時發生錯誤")
 
 
 @router.get("/industries")
@@ -191,7 +193,8 @@ async def get_industries():
         industries = await data_fetcher.get_industries()
         return APIResponse.ok(data=industries)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"get_industries error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="取得產業分類時發生錯誤")
 
 
 @router.get("/trading-date")

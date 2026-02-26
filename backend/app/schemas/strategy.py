@@ -28,10 +28,19 @@ class StrategyResponse(BaseModel):
     name: str
     rules_json: dict
     alert_enabled: bool
+    has_line_token: bool = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
+
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        instance = super().model_validate(obj, **kwargs)
+        # Mask line_notify_token — only expose whether it is set
+        token = getattr(obj, "line_notify_token", None)
+        instance.has_line_token = bool(token)
+        return instance
 
 
 class AlertToggle(BaseModel):

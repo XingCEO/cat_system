@@ -2,7 +2,7 @@
 Backtest Result Model
 """
 from sqlalchemy import Column, String, Integer, DateTime, JSON, Float, Text
-from datetime import datetime
+from datetime import datetime, timezone
 from database import Base
 
 
@@ -38,7 +38,7 @@ class BacktestResult(Base):
     detailed_results = Column(Text, nullable=True)  # JSON string for large data
     
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     def __repr__(self):
         return f"<BacktestResult {self.id} ({self.start_date} ~ {self.end_date})>"

@@ -4,7 +4,8 @@
 """
 import os
 import sys
-from fastapi import FastAPI, Request
+import time
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -143,8 +144,19 @@ async def health_check():
     return {"status": "healthy"}
 
 
+# Rate limit state for cache/clear
+_cache_clear_last = 0.0
+_CACHE_CLEAR_COOLDOWN = 60  # seconds
+
+
 @app.get("/api/cache/clear")
-async def clear_cache():
+async def clear_cache(request: Request):
+    global _cache_clear_last
+    now = time.monotonic()
+    if now - _cache_clear_last < _CACHE_CLEAR_COOLDOWN:
+        remaining = int(_CACHE_CLEAR_COOLDOWN - (now - _cache_clear_last))
+        raise HTTPException(status_code=429, detail=f"請等待 {remaining} 秒後再試")
+    _cache_clear_last = now
     from services.cache_manager import cache_manager
     stats_before = cache_manager.get_stats()
     cache_manager.clear()
@@ -180,8 +192,11 @@ if FRONTEND_DIR:
         if path.startswith("api/"):
             return JSONResponse(status_code=404, content={"error": "Not found"})
 
-        # Try to serve exact file
-        file_path = os.path.join(FRONTEND_DIR, path)
+        # Try to serve exact file with path traversal protection
+        file_path = os.path.realpath(os.path.join(FRONTEND_DIR, path))
+        frontend_real = os.path.realpath(FRONTEND_DIR)
+        if not file_path.startswith(frontend_real + os.sep) and file_path != frontend_real:
+            return JSONResponse(status_code=403, content={"error": "Forbidden"})
         if os.path.isfile(file_path):
             return FileResponse(file_path)
 

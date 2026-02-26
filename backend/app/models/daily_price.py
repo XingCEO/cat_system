@@ -2,7 +2,7 @@
 DailyPrice Model — 日 K 線 + 技術指標
 """
 from sqlalchemy import Column, String, Float, Integer, Date, DateTime, UniqueConstraint, Index
-from datetime import datetime
+from datetime import datetime, timezone
 from database import Base
 
 
@@ -37,7 +37,7 @@ class DailyPrice(Base):
     # 漲跌
     change_percent = Column(Float, nullable=True, comment="漲跌幅 %")
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
         UniqueConstraint("date", "ticker_id", name="uq_date_ticker"),

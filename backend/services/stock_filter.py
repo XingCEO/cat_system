@@ -108,13 +108,6 @@ class StockFilter:
         if df.empty:
             return df
         
-        # Calculate change percent if not present
-        if "spread" in df.columns and "close" in df.columns:
-            # FinMind format
-            df["change_percent"] = (df["close"] - (df["close"] - df["spread"])) / (df["close"] - df["spread"]) * 100
-        elif "close" in df.columns and "open" in df.columns:
-            df["prev_close"] = df["close"].shift(1)
-        
         # Filter: Exclude ETF (00 prefix and 006xxx patterns)
         if params.exclude_etf:
             df = df[~df["stock_id"].str.match(r"^00\d*")]
@@ -127,7 +120,7 @@ class StockFilter:
         # Filter: Change percent range
         if "spread" in df.columns and "close" in df.columns:
             prev_close = df["close"] - df["spread"]
-            df["change_percent"] = df["spread"] / prev_close * 100
+            df["change_percent"] = df["spread"] / prev_close.replace(0, float('nan')) * 100
         
         if "change_percent" in df.columns:
             if params.change_min is not None:

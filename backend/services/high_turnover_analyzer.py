@@ -1151,7 +1151,7 @@ class HighTurnoverAnalyzer:
                                             "low": low_val,
                                             "volume": volume_val,
                                         })
-                                except:
+                                except (ValueError, TypeError, KeyError):
                                     continue
 
                             if records:
@@ -1539,7 +1539,7 @@ class HighTurnoverAnalyzer:
                                         "dealer_buy": dealer_buy,
                                         "institutional_buy": institutional_buy
                                     }
-                                except:
+                                except (ValueError, TypeError, KeyError):
                                     continue
                 except Exception as e:
                     logger.debug(f"Failed to fetch institutional data for {check_date}: {e}")

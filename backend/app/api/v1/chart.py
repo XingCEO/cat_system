@@ -102,8 +102,8 @@ def _aggregate_weekly(rows) -> tuple:
         candles.append(KlineCandle(
             date=str(group[0].date),
             open=group[0].open,
-            high=max(r.high for r in group if r.high is not None) if any(r.high for r in group) else None,
-            low=min(r.low for r in group if r.low is not None) if any(r.low for r in group) else None,
+            high=max(r.high for r in group if r.high is not None) if any(r.high is not None for r in group) else None,
+            low=min(r.low for r in group if r.low is not None) if any(r.low is not None for r in group) else None,
             close=group[-1].close,
             volume=sum(r.volume or 0 for r in group),
         ))
@@ -126,8 +126,8 @@ def _aggregate_monthly(rows) -> tuple:
         candles.append(KlineCandle(
             date=str(group[0].date),
             open=group[0].open,
-            high=max(r.high for r in group if r.high is not None) if any(r.high for r in group) else None,
-            low=min(r.low for r in group if r.low is not None) if any(r.low for r in group) else None,
+            high=max(r.high for r in group if r.high is not None) if any(r.high is not None for r in group) else None,
+            low=min(r.low for r in group if r.low is not None) if any(r.low is not None for r in group) else None,
             close=group[-1].close,
             volume=sum(r.volume or 0 for r in group),
         ))

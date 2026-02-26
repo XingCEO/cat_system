@@ -3,7 +3,7 @@ K-Line Cache Model - 儲存 K 線歷史資料與技術指標
 支援 5 年資料快取，24 小時自動更新
 """
 from sqlalchemy import Column, String, Float, Integer, Date, DateTime, Index, Text
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from database import Base
 
 
@@ -50,7 +50,7 @@ class KLineCache(Base):
     bb_lower = Column(Float, nullable=True)
     
     # 快取時間戳記
-    cached_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    cached_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # 資料有效性標記
     is_valid = Column(Integer, default=1)  # 1=有效, 0=無效/缺失
@@ -68,7 +68,7 @@ class KLineCache(Base):
         """檢查快取是否過期"""
         if not self.cached_at:
             return True
-        return datetime.utcnow() - self.cached_at > timedelta(hours=hours)
+        return datetime.now(timezone.utc) - self.cached_at > timedelta(hours=hours)
     
     def to_dict(self) -> dict:
         """轉換為字典格式"""
@@ -116,7 +116,7 @@ class KLineFetchProgress(Base):
     # 時間戳記
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     __table_args__ = (
         Index('idx_fetch_symbol', 'symbol', unique=True),

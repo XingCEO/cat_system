@@ -5,6 +5,7 @@ from cachetools import TTLCache
 from typing import Optional, Any, Callable
 from functools import wraps
 import asyncio
+import hashlib
 from datetime import datetime
 from config import get_settings
 
@@ -94,7 +95,12 @@ def cached(cache_type: str = "general", key_prefix: str = ""):
             
             # Generate cache key
             key_parts = [key_prefix, func.__name__]
-            key_parts.extend(str(arg) for arg in args[1:])  # Skip self
+            for arg in args[1:]:  # Skip self
+                # Use hash for large objects (e.g. DataFrames) to avoid huge cache keys
+                s = str(arg)
+                if len(s) > 200:
+                    s = hashlib.md5(s.encode(), usedforsecurity=False).hexdigest()
+                key_parts.append(s)
             key_parts.extend(f"{k}={v}" for k, v in sorted(kwargs.items()))
             cache_key = ":".join(key_parts)
             
