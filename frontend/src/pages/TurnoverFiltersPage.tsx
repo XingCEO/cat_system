@@ -18,7 +18,7 @@ import {
     getTradingDate
 } from '@/services/api';
 import {
-    Flame, TrendingUp, Activity, LineChart,
+    Flame, TrendingUp, TrendingDown, Activity, LineChart,
     ChevronLeft, ArrowUpCircle, ArrowDownCircle, Zap, Search, Calendar,
     BarChart3, Users, Filter
 } from 'lucide-react';
@@ -39,6 +39,7 @@ interface TurnoverStock {
     is_5day_high?: boolean;
     is_5day_low?: boolean;
     is_breakout?: boolean;
+    direction?: string;
     is_volume_surge?: boolean;
     is_institutional_buy?: boolean;
     ma5?: number;
@@ -92,12 +93,12 @@ const FILTER_CONFIG: Record<FilterType, {
         description: '週轉率前200名且收盤價五日內創新低'
     },
     ma_breakout: {
-        label: '突破糾結均線',
+        label: '糾結均線',
         icon: <Zap className="w-5 h-5" />,
         color: 'text-violet-400',
         bgColor: 'bg-violet-500/10',
         borderColor: 'border-violet-500',
-        description: '突破糾結均線（無周轉率限制）'
+        description: '糾結均線突破/跌破（全市場）'
     },
     volume_surge: {
         label: '成交量放大',
@@ -134,6 +135,7 @@ export function TurnoverFiltersPage() {
     const [changeMax, setChangeMax] = useState<string>('');
     const [maChangeMin, setMaChangeMin] = useState<string>('');
     const [maChangeMax, setMaChangeMax] = useState<string>('');
+    const [maDirection, setMaDirection] = useState<'breakout' | 'breakdown'>('breakout');
     const [volumeRatio, setVolumeRatio] = useState<string>('1.5');
     const [minBuyDays, setMinBuyDays] = useState<string>('3');
     // 複合篩選專用狀態
@@ -208,10 +210,10 @@ export function TurnoverFiltersPage() {
         enabled: !!startDate && !!endDate && activeFilter === '5day_low',
     });
 
-    // 突破糾結均線
+    // 突破/跌破糾結均線
     const { data: maBreakoutData, isLoading: loadingMaBreakout } = useQuery({
-        queryKey: ['maBreakout', startDate, endDate, maChangeMin, maChangeMax, queryKey],
-        queryFn: () => getMaBreakout(startDate, endDate, maChangeMin ? parseFloat(maChangeMin) : undefined, maChangeMax ? parseFloat(maChangeMax) : undefined),
+        queryKey: ['maBreakout', startDate, endDate, maChangeMin, maChangeMax, maDirection, queryKey],
+        queryFn: () => getMaBreakout(startDate, endDate, maChangeMin ? parseFloat(maChangeMin) : undefined, maChangeMax ? parseFloat(maChangeMax) : undefined, maDirection),
         enabled: !!startDate && !!endDate && activeFilter === 'ma_breakout',
     });
 
@@ -425,9 +427,32 @@ export function TurnoverFiltersPage() {
                             </>
                         )}
 
-                        {/* 突破均線篩選參數 - 漲幅區間 */}
+                        {/* 突破/跌破均線篩選參數 */}
                         {activeFilter === 'ma_breakout' && (
                             <>
+                                <div className="space-y-2">
+                                    <Label>方向</Label>
+                                    <div className="flex rounded-lg overflow-hidden border border-border">
+                                        <button
+                                            onClick={() => setMaDirection('breakout')}
+                                            className={`px-3 py-2 text-sm font-medium transition-colors flex items-center gap-1 ${maDirection === 'breakout'
+                                                ? 'bg-emerald-500/20 text-emerald-400'
+                                                : 'bg-muted/30 text-muted-foreground hover:bg-muted/50'
+                                                }`}
+                                        >
+                                            <TrendingUp className="w-3.5 h-3.5" /> 突破
+                                        </button>
+                                        <button
+                                            onClick={() => setMaDirection('breakdown')}
+                                            className={`px-3 py-2 text-sm font-medium transition-colors flex items-center gap-1 border-l border-border ${maDirection === 'breakdown'
+                                                ? 'bg-rose-500/20 text-rose-400'
+                                                : 'bg-muted/30 text-muted-foreground hover:bg-muted/50'
+                                                }`}
+                                        >
+                                            <TrendingDown className="w-3.5 h-3.5" /> 跌破
+                                        </button>
+                                    </div>
+                                </div>
                                 <div className="space-y-2">
                                     <Label>漲幅下限 (%)</Label>
                                     <Input
@@ -707,7 +732,7 @@ export function TurnoverFiltersPage() {
                                                 {stock.is_limit_up && <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-orange-500/10 text-orange-500">漲停</span>}
                                                 {stock.is_5day_high && <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-emerald-500/10 text-emerald-500">新高</span>}
                                                 {stock.is_5day_low && <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-rose-500/10 text-rose-500">新低</span>}
-                                                {stock.is_breakout && <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-violet-500/10 text-violet-500">突破</span>}
+                                                {stock.is_breakout && <span className={`ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-xs ${stock.direction === 'breakdown' ? 'bg-rose-500/10 text-rose-500' : 'bg-violet-500/10 text-violet-500'}`}>{stock.direction === 'breakdown' ? '跌破' : '突破'}</span>}
                                             </td>
                                             <td className="px-4 py-3 text-muted-foreground text-xs">{stock.industry || '-'}</td>
                                             <td className="px-4 py-3 font-mono tabular-nums">{formatPrice(stock.close_price)}</td>

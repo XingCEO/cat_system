@@ -934,157 +934,152 @@ class HighTurnoverAnalyzer:
         self,
         date: Optional[str] = None,
         min_change: Optional[float] = None,
-        max_change: Optional[float] = None
+        max_change: Optional[float] = None,
+        direction: str = "breakout"
     ) -> Dict[str, Any]:
         """
-        突破糾結均線篩選（週轉率前200名）
-        糾結均線定義：5日、10日、20日均線在3%範圍內糾結，今日收盤突破
+        糾結均線突破/跌破篩選（全市場）
 
-        使用週轉率前200名股票，避免 Yahoo Finance 429 錯誤
+        糾結均線定義：昨日 5/10/20 日均線範圍在 3% 以內（糾結）
+        突破 (breakout)：今日收盤價 > 所有今日均線
+        跌破 (breakdown)：今日收盤價 < 所有今日均線
+
+        搜尋全市場，無周轉率排名限制
         """
         if date is None:
             from utils.date_utils import get_latest_trading_day
             date = get_latest_trading_day()
 
-        # 不使用快取，每次都重新計算以確保資料最新
-        # cache_key = f"ma_breakout_v2_{date}_{min_change}"
-        # cached = cache_manager.get(cache_key, "daily")
-        # if cached is not None:
-        #     return cached
-
-        # 取得週轉率前200名（已排序）
-        top200_result = await self.get_top20_turnover(date)
-        if not top200_result.get("success"):
-            return {"success": False, "error": "無法取得週轉率資料"}
-
-        stocks_to_check = top200_result.get("items", [])
-        if not stocks_to_check:
-            return {"success": False, "error": "無有效資料"}
-
-        from datetime import datetime
         import asyncio
 
-        breakout_stocks = []
-        processed = 0
-        total = len(stocks_to_check)
+        # 1. 取得全市場股票資料
+        all_stocks_df = await self._fetch_daily_data(date)
+        if all_stocks_df.empty:
+            return {"success": False, "error": "無法取得當日股票資料"}
 
-        logger.info(f"MA Breakout: Processing {total} stocks (top 200 by turnover) for {date}")
+        # 2. 計算周轉率（用於顯示，非篩選）
+        float_shares_map = await self._get_float_shares()
+        all_stocks = self._calculate_turnover_rates(all_stocks_df, float_shares_map)
 
-        for stock in stocks_to_check:
-            symbol = stock["symbol"]
-            current_close = stock.get("close_price", 0) or 0
+        if not all_stocks:
+            return {"success": False, "error": "無有效資料"}
+
+        # 3. 先依漲跌幅篩選，減少 Yahoo API 呼叫次數
+        stocks_to_check = []
+        for stock in all_stocks:
             change_pct = stock.get("change_percent", 0) or 0
-
-            # 檢查漲幅區間條件
             if min_change is not None and change_pct < min_change:
                 continue
             if max_change is not None and change_pct > max_change:
                 continue
-
-            if current_close <= 0:
+            if (stock.get("close_price", 0) or 0) <= 0:
                 continue
+            stocks_to_check.append(stock)
 
-            # 使用 Yahoo Finance 獲取歷史資料（加入延遲避免 429）
-            try:
-                history_df = await self._fetch_yahoo_history_for_ma(symbol)
+        total = len(stocks_to_check)
+        is_breakout = direction != "breakdown"
+        direction_label = "突破" if is_breakout else "跌破"
+        logger.info(f"MA {direction_label}: Processing {total} stocks (full market) for {date}")
 
-                if history_df.empty or len(history_df) < 20:
-                    continue
+        result_stocks = []
+        semaphore = asyncio.Semaphore(10)  # 限制並發 Yahoo 呼叫數
+        processed_count = [0]  # 用 list 以便在 closure 中修改
 
-                # 提取收盤價（最新在前）
-                # 注意：不要用 dropna()，否則會導致索引錯位
-                closes = history_df["close"].tolist()[:25]
-                opens = history_df["open"].tolist()[:25] if "open" in history_df.columns else []
-                lows = history_df["low"].tolist()[:25] if "low" in history_df.columns else []
+        async def process_stock(stock):
+            symbol = stock["symbol"]
+            current_close = stock.get("close_price", 0) or 0
 
-                if len(closes) < 20:
-                    continue
+            async with semaphore:
+                try:
+                    history_df = await self._fetch_yahoo_history_for_ma(symbol)
 
-                today_open = opens[0] if len(opens) > 0 and opens[0] is not None else None
-                today_close = closes[0] if len(closes) > 0 and closes[0] is not None else None
-                today_low = lows[0] if len(lows) > 0 and lows[0] is not None else None
-                yesterday_close = closes[1] if len(closes) > 1 and closes[1] is not None else None
+                    if history_df.empty or len(history_df) < 21:
+                        return None
 
-                # 條件1：今日開盤 >= 昨日收盤（跳空或平開）
-                if today_open is None or yesterday_close is None:
-                    continue
-                if today_open < yesterday_close:
-                    continue  # 不符合開高條件
+                    closes = history_df["close"].tolist()[:25]
+                    if len(closes) < 21:
+                        return None
 
-                # 條件2：當日收盤價 >= 五日前收盤價
-                # closes[0]=今天, closes[1]=昨天, ..., closes[5]=五日前
-                if len(closes) < 6:
-                    continue
-                five_days_ago_close = closes[5]  # 五日前的收盤價
-                if five_days_ago_close is None or today_close < five_days_ago_close:
-                    continue  # 不符合條件
+                    # 計算今日均線
+                    ma5 = sum(closes[:5]) / 5
+                    ma10 = sum(closes[:10]) / 10
+                    ma20 = sum(closes[:20]) / 20
 
-                # 條件3：當日最低價 >= 五日前最低價
-                if len(lows) < 6 or today_low is None:
-                    continue
-                five_days_ago_low = lows[5]  # 五日前的最低價
-                if five_days_ago_low is None or today_low < five_days_ago_low:
-                    continue  # 不符合條件
-
-                # 計算均線
-                ma5 = sum(closes[:5]) / 5
-                ma10 = sum(closes[:10]) / 10
-                ma20 = sum(closes[:20]) / 20
-
-                # 計算昨日均線（用於判斷突破）
-                if len(closes) >= 21:
+                    # 計算昨日均線（用於判斷糾結）
                     yesterday_closes = closes[1:21]
                     yesterday_ma5 = sum(yesterday_closes[:5]) / 5
                     yesterday_ma10 = sum(yesterday_closes[:10]) / 10
                     yesterday_ma20 = sum(yesterday_closes[:20]) / 20
 
-                    # 判斷昨日均線糾結（在3%範圍內）
+                    # 判斷昨日均線糾結（範圍 ≤ 3%）
                     ma_values = [yesterday_ma5, yesterday_ma10, yesterday_ma20]
                     ma_avg = sum(ma_values) / 3
-                    if ma_avg > 0:
-                        ma_range = (max(ma_values) - min(ma_values)) / ma_avg * 100
+                    if ma_avg <= 0:
+                        return None
 
-                        # 糾結條件：均線範圍在3%內，今日收盤突破所有均線
-                        if ma_range <= 3.0 and current_close > max(ma5, ma10, ma20):
-                            stock["ma5"] = round(ma5, 2)
-                            stock["ma10"] = round(ma10, 2)
-                            stock["ma20"] = round(ma20, 2)
-                            stock["ma_range"] = round(ma_range, 2)
-                            stock["today_open"] = round(today_open, 2) if today_open else 0
-                            stock["yesterday_close"] = round(yesterday_close, 2) if yesterday_close else 0
-                            stock["today_low"] = round(today_low, 2) if today_low else 0
-                            stock["five_days_ago_close"] = round(five_days_ago_close, 2) if five_days_ago_close else 0
-                            stock["five_days_ago_low"] = round(five_days_ago_low, 2) if five_days_ago_low else 0
-                            stock["gap_up"] = round((today_open - yesterday_close) / yesterday_close * 100, 2) if yesterday_close else 0
-                            stock["is_breakout"] = True
-                            breakout_stocks.append(stock)
+                    ma_range = (max(ma_values) - min(ma_values)) / ma_avg * 100
+                    if ma_range > 3.0:
+                        return None
 
-            except Exception as e:
-                logger.debug(f"Error processing {symbol}: {e}")
-                continue
+                    # 判斷突破或跌破
+                    if is_breakout:
+                        # 今日收盤 > 所有今日均線
+                        if current_close <= max(ma5, ma10, ma20):
+                            return None
+                    else:
+                        # 今日收盤 < 所有今日均線
+                        if current_close >= min(ma5, ma10, ma20):
+                            return None
 
-            processed += 1
-            # 每處理10檔股票暫停0.1秒，避免 Yahoo 429 錯誤
-            if processed % 10 == 0:
-                await asyncio.sleep(0.1)
-            if processed % 50 == 0:
-                logger.info(f"MA Breakout progress: {processed}/{total}, found {len(breakout_stocks)}")
+                    # 符合條件，建立結果（複製 dict 避免並發修改）
+                    matched = dict(stock)
+                    matched["ma5"] = round(ma5, 2)
+                    matched["ma10"] = round(ma10, 2)
+                    matched["ma20"] = round(ma20, 2)
+                    matched["ma_range"] = round(ma_range, 2)
+                    matched["is_breakout"] = is_breakout
+                    matched["direction"] = direction
+                    return matched
 
-        # 依漲幅排序
-        breakout_stocks.sort(key=lambda x: x.get("change_percent", 0), reverse=True)
+                except Exception as e:
+                    logger.debug(f"Error processing {symbol}: {e}")
+                    return None
+                finally:
+                    processed_count[0] += 1
+                    if processed_count[0] % 200 == 0:
+                        logger.info(f"MA {direction_label} progress: {processed_count[0]}/{total}, found so far...")
 
-        logger.info(f"MA Breakout completed: {len(breakout_stocks)} stocks found")
+        # 分批處理，避免同時發出過多請求
+        batch_size = 50
+        for i in range(0, total, batch_size):
+            batch = stocks_to_check[i:i + batch_size]
+            tasks = [process_stock(s) for s in batch]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            for r in results:
+                if r is not None and not isinstance(r, Exception):
+                    result_stocks.append(r)
+
+            # 批次間短暫暫停，降低 Yahoo 429 風險
+            if i + batch_size < total:
+                await asyncio.sleep(0.3)
+
+        # 排序：突破依漲幅降序，跌破依漲幅升序
+        result_stocks.sort(
+            key=lambda x: x.get("change_percent", 0),
+            reverse=is_breakout
+        )
+
+        logger.info(f"MA {direction_label} completed: {len(result_stocks)} stocks found")
 
         result = {
             "success": True,
             "query_date": date,
+            "direction": direction,
             "filter": {"min_change": min_change, "max_change": max_change},
-            "breakout_count": len(breakout_stocks),
-            "items": breakout_stocks,
+            "breakout_count": len(result_stocks),
+            "items": result_stocks,
         }
-
-        # 不快取結果，確保每次都重新計算
-        # cache_manager.set(cache_key, result, "daily")
 
         return result
 
@@ -1587,17 +1582,19 @@ class HighTurnoverAnalyzer:
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
         min_change: Optional[float] = None,
-        max_change: Optional[float] = None
+        max_change: Optional[float] = None,
+        direction: str = "breakout"
     ) -> Dict[str, Any]:
         """
-        突破糾結均線（支援日期區間和漲幅區間）
+        糾結均線突破/跌破（支援日期區間和漲幅區間）
+        direction: "breakout" (突破) 或 "breakdown" (跌破)
         """
         dates = await self._get_date_range(start_date, end_date)
         all_items = []
         daily_stats = []
 
         for date in dates:
-            result = await self.get_ma_breakout(date, min_change, max_change)
+            result = await self.get_ma_breakout(date, min_change, max_change, direction)
             if result.get("success"):
                 for item in result.get("items", []):
                     item["query_date"] = date
@@ -1611,6 +1608,7 @@ class HighTurnoverAnalyzer:
             "success": True,
             "start_date": start_date or dates[0] if dates else None,
             "end_date": end_date or dates[-1] if dates else None,
+            "direction": direction,
             "filter": {"min_change": min_change, "max_change": max_change},
             "total_days": len(dates),
             "breakout_count": len(all_items),

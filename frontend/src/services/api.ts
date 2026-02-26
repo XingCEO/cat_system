@@ -233,13 +233,14 @@ export async function getTop200_5DayLow(startDate?: string, endDate?: string): P
     return data;
 }
 
-// 突破糾結均線（支援日期區間和漲幅區間）
-export async function getMaBreakout(startDate?: string, endDate?: string, minChange?: number, maxChange?: number): Promise<any> {
+// 糾結均線突破/跌破（支援日期區間、漲幅區間、方向）
+export async function getMaBreakout(startDate?: string, endDate?: string, minChange?: number, maxChange?: number, direction: string = 'breakout'): Promise<any> {
     const params = new URLSearchParams();
     if (startDate) params.set('start_date', startDate);
     if (endDate) params.set('end_date', endDate);
     if (minChange !== undefined) params.set('min_change', String(minChange));
     if (maxChange !== undefined) params.set('max_change', String(maxChange));
+    if (direction) params.set('direction', direction);
     const { data } = await api.get<any>(`/turnover/ma-breakout?${params}`);
     return data;
 }

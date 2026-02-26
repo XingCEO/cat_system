@@ -373,18 +373,21 @@ async def get_ma_breakout(
     end_date: Optional[str] = Query(None, description="結束日期 YYYY-MM-DD"),
     min_change: Optional[float] = Query(None, description="最低漲幅(%)"),
     max_change: Optional[float] = Query(None, description="最高漲幅(%)"),
+    direction: str = Query("breakout", description="方向: breakout(突破) / breakdown(跌破)"),
 ):
     """
-    突破糾結均線且漲幅在指定區間（支援日期區間）
+    糾結均線突破/跌破篩選（全市場，無周轉率限制）
 
-    糾結均線定義：5日、10日、20日均線在3%範圍內糾結，今日收盤突破
-    範例：min_change=1&max_change=5 取得漲幅1%~5%的突破股
+    糾結均線定義：昨日 5/10/20 日均線在 3% 範圍內糾結
+    突破：今日收盤價突破所有均線
+    跌破：今日收盤價跌破所有均線
     """
     result = await high_turnover_analyzer.get_ma_breakout_range(
         start_date=start_date,
         end_date=end_date,
         min_change=min_change,
-        max_change=max_change
+        max_change=max_change,
+        direction=direction
     )
 
     if not result.get("success"):
