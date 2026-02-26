@@ -1090,7 +1090,8 @@ class HighTurnoverAnalyzer:
 
     async def _fetch_yahoo_history_for_ma(self, symbol: str) -> pd.DataFrame:
         """
-        從 Yahoo Finance 獲取最近 30 天歷史資料（用於 MA 計算）
+        從 Yahoo Finance 獲取歷史資料（用於 MA 計算）
+        需要至少 21 個交易日（MA20 + 昨日），使用 3mo range 以覆蓋長假
         加入速率限制和重試機制避免 429 錯誤
         包含開盤價用於「今日開盤 > 昨日開盤」判斷
         """
@@ -1101,7 +1102,7 @@ class HighTurnoverAnalyzer:
         url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_symbol}"
         params = {
             "interval": "1d",
-            "range": "1mo",
+            "range": "3mo",  # 3 months to ensure enough trading days (covers CNY/holidays)
         }
 
         # 使用共享的 HTTP client
