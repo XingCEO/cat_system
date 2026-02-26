@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -147,6 +147,8 @@ export function TurnoverFiltersPage() {
     const [combo5dayLow, setCombo5dayLow] = useState<boolean>(false);
     const [selectedStock, setSelectedStock] = useState<{ symbol: string; name?: string } | null>(null);
     const [isChartDialogOpen, setIsChartDialogOpen] = useState(false);
+    // 追蹤上次自動設定的日期
+    const autoDateRef = useRef<string>('');
 
     // 用於觸發查詢的 key
     const [queryKey, setQueryKey] = useState(0);
@@ -155,15 +157,23 @@ export function TurnoverFiltersPage() {
     const { data: tradingDateData } = useQuery({
         queryKey: ['tradingDate'],
         queryFn: getTradingDate,
+        staleTime: 5 * 60_000,
+        refetchOnMount: 'always',
     });
 
-    // 初始化日期
+    // 初始化日期：首次或日期未被用戶手動修改時，同步最新交易日
     useEffect(() => {
         if (tradingDateData?.latest_trading_day) {
-            if (!startDate) setStartDate(tradingDateData.latest_trading_day);
-            if (!endDate) setEndDate(tradingDateData.latest_trading_day);
+            const latest = tradingDateData.latest_trading_day;
+            if (!startDate || startDate === autoDateRef.current) {
+                setStartDate(latest);
+            }
+            if (!endDate || endDate === autoDateRef.current) {
+                setEndDate(latest);
+            }
+            autoDateRef.current = latest;
         }
-    }, [tradingDateData, startDate, endDate]);
+    }, [tradingDateData]);
 
     // 手動觸發查詢
     const handleSearch = () => {

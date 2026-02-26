@@ -40,7 +40,8 @@ def validate_date(date_str: str) -> Tuple[bool, Optional[str]]:
         if parsed.year < 2000:
             return False, "日期不可早於 2000 年"
         
-        if parsed.date() > date.today():
+        from utils.date_utils import taiwan_today
+        if parsed.date() > taiwan_today():
             return False, "日期不可為未來日期"
         
         return True, None

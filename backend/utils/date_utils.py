@@ -1,9 +1,24 @@
 """
 Date Utilities - Trading day utilities for Taiwan Stock Exchange
+
+所有日期計算固定使用台灣時區 (UTC+8)，避免部署在 UTC 伺服器時日期不正確。
 """
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from typing import List, Optional
 import asyncio
+
+# 台灣時區 (UTC+8) — 固定偏移，不受伺服器 TZ 設定影響
+TW_TZ = timezone(timedelta(hours=8))
+
+
+def taiwan_today() -> date:
+    """取得台灣時區的今天日期（不受伺服器 TZ 影響）"""
+    return datetime.now(TW_TZ).date()
+
+
+def taiwan_now() -> datetime:
+    """取得台灣時區的當前時間"""
+    return datetime.now(TW_TZ)
 
 
 # Taiwan holidays (approximate - should be updated yearly)
@@ -65,9 +80,9 @@ def is_trading_day(check_date: date) -> bool:
 
 
 def get_previous_trading_day(from_date: date = None) -> date:
-    """Get the most recent trading day before or on the given date"""
+    """Get the most recent trading day before or on the given date (台灣時區)"""
     if from_date is None:
-        from_date = date.today()
+        from_date = taiwan_today()
     
     if isinstance(from_date, str):
         from_date = datetime.strptime(from_date, "%Y-%m-%d").date()
@@ -102,9 +117,9 @@ def get_trading_days(start_date: date, end_date: date) -> List[date]:
 
 
 def get_n_trading_days_ago(n: int, from_date: date = None) -> date:
-    """Get the date that is N trading days ago"""
+    """Get the date that is N trading days ago (台灣時區)"""
     if from_date is None:
-        from_date = date.today()
+        from_date = taiwan_today()
     
     count = 0
     current = from_date
@@ -162,7 +177,7 @@ def get_past_trading_days(n: int) -> List[str]:
         List of date strings in YYYY-MM-DD format, ordered from most recent to oldest
     """
     result = []
-    current = date.today()
+    current = taiwan_today()
     
     while len(result) < n:
         if is_trading_day(current):

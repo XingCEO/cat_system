@@ -4,6 +4,7 @@
  */
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { toLocalDateStr } from '@/utils/format';
 
 export interface ChartState {
     // 時間範圍
@@ -50,7 +51,7 @@ const DEFAULT_STATE = {
     visibleStartDate: null,
     visibleEndDate: null,
     loadedStartDate: '2021-01-01',
-    loadedEndDate: new Date().toISOString().split('T')[0],
+    loadedEndDate: toLocalDateStr(),
 
     showMA5: true,
     showMA10: true,
@@ -140,7 +141,7 @@ export function calculateDateRange(days: number): { startDate: string; endDate: 
         : new Date(endDate.getTime() - days * 24 * 60 * 60 * 1000);
 
     return {
-        startDate: startDate.toISOString().split('T')[0],
-        endDate: endDate.toISOString().split('T')[0],
+        startDate: toLocalDateStr(startDate),
+        endDate: toLocalDateStr(endDate),
     };
 }

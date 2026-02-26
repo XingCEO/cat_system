@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Top20Charts } from '@/components/Top20Charts';
 import { StockAnalysisDialog } from '@/components/StockAnalysisDialog';
-import { formatPercent, formatNumber, formatPrice, getChangeColor } from '@/utils/format';
+import { formatPercent, formatNumber, formatPrice, getChangeColor, toLocalDateStr } from '@/utils/format';
 import { getTop20LimitUp, downloadExportFile, getTradingDate } from '@/services/api';
 import { useStore } from '@/stores/store';
 import {
@@ -94,6 +94,8 @@ export function Top20TurnoverLimitUpPage() {
     const { data: tradingDateData } = useQuery({
         queryKey: ['tradingDate'],
         queryFn: getTradingDate,
+        staleTime: 5 * 60_000,
+        refetchOnMount: 'always',
     });
 
     // 只有當全局日期為空時才設定初始值
@@ -134,7 +136,7 @@ export function Top20TurnoverLimitUpPage() {
                 break;
         }
 
-        setQueryDate(targetDate.toISOString().split('T')[0]);
+        setQueryDate(toLocalDateStr(targetDate));
     };
 
     // Export functions

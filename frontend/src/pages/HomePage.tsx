@@ -29,6 +29,8 @@ export function HomePage() {
     const { data: tradingDateData } = useQuery({
         queryKey: ['tradingDate'],
         queryFn: getTradingDate,
+        staleTime: 5 * 60_000,
+        refetchOnMount: 'always',
     });
 
     // 只有當全局日期為空時才設定初始值

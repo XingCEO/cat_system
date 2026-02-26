@@ -93,9 +93,10 @@ async def get_kline_data(
     
     try:
         from services.enhanced_kline_service import enhanced_kline_service
+        from utils.date_utils import taiwan_today
         
         # 計算日期範圍
-        today = date.today()
+        today = taiwan_today()
         
         # 若未指定 end_date，使用今天
         if not end_date:
@@ -203,10 +204,9 @@ async def get_trading_date():
     取得最近交易日
     """
     try:
-        from utils.date_utils import get_previous_trading_day, format_date, is_trading_day
-        from datetime import date
+        from utils.date_utils import get_previous_trading_day, format_date, is_trading_day, taiwan_today
         
-        today = date.today()
+        today = taiwan_today()
         latest = get_previous_trading_day(today)
         
         return APIResponse.ok(data={
