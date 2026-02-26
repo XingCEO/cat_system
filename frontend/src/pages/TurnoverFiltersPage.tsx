@@ -624,10 +624,16 @@ export function TurnoverFiltersPage() {
                 </Card>
                 <Card className="border-border/50 shadow-sm hover:shadow-md transition-shadow duration-200">
                     <CardHeader className="pb-2">
-                        <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">周轉率前200名</CardTitle>
+                        <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                            {activeFilter === 'ma_breakout' ? '搜尋範圍' : '周轉率前200名'}
+                        </CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-primary">200 <span className="text-base font-normal text-muted-foreground">檔</span></div>
+                        {activeFilter === 'ma_breakout' ? (
+                            <div className="text-lg font-semibold text-primary">全市場</div>
+                        ) : (
+                            <div className="text-2xl font-bold text-primary">200 <span className="text-base font-normal text-muted-foreground">檔</span></div>
+                        )}
                     </CardContent>
                 </Card>
                 <Card className={`border-l-4 ${config.borderColor} shadow-sm hover:shadow-md transition-shadow duration-200`}>
@@ -714,7 +720,7 @@ export function TurnoverFiltersPage() {
                                     {stocks.map((stock: TurnoverStock, index: number) => (
                                         <tr
                                             key={`${stock.symbol}-${stock.query_date || index}`}
-                                            className={`hover:bg-muted/40 transition-colors duration-150 ${stock.turnover_rank <= 10 ? 'font-medium bg-amber-500/5' : ''}`}
+                                            className={`hover:bg-muted/40 transition-colors duration-150 ${activeFilter !== 'ma_breakout' && stock.turnover_rank <= 10 ? 'font-medium bg-amber-500/5' : ''}`}
                                         >
                                             {isDateRange && (
                                                 <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
@@ -722,9 +728,15 @@ export function TurnoverFiltersPage() {
                                                 </td>
                                             )}
                                             <td className="px-4 py-3">
-                                                <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold ${stock.turnover_rank <= 10 ? 'bg-amber-500 text-white shadow-sm' : 'bg-muted text-muted-foreground'}`}>
-                                                    {stock.turnover_rank || '-'}
-                                                </span>
+                                                {activeFilter === 'ma_breakout' ? (
+                                                    <span className="inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold bg-muted text-muted-foreground">
+                                                        {stock.turnover_rank || '-'}
+                                                    </span>
+                                                ) : (
+                                                    <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold ${stock.turnover_rank <= 10 ? 'bg-amber-500 text-white shadow-sm' : 'bg-muted text-muted-foreground'}`}>
+                                                        {stock.turnover_rank || '-'}
+                                                    </span>
+                                                )}
                                             </td>
                                             <td className="px-4 py-3 font-mono font-medium text-primary">{stock.symbol}</td>
                                             <td className="px-4 py-3">

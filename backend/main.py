@@ -109,12 +109,12 @@ async def lifespan(app: FastAPI):
 
     async def _periodic_refresh():
         """定期刷新：盤中每 30 分鐘重新抓取最新資料（僅在台股交易時段）"""
-        from utils.date_utils import is_trading_day
+        from utils.date_utils import is_trading_day, taiwan_now
         from services.cache_manager import cache_manager
         while True:
             await asyncio.sleep(1800)  # 30 分鐘
             try:
-                now = datetime.now()
+                now = taiwan_now()
                 # 只在交易日 8:30-14:30 自動刷新
                 if not is_trading_day(now.date()):
                     continue

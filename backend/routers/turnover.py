@@ -407,8 +407,8 @@ async def get_volume_surge(
 
     範例：volume_ratio=1.5 取得成交量>=昨日1.5倍的股票
     """
-    result = await high_turnover_analyzer.get_volume_surge(
-        date=start_date,
+    result = await high_turnover_analyzer.get_volume_surge_range(
+        start_date=start_date,
         end_date=end_date,
         volume_ratio=volume_ratio
     )
@@ -430,8 +430,8 @@ async def get_institutional_buy(
 
     範例：min_days=3 取得法人連續買超3天以上的股票
     """
-    result = await high_turnover_analyzer.get_institutional_buy(
-        date=start_date,
+    result = await high_turnover_analyzer.get_institutional_buy_range(
+        start_date=start_date,
         end_date=end_date,
         min_consecutive_days=min_days
     )

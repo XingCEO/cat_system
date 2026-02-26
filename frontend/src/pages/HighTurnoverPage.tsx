@@ -100,9 +100,17 @@ export function HighTurnoverPage() {
     }, [tradingDateData, queryDate, setQueryDate]);
 
     const stats: TurnoverStats | undefined = limitUpData?.stats;
-    const stocks: TurnoverStock[] = viewMode === 'limit_up'
+    const rawStocks: TurnoverStock[] = viewMode === 'limit_up'
         ? (limitUpData?.items || [])
         : (top20Data?.items || []);
+
+    // 依篩選條件過濾
+    const stocks = rawStocks.filter((stock) => {
+        if (filters.min_turnover_rate && stock.turnover_rate < parseFloat(filters.min_turnover_rate)) return false;
+        if (filters.price_max && (stock.close_price || 0) > parseFloat(filters.price_max)) return false;
+        if (filters.max_open_count && (stock.open_count ?? 0) > parseInt(filters.max_open_count)) return false;
+        return true;
+    });
 
     const isLoading = viewMode === 'limit_up' ? loadingLimitUp : loadingTop20;
 

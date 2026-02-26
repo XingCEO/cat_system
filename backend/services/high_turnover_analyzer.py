@@ -705,13 +705,13 @@ class HighTurnoverAnalyzer:
         if start > end:
             return {"success": False, "error": "開始日期不能晚於結束日期"}
         
-        # 取得所有日期的資料
+        # 只查詢交易日（排除週末和假日），避免無效 API 呼叫
+        trading_dates = await self._get_date_range(start_date, end_date)
+
         daily_results = []
         all_occurrences = {}  # symbol -> list of {date, data}
         
-        current = start
-        while current <= end:
-            date_str = current.strftime("%Y-%m-%d")
+        for date_str in trading_dates:
             result = await self.get_top20_limit_up_enhanced(date_str)
             
             if result.get("success"):
@@ -736,8 +736,6 @@ class HighTurnoverAnalyzer:
                         "turnover_rate": stock.get("turnover_rate"),
                         "change_percent": stock.get("change_percent"),
                     })
-            
-            current += timedelta(days=1)
         
         # 篩選出現次數 >= min_occurrence 的股票
         frequent_stocks = []
@@ -862,8 +860,9 @@ class HighTurnoverAnalyzer:
                 past_5day_high = max([c for c in closes[1:6] if c is not None], default=0)
 
                 if current_close > past_5day_high:
-                    stock["is_5day_high"] = True
-                    new_high_stocks.append(stock)
+                    matched = dict(stock)
+                    matched["is_5day_high"] = True
+                    new_high_stocks.append(matched)
 
             except Exception as e:
                 logger.debug(f"Error checking 5day high for {symbol}: {e}")
@@ -913,8 +912,9 @@ class HighTurnoverAnalyzer:
                 past_5day_low = min([c for c in closes[1:6] if c is not None], default=float('inf'))
 
                 if current_close < past_5day_low:
-                    stock["is_5day_low"] = True
-                    new_low_stocks.append(stock)
+                    matched = dict(stock)
+                    matched["is_5day_low"] = True
+                    new_low_stocks.append(matched)
 
             except Exception as e:
                 logger.debug(f"Error checking 5day low for {symbol}: {e}")
@@ -1220,8 +1220,9 @@ class HighTurnoverAnalyzer:
             result = await self.get_top200_limit_up(date)
             if result.get("success"):
                 for item in result.get("items", []):
-                    item["query_date"] = date
-                    all_items.append(item)
+                    copied = dict(item)
+                    copied["query_date"] = date
+                    all_items.append(copied)
                 daily_stats.append({
                     "date": date,
                     "count": result.get("limit_up_count", 0)
@@ -1255,8 +1256,9 @@ class HighTurnoverAnalyzer:
             result = await self.get_top200_change_range(date, change_min, change_max)
             if result.get("success"):
                 for item in result.get("items", []):
-                    item["query_date"] = date
-                    all_items.append(item)
+                    copied = dict(item)
+                    copied["query_date"] = date
+                    all_items.append(copied)
                 daily_stats.append({
                     "date": date,
                     "count": result.get("filtered_count", 0)
@@ -1289,8 +1291,9 @@ class HighTurnoverAnalyzer:
             result = await self.get_top200_5day_high(date)
             if result.get("success"):
                 for item in result.get("items", []):
-                    item["query_date"] = date
-                    all_items.append(item)
+                    copied = dict(item)
+                    copied["query_date"] = date
+                    all_items.append(copied)
                 daily_stats.append({
                     "date": date,
                     "count": result.get("new_high_count", 0)
@@ -1322,8 +1325,9 @@ class HighTurnoverAnalyzer:
             result = await self.get_top200_5day_low(date)
             if result.get("success"):
                 for item in result.get("items", []):
-                    item["query_date"] = date
-                    all_items.append(item)
+                    copied = dict(item)
+                    copied["query_date"] = date
+                    all_items.append(copied)
                 daily_stats.append({
                     "date": date,
                     "count": result.get("new_low_count", 0)
@@ -1392,10 +1396,11 @@ class HighTurnoverAnalyzer:
                     # Yahoo 返回的是股數，需要轉換為張 (除以 1000)
                     yesterday_volume_lots = yesterday_volume / 1000
                     if yesterday_volume_lots > 0 and today_volume >= yesterday_volume_lots * volume_ratio:
-                        stock["yesterday_volume"] = int(yesterday_volume_lots)
-                        stock["volume_ratio_calc"] = round(today_volume / yesterday_volume_lots, 2)
-                        stock["is_volume_surge"] = True
-                        surge_stocks.append(stock)
+                        matched = dict(stock)
+                        matched["yesterday_volume"] = int(yesterday_volume_lots)
+                        matched["volume_ratio_calc"] = round(today_volume / yesterday_volume_lots, 2)
+                        matched["is_volume_surge"] = True
+                        surge_stocks.append(matched)
 
             except Exception as e:
                 logger.debug(f"Error processing volume surge for {symbol}: {e}")
@@ -1455,13 +1460,14 @@ class HighTurnoverAnalyzer:
             consecutive_buy_days = inst_info.get("consecutive_buy_days", 0)
 
             if consecutive_buy_days >= min_consecutive_days:
-                stock["consecutive_buy_days"] = consecutive_buy_days
-                stock["foreign_buy"] = inst_info.get("foreign_buy", 0)
-                stock["trust_buy"] = inst_info.get("trust_buy", 0)
-                stock["dealer_buy"] = inst_info.get("dealer_buy", 0)
-                stock["total_buy"] = inst_info.get("total_buy", 0)
-                stock["is_institutional_buy"] = True
-                buy_stocks.append(stock)
+                matched = dict(stock)
+                matched["consecutive_buy_days"] = consecutive_buy_days
+                matched["foreign_buy"] = inst_info.get("foreign_buy", 0)
+                matched["trust_buy"] = inst_info.get("trust_buy", 0)
+                matched["dealer_buy"] = inst_info.get("dealer_buy", 0)
+                matched["total_buy"] = inst_info.get("total_buy", 0)
+                matched["is_institutional_buy"] = True
+                buy_stocks.append(matched)
 
         buy_stocks.sort(key=lambda x: x.get("consecutive_buy_days", 0), reverse=True)
 
@@ -1577,6 +1583,78 @@ class HighTurnoverAnalyzer:
         cache_manager.set(cache_key, result, "daily")
         return result
 
+    async def get_volume_surge_range(
+        self,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        volume_ratio: float = 1.5
+    ) -> Dict[str, Any]:
+        """
+        成交量放大篩選（支援日期區間）
+        """
+        dates = await self._get_date_range(start_date, end_date)
+        all_items = []
+        daily_stats = []
+
+        for date in dates:
+            result = await self.get_volume_surge(date=date, volume_ratio=volume_ratio)
+            if result.get("success"):
+                for item in result.get("items", []):
+                    copied = dict(item)
+                    copied["query_date"] = date
+                    all_items.append(copied)
+                daily_stats.append({
+                    "date": date,
+                    "count": result.get("surge_count", 0)
+                })
+
+        return {
+            "success": True,
+            "start_date": start_date or dates[0] if dates else None,
+            "end_date": end_date or dates[-1] if dates else None,
+            "filter": {"volume_ratio": volume_ratio},
+            "total_days": len(dates),
+            "surge_count": len(all_items),
+            "daily_stats": daily_stats,
+            "items": all_items,
+        }
+
+    async def get_institutional_buy_range(
+        self,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        min_consecutive_days: int = 3
+    ) -> Dict[str, Any]:
+        """
+        法人連買篩選（支援日期區間）
+        """
+        dates = await self._get_date_range(start_date, end_date)
+        all_items = []
+        daily_stats = []
+
+        for date in dates:
+            result = await self.get_institutional_buy(date=date, min_consecutive_days=min_consecutive_days)
+            if result.get("success"):
+                for item in result.get("items", []):
+                    copied = dict(item)
+                    copied["query_date"] = date
+                    all_items.append(copied)
+                daily_stats.append({
+                    "date": date,
+                    "count": result.get("buy_count", 0)
+                })
+
+        return {
+            "success": True,
+            "start_date": start_date or dates[0] if dates else None,
+            "end_date": end_date or dates[-1] if dates else None,
+            "filter": {"min_consecutive_days": min_consecutive_days},
+            "total_days": len(dates),
+            "buy_count": len(all_items),
+            "daily_stats": daily_stats,
+            "items": all_items,
+        }
+
     async def get_ma_breakout_range(
         self,
         start_date: Optional[str] = None,
@@ -1597,8 +1675,9 @@ class HighTurnoverAnalyzer:
             result = await self.get_ma_breakout(date, min_change, max_change, direction)
             if result.get("success"):
                 for item in result.get("items", []):
-                    item["query_date"] = date
-                    all_items.append(item)
+                    copied = dict(item)
+                    copied["query_date"] = date
+                    all_items.append(copied)
                 daily_stats.append({
                     "date": date,
                     "count": result.get("breakout_count", 0)
@@ -1683,6 +1762,9 @@ class HighTurnoverAnalyzer:
                 if change_max is not None and change_pct > change_max:
                     continue
 
+                # 使用 copy 避免污染快取
+                matched = dict(stock)
+
                 # 條件3: 法人連買天數
                 if min_buy_days is not None:
                     inst_info = institutional_data.get(symbol, {})
@@ -1690,9 +1772,9 @@ class HighTurnoverAnalyzer:
                     if consecutive_days < min_buy_days:
                         continue
                     # 加入法人資料
-                    stock["consecutive_buy_days"] = consecutive_days
-                    stock["foreign_buy"] = inst_info.get("foreign_buy", 0)
-                    stock["trust_buy"] = inst_info.get("trust_buy", 0)
+                    matched["consecutive_buy_days"] = consecutive_days
+                    matched["foreign_buy"] = inst_info.get("foreign_buy", 0)
+                    matched["trust_buy"] = inst_info.get("trust_buy", 0)
 
                 # 條件4: 成交量倍數（相對昨日）
                 if volume_ratio is not None and today_volume > 0:
@@ -1709,8 +1791,8 @@ class HighTurnoverAnalyzer:
                                     actual_ratio = today_volume / yesterday_volume
                                     if actual_ratio < volume_ratio:
                                         continue
-                                    stock["volume_ratio_calc"] = round(actual_ratio, 2)
-                                    stock["yesterday_volume"] = int(yesterday_volume)
+                                    matched["volume_ratio_calc"] = round(actual_ratio, 2)
+                                    matched["yesterday_volume"] = int(yesterday_volume)
                                 else:
                                     continue
                             else:
@@ -1732,7 +1814,7 @@ class HighTurnoverAnalyzer:
                         past_5day_high = max([c for c in closes[1:6] if c is not None], default=0)
                         if today_close <= past_5day_high:
                             continue
-                        stock["is_5day_high"] = True
+                        matched["is_5day_high"] = True
                     except Exception as e:
                         logger.debug(f"Error checking 5day high for {symbol}: {e}")
                         continue
@@ -1748,13 +1830,13 @@ class HighTurnoverAnalyzer:
                         past_5day_low = min([c for c in closes[1:6] if c is not None], default=float('inf'))
                         if today_close >= past_5day_low:
                             continue
-                        stock["is_5day_low"] = True
+                        matched["is_5day_low"] = True
                     except Exception as e:
                         logger.debug(f"Error checking 5day low for {symbol}: {e}")
                         continue
 
-                stock["query_date"] = date
-                filtered_stocks.append(stock)
+                matched["query_date"] = date
+                filtered_stocks.append(matched)
 
             all_items.extend(filtered_stocks)
 
@@ -1835,12 +1917,36 @@ class HighTurnoverAnalyzer:
                 if history_df.empty or len(history_df) < 2:
                     continue
 
-                closes = history_df["close"].dropna().tolist() if "close" in history_df.columns else []
-                trigger_price = stock.get("close_price", closes[0] if closes else 0)
+                # history_df sorted descending (newest first)
+                # 轉換為 ascending 排列 (oldest first) 方便向後查找
+                df_asc = history_df.sort_values("date", ascending=True).reset_index(drop=True)
+                dates_list = df_asc["date"].tolist()
+                closes_asc = df_asc["close"].tolist()
 
-                def calc_change(idx):
-                    if len(closes) > idx and trigger_price and trigger_price > 0:
-                        return round((closes[idx] - trigger_price) / trigger_price * 100, 2)
+                trigger_price = stock.get("close_price", 0)
+
+                # 找到觸發日在 history 中的位置
+                trigger_idx = None
+                for i, d in enumerate(dates_list):
+                    if d == date:
+                        trigger_idx = i
+                        break
+
+                if trigger_idx is None:
+                    # 找不到精確日期，嘗試找最近的日期
+                    continue
+
+                if trigger_price is None or trigger_price <= 0:
+                    trigger_price = closes_asc[trigger_idx] if closes_asc[trigger_idx] else 0
+
+                if trigger_price <= 0:
+                    continue
+
+                def calc_change(days_after):
+                    """計算觸發日後第 N 天的漲跌幅"""
+                    target_idx = trigger_idx + days_after
+                    if target_idx < len(closes_asc) and closes_asc[target_idx] is not None:
+                        return round((closes_asc[target_idx] - trigger_price) / trigger_price * 100, 2)
                     return None
 
                 day1_change = calc_change(1)
