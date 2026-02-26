@@ -26,6 +26,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set lowercase owner
+        id: repo
+        run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
         with:
@@ -34,12 +38,12 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/cat-system:latest
-            ghcr.io/${{ github.repository_owner }}/cat-system:${{ github.sha }}
+            ghcr.io/${{ steps.repo.outputs.owner }}/cat-system:latest
+            ghcr.io/${{ steps.repo.outputs.owner }}/cat-system:${{ github.sha }}
 
       - name: Image info
         run: |
-          echo "Image pushed: ghcr.io/${{ github.repository_owner }}/cat-system:${{ github.sha }}"
+          echo "Image pushed: ghcr.io/${{ steps.repo.outputs.owner }}/cat-system:${{ github.sha }}"
 
       - name: Zeabur deployment notes
         if: ${{ always() }}
