@@ -70,6 +70,7 @@ async def filter_stocks(
         volume_ratio_max=volume_ratio_max,
         industries=industry_list,
         exclude_etf=exclude_etf,
+        exclude_special=exclude_special,
         page=page,
         page_size=page_size,
         sort_by=sort_by,

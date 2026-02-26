@@ -249,7 +249,13 @@ function RuleRow({
             <select
                 className="rule-select target-type"
                 value={rule.target_type}
-                onChange={(e) => onChange({ target_type: e.target.value as 'value' | 'field' })}
+                onChange={(e) => {
+                    const tt = e.target.value as 'value' | 'field';
+                    onChange({
+                        target_type: tt,
+                        target_value: tt === 'value' ? 0 : (AVAILABLE_FIELDS[0]?.value ?? 'close'),
+                    });
+                }}
             >
                 <option value="value">數值</option>
                 <option value="field">欄位</option>

@@ -62,7 +62,8 @@ export default function ChartProPage() {
         if (selectedTicker) {
             loadKline(selectedTicker);
         }
-    }, [period, limit]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [period, limit, selectedTicker]);
 
     // 轉換為 LightweightKLineChart 所需格式 (KLineDataPoint)
     const chartData = klineData?.candles.map((c, i) => ({

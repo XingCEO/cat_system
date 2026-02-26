@@ -35,11 +35,11 @@ TW_HOLIDAYS_2024 = [
 
 TW_HOLIDAYS_2025 = [
     "2025-01-01",  # New Year
-    "2025-01-28", "2025-01-29", "2025-01-30", "2025-01-31",  # CNY 2025 (Jan 28-31 only)
+    "2025-01-27", "2025-01-28", "2025-01-29", "2025-01-30", "2025-01-31",  # CNY 2025 (Mon-Fri)
     "2025-02-28",  # Peace Memorial Day
     "2025-04-03", "2025-04-04",  # Tomb Sweeping Day  
     "2025-05-01",  # Labor Day
-    "2025-05-31",  # Dragon Boat Festival
+    "2025-05-30",  # Dragon Boat Festival (May 31 is Saturday, observed Friday)
     "2025-10-06",  # Mid-Autumn Festival
     "2025-10-10",  # National Day
 ]

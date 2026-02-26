@@ -104,10 +104,12 @@ class StockCalculator:
         # Ensure we have change_percent or calculate it
         if "change_percent" not in df.columns:
             df = df.copy()
+            # 先按日期升序再計算 pct_change，避免降序資料導致正負號錯誤
+            df = df.sort_values("date") if "date" in df.columns else df.iloc[::-1]
             df["change_percent"] = df["close"].pct_change() * 100
         
-        # Get last 5 days (exclude today if calculating for today)
-        changes = df["change_percent"].head(5)
+        # 取最近 5 日（升序後的最後 5 筆）
+        changes = df["change_percent"].tail(5)
         return round(changes.mean(), 2) if len(changes) > 0 else 0.0
     
     @staticmethod

@@ -22,6 +22,7 @@ export default function StrategiesPage() {
     const [showModal, setShowModal] = useState(false);
     const [editingId, setEditingId] = useState<number | null>(null);
     const [jsonError, setJsonError] = useState(false);
+    const [rawJson, setRawJson] = useState('');  // 獨立的 JSON 字串狀態
     const [form, setForm] = useState<StrategyCreate>({
         name: '', rules_json: { logic: 'AND', rules: [] },
         alert_enabled: false,
@@ -43,21 +44,31 @@ export default function StrategiesPage() {
     }, []);
 
     const handleSave = useCallback(async () => {
+        // 儲存前嘗試解析 rawJson
+        let parsedRules = form.rules_json;
+        try {
+            parsedRules = JSON.parse(rawJson);
+        } catch {
+            setJsonError(true);
+            return;
+        }
+        const payload = { ...form, rules_json: parsedRules };
         try {
             if (editingId) {
-                const updated = await updateStrategy(editingId, form);
+                const updated = await updateStrategy(editingId, payload);
                 updateLocal(updated);
             } else {
-                const created = await createStrategy(form);
+                const created = await createStrategy(payload);
                 addStrategy(created);
             }
             setShowModal(false);
             setEditingId(null);
             setForm({ name: '', rules_json: { logic: 'AND', rules: [] }, alert_enabled: false });
+            setRawJson('');
         } catch (e: any) {
             setError(e.message);
         }
-    }, [form, editingId]);
+    }, [form, editingId, rawJson]);
 
     const handleDelete = useCallback(async (id: number) => {
         if (!confirm('確定要刪除此策略？')) return;
@@ -81,12 +92,17 @@ export default function StrategiesPage() {
     const openEdit = (s: any) => {
         setEditingId(s.id);
         setForm({ name: s.name, rules_json: s.rules_json, alert_enabled: s.alert_enabled });
+        setRawJson(JSON.stringify(s.rules_json, null, 2));
+        setJsonError(false);
         setShowModal(true);
     };
 
     const openNew = () => {
         setEditingId(null);
-        setForm({ name: '', rules_json: { logic: 'AND', rules: [] }, alert_enabled: false });
+        const defaultRules = { logic: 'AND', rules: [] };
+        setForm({ name: '', rules_json: defaultRules, alert_enabled: false });
+        setRawJson(JSON.stringify(defaultRules, null, 2));
+        setJsonError(false);
         setShowModal(true);
     };
 
@@ -175,10 +191,11 @@ export default function StrategiesPage() {
                             <textarea
                                 className={`modal-textarea ${jsonError ? 'border-red-500' : ''}`}
                                 rows={8}
-                                value={JSON.stringify(form.rules_json, null, 2)}
+                                value={rawJson}
                                 onChange={e => {
+                                    setRawJson(e.target.value);
                                     try {
-                                        setForm({ ...form, rules_json: JSON.parse(e.target.value) });
+                                        JSON.parse(e.target.value);
                                         setJsonError(false);
                                     } catch {
                                         setJsonError(true);

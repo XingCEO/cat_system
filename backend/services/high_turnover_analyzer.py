@@ -1091,7 +1091,7 @@ class HighTurnoverAnalyzer:
         包含開盤價用於「今日開盤 > 昨日開盤」判斷
         """
         import asyncio
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         yahoo_symbol = f"{symbol}.TW"
         url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_symbol}"
@@ -1139,7 +1139,7 @@ class HighTurnoverAnalyzer:
                                     low_val = lows[i] if i < len(lows) else None
                                     volume_val = volumes[i] if i < len(volumes) else None
                                     if close_val is not None:
-                                        dt = datetime.fromtimestamp(ts)
+                                        dt = datetime.fromtimestamp(ts, tz=timezone.utc)
                                         records.append({
                                             "date": dt.strftime("%Y-%m-%d"),
                                             "close": close_val,

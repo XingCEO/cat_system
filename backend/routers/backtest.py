@@ -51,13 +51,13 @@ async def run_backtest(
             total_signals=result.total_signals,
             unique_stocks=result.unique_stocks,
             win_rate=result.overall_win_rate,
-            avg_return_1d=result.stats[0].avg_return if result.stats else None,
+            avg_return_1d=next((s.avg_return for s in result.stats if s.holding_days == 1), None),
             avg_return_3d=next((s.avg_return for s in result.stats if s.holding_days == 3), None),
             avg_return_5d=next((s.avg_return for s in result.stats if s.holding_days == 5), None),
             avg_return_10d=next((s.avg_return for s in result.stats if s.holding_days == 10), None),
-            max_gain=result.stats[0].max_gain if result.stats else None,
-            max_loss=result.stats[0].max_loss if result.stats else None,
-            expected_value=result.stats[0].expected_value if result.stats else None,
+            max_gain=next((s.max_gain for s in result.stats if s.holding_days == 1), result.stats[0].max_gain if result.stats else None),
+            max_loss=next((s.max_loss for s in result.stats if s.holding_days == 1), result.stats[0].max_loss if result.stats else None),
+            expected_value=next((s.expected_value for s in result.stats if s.holding_days == 1), result.stats[0].expected_value if result.stats else None),
             detailed_results=json.dumps(result.return_distribution) if result.return_distribution else None
         )
         

@@ -228,7 +228,7 @@ class TechnicalAnalyzer:
             # Add indicators if available
             for col in ["SMA_5", "SMA_10", "SMA_20", "SMA_60", "SMA_120", "RSI_14", 
                        "MACD_12_26_9", "MACDs_12_26_9", "MACDh_12_26_9",
-                       "STOCHk_9_3_3", "STOCHd_9_3_3",
+                       "STOCHk_14_3_3", "STOCHd_14_3_3",
                        "BBU_20_2.0", "BBM_20_2.0", "BBL_20_2.0",
                        "Volume_MA5"]:
                 if col in chart_df.columns:

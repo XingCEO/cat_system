@@ -128,7 +128,7 @@ class EnhancedKLineService:
         # 最新報價
         latest_price = self._get_latest_price_info(df)
         
-        return {
+        result = {
             "symbol": symbol,
             "name": stock_info.get("stock_name", symbol) if stock_info else symbol,
             "industry": stock_info.get("industry_category", "") if stock_info else "",
@@ -193,7 +193,7 @@ class EnhancedKLineService:
             return None
 
     async def _get_from_cache_any(self, symbol: str) -> Optional[List[Dict]]:
-        """從資料庫取得任何可用的快取資料（不檢查完整性）"""
+        """從資料庫取得任何可用的快取資料（檢查過期但不檢查完整性）"""
         try:
             async with async_session_maker() as session:
                 stmt = select(KLineCache).where(
@@ -205,6 +205,10 @@ class EnhancedKLineService:
                 rows = result.scalars().all()
 
                 if rows:
+                    # 檢查是否已過期（用最後一筆的 cached_at 判斷）
+                    if rows[-1].is_stale(self.CACHE_HOURS):
+                        logger.info(f"快取資料已過期 ({symbol})，需要重新抓取")
+                        return None
                     return [row.to_dict() for row in rows]
                 return None
 

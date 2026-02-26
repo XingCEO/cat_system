@@ -33,11 +33,25 @@ async def sync_data(date: str = None, db: AsyncSession = Depends(get_db)):
         remaining = int(_SYNC_COOLDOWN - (now - _sync_last))
         raise HTTPException(status_code=429, detail=f"同步冷卻中，請等待 {remaining} 秒")
     _sync_last = now
-    from app.engine.data_sync import sync_tickers, sync_daily_prices
-    ticker_count = await sync_tickers(db)
-    price_count = await sync_daily_prices(db, trade_date=date)
-    return {
-        "success": True,
-        "synced_tickers": ticker_count,
-        "synced_prices": price_count,
-    }
+
+    # 日期格式驗證
+    if date is not None:
+        import re
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
+            raise HTTPException(status_code=400, detail="日期格式錯誤，請使用 YYYY-MM-DD")
+
+    try:
+        from app.engine.data_sync import sync_tickers, sync_daily_prices
+        ticker_count = await sync_tickers(db)
+        price_count = await sync_daily_prices(db, trade_date=date)
+        return {
+            "success": True,
+            "synced_tickers": ticker_count,
+            "synced_prices": price_count,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Sync failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="資料同步失敗，請稍後再試")
