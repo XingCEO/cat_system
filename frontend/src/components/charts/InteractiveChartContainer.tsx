@@ -4,6 +4,7 @@
  */
 import { useState, useRef, useCallback, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react';
 import type { IChartApi, ISeriesApi, LogicalRange } from 'lightweight-charts';
+import { ColorType } from 'lightweight-charts';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LightweightKLineChart, type CrosshairData } from './LightweightKLineChart';
@@ -131,10 +132,41 @@ export const InteractiveChartContainer = forwardRef<InteractiveChartContainerRef
         series: ISeriesApi<'Candlestick'> | null;
     }>({ chart: null, series: null });
 
-    // Expose capture method - 支援截斷到指定日期
+    // Expose capture method - 支援截斷到指定日期，列印時強制白底
     useImperativeHandle(ref, () => ({
         captureCharts: async (endDate?: string) => {
             const charts = [mainChartRef.current, volumeChartRef.current, indicatorChartRef.current];
+
+            // 列印前：強制所有圖表切換為白底淺色主題
+            const lightLayout = {
+                layout: {
+                    background: { type: ColorType.Solid as const, color: '#ffffff' },
+                    textColor: '#333333',
+                },
+                grid: {
+                    vertLines: { color: 'rgba(203, 213, 225, 0.5)' },
+                    horzLines: { color: 'rgba(203, 213, 225, 0.5)' },
+                },
+                rightPriceScale: { borderColor: 'rgba(203, 213, 225, 0.8)' },
+                timeScale: { borderColor: 'rgba(203, 213, 225, 0.8)' },
+            };
+            const darkLayout = {
+                layout: {
+                    background: { type: ColorType.Solid as const, color: '#0a0f1a' },
+                    textColor: '#94a3b8',
+                },
+                grid: {
+                    vertLines: { color: 'rgba(51, 65, 85, 0.4)' },
+                    horzLines: { color: 'rgba(51, 65, 85, 0.4)' },
+                },
+                rightPriceScale: { borderColor: 'rgba(51, 65, 85, 0.6)' },
+                timeScale: { borderColor: 'rgba(51, 65, 85, 0.6)' },
+            };
+            const wasDark = document.documentElement.classList.contains('dark');
+            if (wasDark) {
+                charts.forEach(c => c?.applyOptions(lightLayout));
+                await new Promise(r => setTimeout(r, 100));
+            }
 
             // 如果有指定結束日期，先調整圖表範圍
             let originalRange: { from: number; to: number } | null = null;
@@ -184,6 +216,11 @@ export const InteractiveChartContainer = forwardRef<InteractiveChartContainerRef
                         chart.timeScale().setVisibleLogicalRange(originalRange!);
                     }
                 });
+            }
+
+            // 還原深色主題
+            if (wasDark) {
+                charts.forEach(c => c?.applyOptions(darkLayout));
             }
 
             return result;
