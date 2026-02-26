@@ -78,7 +78,14 @@ class EnhancedKLineService:
         
         logger.info(f"取得 K 線資料: {symbol} {start_date} ~ {end_date}")
 
-        # 先嘗試從快取取得任何可用資料
+        # 先嘗試記憶體快取（最快路徑）
+        mem_cache_key = f"kline_extended_{symbol}_{period}"
+        mem_cached = cache_manager.get(mem_cache_key, "indicator")
+        if mem_cached is not None:
+            logger.info(f"K 線記憶體快取命中: {symbol} ({period})")
+            return mem_cached
+
+        # 再嘗試從資料庫快取取得任何可用資料
         cached_any = await self._get_from_cache_any(symbol)
         if cached_any is not None and len(cached_any) > 0:
             logger.info(f"使用快取資料: {len(cached_any)} 筆")
@@ -136,6 +143,12 @@ class EnhancedKLineService:
                 "last_date": kline_data[-1]["date"] if kline_data else None,
             },
         }
+
+        # 儲存到記憶體快取（indicator 預設 TTL）
+        cache_manager.set(mem_cache_key, result, "indicator")
+        logger.info(f"K 線資料已快取到記憶體: {symbol} ({period}), {len(kline_data)} 筆")
+
+        return result
     
     async def _get_from_cache(
         self, 
@@ -205,45 +218,26 @@ class EnhancedKLineService:
         start_date: str, 
         end_date: str
     ) -> pd.DataFrame:
-        """從 API 抓取資料並快取"""
-        # 批次按月抓取
-        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-        end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-        
-        all_data = []
-        current = start_dt
-        
-        while current <= end_dt:
-            month_end = min(
-                current + relativedelta(months=1) - timedelta(days=1),
-                end_dt
+        """從 API 抓取資料並快取 — 一次呼叫取得完整範圍"""
+        import time
+        t0 = time.time()
+
+        # 用完整日期範圍一次抓取（Yahoo Finance 支援 range=5y）
+        try:
+            df = await self.data_fetcher.get_historical_data(
+                symbol, start_date, end_date
             )
-            
-            try:
-                month_start_str = current.strftime("%Y-%m-%d")
-                month_end_str = month_end.strftime("%Y-%m-%d")
-                
-                df = await self.data_fetcher.get_historical_data(
-                    symbol, month_start_str, month_end_str
+            if not df.empty:
+                logger.info(
+                    f"一次抓取 {symbol} {start_date}~{end_date}: "
+                    f"{len(df)} 筆, 耗時 {time.time()-t0:.2f}s"
                 )
-                
-                if not df.empty:
-                    all_data.append(df)
-                    logger.debug(f"抓取 {symbol} {current.strftime('%Y-%m')}: {len(df)} 筆")
-                    
-            except Exception as e:
-                logger.warning(f"抓取 {symbol} {current.strftime('%Y-%m')} 失敗: {e}")
-            
-            current = current + relativedelta(months=1)
-            
-            # 避免 API 限流
-            await asyncio.sleep(0.1)
+        except Exception as e:
+            logger.warning(f"抓取 {symbol} 完整範圍失敗: {e}")
+            df = pd.DataFrame()
         
-        if not all_data:
+        if df.empty:
             return pd.DataFrame()
-        
-        # 合併資料
-        df = pd.concat(all_data, ignore_index=True)
         
         # 準備資料框
         df = self._prepare_dataframe(df)

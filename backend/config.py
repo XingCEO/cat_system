@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     # Cache settings (seconds)
     cache_daily_data: int = 14400  # 4 hours (daily data only changes once a day)
     cache_historical_data: int = 86400  # 24 hours
-    cache_indicators: int = 3600  # 1 hour
+    cache_indicators: int = 14400  # 4 hours (K線+技術指標，盤後才更新)
     cache_industries: int = 604800  # 7 days (permanent-like)
     
     # CORS

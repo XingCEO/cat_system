@@ -326,8 +326,11 @@ class DataFetcher:
 
         # Skip FinMind if it's been marked unavailable (402 error)
         if not DataFetcher._finmind_available:
-            logger.debug(f"Skipping FinMind (unavailable), using TWSE for {symbol}")
-            return await self._fetch_twse_historical(symbol, start_date, end_date)
+            logger.debug(f"Skipping FinMind (unavailable), using Yahoo/TWSE for {symbol}")
+            df = await self._fetch_twse_historical(symbol, start_date, end_date)
+            if not df.empty:
+                cache_manager.set(cache_key, df.to_dict("records"), "historical")
+            return df
 
         params = {
             "dataset": "TaiwanStockPrice",
@@ -359,7 +362,10 @@ class DataFetcher:
 
         # Fallback to TWSE
         logger.info(f"Using TWSE fallback for {symbol}")
-        return await self._fetch_twse_historical(symbol, start_date, end_date)
+        df = await self._fetch_twse_historical(symbol, start_date, end_date)
+        if not df.empty:
+            cache_manager.set(cache_key, df.to_dict("records"), "historical")
+        return df
     
     async def get_stock_info(self, symbol: str) -> Optional[Dict]:
         """Get basic info for a specific stock"""
@@ -418,13 +424,24 @@ class DataFetcher:
         return pd.DataFrame()
     
     async def _fetch_twse_historical(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
-        """Fallback: Fetch historical data - try TWSE first, then Yahoo Finance for full range"""
+        """Fallback: Fetch historical data - try Yahoo first, then TWSE for full range"""
         # 直接先嘗試 Yahoo Finance 抓取完整資料（更穩定）
         logger.info(f"Fetching {symbol} historical data via Yahoo Finance ({start_date} ~ {end_date})")
         yahoo_df = await self._fetch_yahoo_historical(symbol, start_date, end_date)
 
-        if not yahoo_df.empty and len(yahoo_df) >= 100:
-            logger.info(f"Yahoo Finance loaded {len(yahoo_df)} records for {symbol}")
+        # 根據請求的日期範圍計算預期筆數（每月約 22 交易日）
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+        days_diff = (end_dt - start_dt).days
+        expected_records = max(int(days_diff * 0.65), 10)  # 約 65% 是交易日
+        # Yahoo 只需達到預期的 30% 就算成功（避免不必要的 TWSE 爬取）
+        min_acceptable = max(int(expected_records * 0.3), 5)
+
+        if not yahoo_df.empty and len(yahoo_df) >= min_acceptable:
+            logger.info(f"Yahoo Finance loaded {len(yahoo_df)} records for {symbol} (min={min_acceptable})")
+            # 快取 Yahoo 結果
+            cache_key = f"history_{symbol}_{start_date}_{end_date}"
+            cache_manager.set(cache_key, yahoo_df.to_dict("records"), "historical")
             return yahoo_df
 
         # 如果 Yahoo 資料不足，嘗試 TWSE（通常會被 307 擋）
