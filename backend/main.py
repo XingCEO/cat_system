@@ -5,6 +5,7 @@
 import os
 import sys
 import time
+from datetime import datetime
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
@@ -71,12 +72,25 @@ async def lifespan(app: FastAPI):
     await init_db()
     logger.info("Database initialized")
 
-    # 啟動時將 v1 資料同步移至背景任務，避免阻塞啟動流程
+    # 啟動時將資料預熱 + v1 資料同步移至背景任務，避免阻塞啟動流程
     import asyncio
     async def _background_sync():
-        """Background task: sync tickers + daily prices without blocking startup"""
+        """Background task: pre-warm caches + sync v1 data without blocking startup"""
         try:
-            await asyncio.sleep(2)  # 等待應用程式完全啟動
+            await asyncio.sleep(1)  # 等待應用程式完全啟動
+
+            # ===== Phase 1: 預熱 Legacy API 快取（讓首頁載入更快）=====
+            from services.data_fetcher import data_fetcher
+            logger.info("Pre-warming: fetching stock list...")
+            stock_list = await data_fetcher.get_stock_list()
+            logger.info(f"Pre-warming: {len(stock_list)} stocks loaded")
+
+            trade_date = await data_fetcher.get_latest_trading_date()
+            logger.info(f"Pre-warming: fetching daily data for {trade_date}...")
+            daily_df = await data_fetcher.get_daily_data(trade_date)
+            logger.info(f"Pre-warming: {len(daily_df)} daily records loaded")
+
+            # ===== Phase 2: v1 DB 同步 =====
             from database import async_session_maker
             from app.engine.data_sync import sync_tickers, sync_daily_prices
             async with async_session_maker() as session:
@@ -91,10 +105,45 @@ async def lifespan(app: FastAPI):
                 else:
                     logger.info("Daily prices already up to date (or no data available)")
         except Exception as e:
-            logger.warning(f"Background sync skipped: {e}")
+            logger.warning(f"Background sync error: {e}")
+
+    async def _periodic_refresh():
+        """定期刷新：盤中每 30 分鐘重新抓取最新資料（僅在台股交易時段）"""
+        from utils.date_utils import is_trading_day
+        from services.cache_manager import cache_manager
+        while True:
+            await asyncio.sleep(1800)  # 30 分鐘
+            try:
+                now = datetime.now()
+                # 只在交易日 8:30-14:30 自動刷新
+                if not is_trading_day(now.date()):
+                    continue
+                if now.hour < 8 or (now.hour == 8 and now.minute < 30) or now.hour > 14 or (now.hour == 14 and now.minute > 30):
+                    continue
+
+                logger.info("Periodic refresh: clearing daily cache, re-fetching...")
+                cache_manager.clear("daily")
+                cache_manager.delete("latest_trading_date", "general")
+                cache_manager.delete("_daily_canonical_key", "general")
+
+                from services.data_fetcher import data_fetcher
+                trade_date = await data_fetcher.get_latest_trading_date()
+                df = await data_fetcher.get_daily_data(trade_date)
+                logger.info(f"Periodic refresh: {len(df)} records for {trade_date}")
+
+                # 同步到 v1 DB
+                from database import async_session_maker
+                from app.engine.data_sync import sync_daily_prices
+                async with async_session_maker() as session:
+                    count = await sync_daily_prices(session, trade_date)
+                    if count > 0:
+                        logger.info(f"Periodic refresh: synced {count} daily prices to v1 DB")
+            except Exception as e:
+                logger.warning(f"Periodic refresh error: {e}")
 
     asyncio.create_task(_background_sync())
-    logger.info("Ticker sync scheduled as background task")
+    asyncio.create_task(_periodic_refresh())
+    logger.info("Background sync + periodic refresh scheduled")
 
     yield
     logger.info("Shutting down...")
@@ -186,6 +235,43 @@ async def clear_cache(request: Request):
     stats_before = cache_manager.get_stats()
     cache_manager.clear()
     return {"success": True, "message": "快取已清除", "stats_before": stats_before}
+
+
+# Rate limit state for data refresh
+_data_refresh_last = 0.0
+_DATA_REFRESH_COOLDOWN = 120  # 2 minutes
+
+
+@app.get("/api/data/refresh")
+async def refresh_data(request: Request):
+    """強制刷新所有資料快取並重新抓取最新資料"""
+    global _data_refresh_last
+    now = time.monotonic()
+    if now - _data_refresh_last < _DATA_REFRESH_COOLDOWN:
+        remaining = int(_DATA_REFRESH_COOLDOWN - (now - _data_refresh_last))
+        raise HTTPException(status_code=429, detail=f"請等待 {remaining} 秒後再試")
+    _data_refresh_last = now
+
+    from services.cache_manager import cache_manager
+    from services.data_fetcher import data_fetcher
+
+    # 清除日資料快取
+    cache_manager.clear("daily")
+    cache_manager.delete("latest_trading_date", "general")
+    cache_manager.delete("_daily_canonical_key", "general")
+
+    # 重新抓取
+    trade_date = await data_fetcher.get_latest_trading_date()
+    daily_df = await data_fetcher.get_daily_data(trade_date)
+    actual_date = daily_df["date"].iloc[0] if not daily_df.empty and "date" in daily_df.columns else trade_date
+
+    return {
+        "success": True,
+        "message": f"資料已刷新 ({actual_date})",
+        "trade_date": trade_date,
+        "actual_data_date": actual_date,
+        "stock_count": len(daily_df),
+    }
 
 
 @app.get("/api/cache/stats")

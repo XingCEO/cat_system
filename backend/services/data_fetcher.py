@@ -164,11 +164,25 @@ class DataFetcher:
 
         Args:
             trade_date: Date string in YYYY-MM-DD format
+
+        Note:
+            TWSE STOCK_DAY_ALL 永遠回傳最新交易日資料，
+            快取 key 使用「實際資料日期」而非查詢日期，避免重複請求。
         """
+        # 先嘗試用查詢日期找快取
         cache_key = f"daily_{trade_date}"
         cached = cache_manager.get(cache_key, "daily")
         if cached is not None:
             return pd.DataFrame(cached)
+
+        # 也嘗試用 canonical key（可能已被其他查詢日期快取）
+        canonical_key = cache_manager.get("_daily_canonical_key", "general")
+        if canonical_key and canonical_key != cache_key:
+            cached = cache_manager.get(canonical_key, "daily")
+            if cached is not None:
+                # 同時在查詢日期的 key 下也建快取，避免下次 miss
+                cache_manager.set(cache_key, cached, "daily")
+                return pd.DataFrame(cached)
 
         # Skip FinMind if unavailable
         if not DataFetcher._finmind_available:
@@ -187,9 +201,9 @@ class DataFetcher:
         try:
             client = await self.get_client()
             response = await client.get(self.finmind_url, params=params, timeout=10.0)
-            if response.status_code == 402:
+            if response.status_code in (400, 402, 403, 429):
                 DataFetcher._finmind_available = False
-                logger.warning("FinMind API quota exceeded, switching to TWSE")
+                logger.warning(f"FinMind API error {response.status_code}, switching to TWSE")
                 return await self._fetch_twse_daily_openapi(trade_date)
             response.raise_for_status()
             data = response.json()
@@ -204,8 +218,12 @@ class DataFetcher:
         return await self._fetch_twse_daily_openapi(trade_date)
 
     async def _fetch_twse_daily_openapi(self, trade_date: str) -> pd.DataFrame:
-        """Fetch daily data from TWSE OpenAPI (more reliable)"""
-        cache_key = f"daily_{trade_date}"
+        """Fetch daily data from TWSE OpenAPI (more reliable)
+
+        TWSE STOCK_DAY_ALL 永遠回傳最近交易日資料，
+        快取 key 使用 API 回傳的實際日期。
+        """
+        query_cache_key = f"daily_{trade_date}"
 
         try:
             # Use TWSE OpenAPI - returns today's data
@@ -270,8 +288,16 @@ class DataFetcher:
 
                 if stocks:
                     df = pd.DataFrame(stocks)
-                    logger.info(f"Loaded {len(stocks)} stocks from TWSE OpenAPI")
-                    cache_manager.set(cache_key, df.to_dict("records"), "daily")
+                    actual_date = stocks[0].get("date", trade_date)
+                    actual_cache_key = f"daily_{actual_date}"
+                    records = df.to_dict("records")
+                    # 用實際日期作為 canonical key
+                    cache_manager.set(actual_cache_key, records, "daily")
+                    cache_manager.set("_daily_canonical_key", actual_cache_key, "general")
+                    # 也用查詢日期快取（避免重複請求）
+                    if query_cache_key != actual_cache_key:
+                        cache_manager.set(query_cache_key, records, "daily")
+                    logger.info(f"Loaded {len(stocks)} stocks from TWSE OpenAPI (date={actual_date})")
                     return df
 
         except Exception as e:
@@ -316,10 +342,10 @@ class DataFetcher:
         try:
             client = await self.get_client()
             response = await client.get(self.finmind_url, params=params, timeout=10.0)
-            if response.status_code == 402:
+            if response.status_code in (400, 402, 403, 429):
                 # Mark FinMind as unavailable for this session
                 DataFetcher._finmind_available = False
-                logger.warning("FinMind API quota exceeded (402), switching to TWSE fallback for all requests")
+                logger.warning(f"FinMind API error {response.status_code}, switching to TWSE fallback for all requests")
                 return await self._fetch_twse_historical(symbol, start_date, end_date)
             response.raise_for_status()
             data = response.json()
@@ -626,54 +652,23 @@ class DataFetcher:
     async def get_latest_trading_date(self) -> str:
         """
         Get the most recent trading date
-        
-        Strategy:
-        1. First use date_utils for fast calendar-based check (no API call)
-        2. If calendar says it should be trading day, verify with lightweight API
-        3. Cache result to avoid repeated API calls
+
+        策略（零 API 呼叫）：
+        1. 用日曆推算最近的交易日
+        2. 使用快取結果避免重複計算
+        3. 不再呼叫 verify_trading_day_via_api，因為會增加 0.5 秒延遲
         """
-        from utils.date_utils import get_previous_trading_day, format_date, is_trading_day as calendar_is_trading_day
-        
-        # Check cache first
+        from utils.date_utils import get_previous_trading_day, format_date
+
         cache_key = "latest_trading_date"
         cached = cache_manager.get(cache_key, "general")
         if cached:
-            logger.debug(f"Using cached latest trading date: {cached}")
             return cached
-        
-        today = date.today()
-        
-        # Fast path: use calendar-based check first
-        for i in range(10):  # Check last 10 days
-            check_date = today - timedelta(days=i)
-            date_str = check_date.strftime("%Y-%m-%d")
-            
-            # Skip weekends and known holidays (fast, no API)
-            if not calendar_is_trading_day(check_date):
-                logger.debug(f"{date_str} is non-trading (calendar)")
-                continue
-            
-            # For today, verify with API (market might not be open yet)
-            if i == 0:
-                # Use lightweight API verification
-                if await self.verify_trading_day_via_api(date_str):
-                    logger.info(f"Latest trading date (verified): {date_str}")
-                    cache_manager.set(cache_key, date_str, "general")
-                    return date_str
-                else:
-                    logger.debug(f"Today {date_str} has no trading data yet")
-                    continue
-            
-            # For past dates, calendar check is usually sufficient
-            # But we can do a quick API verify to be sure
-            logger.info(f"Latest trading date (calendar): {date_str}")
-            cache_manager.set(cache_key, date_str, "general")
-            return date_str
-        
-        # Fallback: use date_utils
-        fallback = format_date(get_previous_trading_day(today))
-        logger.warning(f"Using fallback trading date: {fallback}")
-        return fallback
+
+        result = format_date(get_previous_trading_day())
+        cache_manager.set(cache_key, result, "general")
+        logger.info(f"Latest trading date (calendar): {result}")
+        return result
 
 
     async def get_realtime_quotes(self, symbols: List[str]) -> List[Dict]:
