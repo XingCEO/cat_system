@@ -219,178 +219,204 @@ export function StockAnalysisDialog({ open, onClose, symbol, name }: StockAnalys
                     <head>
                         <title>${safeSymbol} ${safeName} ${safePeriodLabel}</title>
                         <style>
-                            @page { size: A4 landscape; margin: 8mm; }
+                            @page {
+                                size: A4 landscape;
+                                margin: 6mm 8mm;
+                            }
                             * { box-sizing: border-box; margin: 0; padding: 0; }
-                            body {
-                                font-family: "Microsoft JhengHei", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                                padding: 12px;
+                            html, body {
+                                width: 100%; height: 100%;
+                                overflow: hidden;
                                 background: #fff;
+                                font-family: "Microsoft JhengHei", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
                                 -webkit-print-color-adjust: exact;
                                 print-color-adjust: exact;
                             }
-                            .container { width: 100%; max-width: 280mm; margin: 0 auto; }
+                            body { padding: 0; }
+                            .page {
+                                width: 281mm; height: 188mm;
+                                margin: 0 auto;
+                                display: flex; flex-direction: column;
+                                overflow: hidden;
+                                page-break-after: avoid;
+                                page-break-inside: avoid;
+                            }
+
+                            /* --- Header --- */
                             .header {
-                                display: flex; justify-content: space-between; align-items: flex-end;
-                                margin-bottom: 10px; padding-bottom: 8px; border-bottom: 3px solid #000;
+                                display: flex; justify-content: space-between; align-items: center;
+                                padding-bottom: 5px; margin-bottom: 5px;
+                                border-bottom: 2px solid #1e293b;
+                                flex-shrink: 0;
                             }
-                            .title-group { display: flex; align-items: baseline; gap: 15px; }
-                            .symbol { font-size: 28px; font-weight: 900; color: #000; }
-                            .name { font-size: 20px; font-weight: bold; color: #333; }
-                            .meta { color: #666; font-size: 11px; }
-                            .info-section {
-                                display: flex; gap: 10px; margin-bottom: 10px;
+                            .title-group { display: flex; align-items: baseline; gap: 10px; }
+                            .symbol { font-size: 22px; font-weight: 900; color: #0f172a; letter-spacing: 0.5px; }
+                            .name { font-size: 16px; font-weight: 700; color: #334155; }
+                            .tag {
+                                font-size: 10px; padding: 1px 7px; border-radius: 3px;
+                                font-weight: 600; vertical-align: middle;
                             }
-                            .price-grid {
-                                display: flex; flex: 1; padding: 10px 15px;
-                                background: #f1f5f9; border-radius: 8px; border: 1px solid #e2e8f0;
+                            .tag-industry { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+                            .tag-period { background: #1e293b; color: #fff; }
+                            .meta { color: #64748b; font-size: 10px; }
+
+                            /* --- Info bar --- */
+                            .info-bar {
+                                display: flex; gap: 6px; margin-bottom: 5px;
+                                flex-shrink: 0;
                             }
-                            .price-item { text-align: center; flex: 1; border-right: 1px solid #cbd5e1; }
-                            .price-item:last-child { border-right: none; }
-                            .price-label { font-size: 11px; color: #64748b; margin-bottom: 3px; font-weight: 500; }
-                            .price-value { font-size: 16px; font-weight: 800; }
-                            .ma-grid {
-                                display: flex; flex: 1; padding: 10px 15px;
-                                background: #fefce8; border-radius: 8px; border: 1px solid #fef08a;
+                            .info-card {
+                                flex: 1; display: flex; padding: 5px 0;
+                                border: 1px solid #e2e8f0; border-radius: 4px;
                             }
-                            .ma-item { text-align: center; flex: 1; border-right: 1px solid #fde047; }
-                            .ma-item:last-child { border-right: none; }
-                            .ma-label { font-size: 11px; margin-bottom: 3px; font-weight: 600; }
-                            .ma-value { font-size: 14px; font-weight: 700; }
-                            .legend-row {
-                                display: flex; align-items: center; gap: 15px; margin-bottom: 8px; padding: 6px 10px;
-                                background: #f8fafc; border-radius: 6px; font-size: 11px;
+                            .info-cell {
+                                flex: 1; text-align: center;
+                                border-right: 1px solid #e2e8f0;
+                                padding: 0 4px;
                             }
-                            .legend-item { display: flex; align-items: center; gap: 4px; }
-                            .legend-box { width: 12px; height: 12px; border-radius: 2px; }
-                            .up { color: #dc2626; }
-                            .down { color: #16a34a; }
-                            .chart-section { margin-bottom: 6px; }
-                            .chart-image {
-                                width: 100%; display: block; border: 1px solid #e5e7eb; border-radius: 4px;
+                            .info-cell:last-child { border-right: none; }
+                            .info-label { font-size: 9px; color: #94a3b8; font-weight: 500; margin-bottom: 1px; }
+                            .info-val { font-size: 13px; font-weight: 700; }
+                            .info-val.up { color: #dc2626; }
+                            .info-val.down { color: #16a34a; }
+
+                            /* --- Legend row --- */
+                            .legend {
+                                display: flex; align-items: center; gap: 10px;
+                                margin-bottom: 4px; font-size: 9px; color: #64748b;
+                                flex-shrink: 0;
                             }
-                            .chart-label {
-                                font-size: 10px; color: #64748b; margin-bottom: 2px; font-weight: 500;
+                            .lg { display: flex; align-items: center; gap: 3px; }
+                            .lbox { width: 10px; height: 10px; border-radius: 1px; }
+                            .sep { width: 1px; height: 10px; background: #cbd5e1; }
+
+                            /* --- Charts --- */
+                            .charts { flex: 1; display: flex; flex-direction: column; gap: 3px; min-height: 0; overflow: hidden; }
+                            .chart-main { flex: 5; min-height: 0; overflow: hidden; }
+                            .chart-row { flex: 2; display: flex; gap: 4px; min-height: 0; overflow: hidden; }
+                            .chart-half { flex: 1; min-height: 0; overflow: hidden; }
+                            .chart-img {
+                                width: 100%; height: 100%; object-fit: contain;
+                                display: block; border: 1px solid #e5e7eb; border-radius: 3px;
                             }
+                            .chart-lbl {
+                                font-size: 8px; color: #94a3b8; font-weight: 500;
+                                margin-bottom: 1px; line-height: 1;
+                            }
+                            .chart-wrap { display: flex; flex-direction: column; height: 100%; }
+                            .chart-wrap .chart-img { flex: 1; }
+
+                            /* --- Footer --- */
                             .footer {
-                                display: flex; justify-content: space-between; margin-top: 8px;
-                                padding-top: 6px; border-top: 1px solid #eee; font-size: 10px; color: #94a3b8;
+                                display: flex; justify-content: space-between;
+                                padding-top: 3px; margin-top: 3px;
+                                border-top: 1px solid #e2e8f0;
+                                font-size: 8px; color: #94a3b8;
+                                flex-shrink: 0;
                             }
                         </style>
                     </head>
                     <body>
-                        <div class="container">
+                        <div class="page">
+                            <!-- Header -->
                             <div class="header">
                                 <div class="title-group">
                                     <span class="symbol">${safeSymbol}</span>
                                     <span class="name">${safeName}</span>
-                                    ${safeIndustry ? `<span style="font-size:12px; background:#eee; padding:2px 6px; border-radius:4px;">${safeIndustry}</span>` : ''}
-                                    <span style="font-size:14px; background:#3b82f6; color:white; padding:3px 10px; border-radius:4px; font-weight:600;">${safePeriodLabel}</span>
+                                    ${safeIndustry ? `<span class="tag tag-industry">${safeIndustry}</span>` : ''}
+                                    <span class="tag tag-period">${safePeriodLabel}</span>
                                 </div>
-                                <div class="meta">資料日期：${printData?.date || '-'}</div>
+                                <div class="meta">${printData?.date || '-'}</div>
                             </div>
 
-                            <!-- 價格資訊 + 均線資訊 -->
-                            <div class="info-section">
-                                <div class="price-grid">
-                                    <div class="price-item">
-                                        <div class="price-label">開盤價</div>
-                                        <div class="price-value" style="color:#0f172a">${printData?.open?.toFixed(2) ?? '-'}</div>
+                            <!-- Price + MA info -->
+                            <div class="info-bar">
+                                <div class="info-card">
+                                    <div class="info-cell">
+                                        <div class="info-label">開盤</div>
+                                        <div class="info-val">${printData?.open?.toFixed(2) ?? '-'}</div>
                                     </div>
-                                    <div class="price-item">
-                                        <div class="price-label">收盤價</div>
-                                        <div class="price-value ${chartIsUp ? 'up' : 'down'}">${printData?.close?.toFixed(2) ?? '-'}</div>
+                                    <div class="info-cell">
+                                        <div class="info-label">收盤</div>
+                                        <div class="info-val ${chartIsUp ? 'up' : 'down'}">${printData?.close?.toFixed(2) ?? '-'}</div>
                                     </div>
-                                    <div class="price-item">
-                                        <div class="price-label">最高價</div>
-                                        <div class="price-value up">${printData?.high?.toFixed(2) ?? '-'}</div>
+                                    <div class="info-cell">
+                                        <div class="info-label">最高</div>
+                                        <div class="info-val up">${printData?.high?.toFixed(2) ?? '-'}</div>
                                     </div>
-                                    <div class="price-item">
-                                        <div class="price-label">最低價</div>
-                                        <div class="price-value down">${printData?.low?.toFixed(2) ?? '-'}</div>
+                                    <div class="info-cell">
+                                        <div class="info-label">最低</div>
+                                        <div class="info-val down">${printData?.low?.toFixed(2) ?? '-'}</div>
                                     </div>
-                                    <div class="price-item">
-                                        <div class="price-label">漲跌幅</div>
-                                        <div class="price-value ${chartIsUp ? 'up' : 'down'}">${chartChangePct !== null ? (chartIsUp ? '+' : '') + chartChangePct.toFixed(2) + '%' : '-'}</div>
-                                    </div>
-                                </div>
-                                <div class="ma-grid">
-                                    <div class="ma-item">
-                                        <div class="ma-label" style="color:#ffc107">MA5</div>
-                                        <div class="ma-value" style="color:#b38600">${printData?.ma5?.toFixed(2) ?? '-'}</div>
-                                    </div>
-                                    <div class="ma-item">
-                                        <div class="ma-label" style="color:#9c27b0">MA10</div>
-                                        <div class="ma-value" style="color:#7b1fa2">${printData?.ma10?.toFixed(2) ?? '-'}</div>
-                                    </div>
-                                    <div class="ma-item">
-                                        <div class="ma-label" style="color:#2196f3">MA20</div>
-                                        <div class="ma-value" style="color:#1565c0">${printData?.ma20?.toFixed(2) ?? '-'}</div>
-                                    </div>
-                                    <div class="ma-item">
-                                        <div class="ma-label" style="color:#ff9800">MA60</div>
-                                        <div class="ma-value" style="color:#e65100">${printData?.ma60?.toFixed(2) ?? '-'}</div>
-                                    </div>
-                                    <div class="ma-item">
-                                        <div class="ma-label" style="color:#9e9e9e">MA120</div>
-                                        <div class="ma-value" style="color:#616161">${printData?.ma120?.toFixed(2) ?? '-'}</div>
+                                    <div class="info-cell">
+                                        <div class="info-label">漲跌幅</div>
+                                        <div class="info-val ${chartIsUp ? 'up' : 'down'}">${chartChangePct !== null ? (chartIsUp ? '+' : '') + chartChangePct.toFixed(2) + '%' : '-'}</div>
                                     </div>
                                 </div>
-                            </div>
-
-                            <!-- 圖例 -->
-                            <div class="legend-row">
-                                <div class="legend-item">
-                                    <div class="legend-box" style="background:#ef5350"></div>
-                                    <span>上漲</span>
-                                </div>
-                                <div class="legend-item">
-                                    <div class="legend-box" style="background:#26a69a"></div>
-                                    <span>下跌</span>
-                                </div>
-                                <div style="width:1px; height:12px; background:#cbd5e1; margin:0 5px;"></div>
-                                <div class="legend-item">
-                                    <div class="legend-box" style="background:#ffc107"></div>
-                                    <span>MA5</span>
-                                </div>
-                                <div class="legend-item">
-                                    <div class="legend-box" style="background:#9c27b0"></div>
-                                    <span>MA10</span>
-                                </div>
-                                <div class="legend-item">
-                                    <div class="legend-box" style="background:#2196f3"></div>
-                                    <span>MA20</span>
-                                </div>
-                                <div class="legend-item">
-                                    <div class="legend-box" style="background:#ff9800"></div>
-                                    <span>MA60</span>
-                                </div>
-                                <div class="legend-item">
-                                    <div class="legend-box" style="background:#9e9e9e"></div>
-                                    <span>MA120</span>
+                                <div class="info-card">
+                                    <div class="info-cell">
+                                        <div class="info-label" style="color:#b38600">MA5</div>
+                                        <div class="info-val" style="color:#b38600">${printData?.ma5?.toFixed(2) ?? '-'}</div>
+                                    </div>
+                                    <div class="info-cell">
+                                        <div class="info-label" style="color:#7b1fa2">MA10</div>
+                                        <div class="info-val" style="color:#7b1fa2">${printData?.ma10?.toFixed(2) ?? '-'}</div>
+                                    </div>
+                                    <div class="info-cell">
+                                        <div class="info-label" style="color:#1565c0">MA20</div>
+                                        <div class="info-val" style="color:#1565c0">${printData?.ma20?.toFixed(2) ?? '-'}</div>
+                                    </div>
+                                    <div class="info-cell">
+                                        <div class="info-label" style="color:#e65100">MA60</div>
+                                        <div class="info-val" style="color:#e65100">${printData?.ma60?.toFixed(2) ?? '-'}</div>
+                                    </div>
+                                    <div class="info-cell">
+                                        <div class="info-label" style="color:#616161">MA120</div>
+                                        <div class="info-val" style="color:#616161">${printData?.ma120?.toFixed(2) ?? '-'}</div>
+                                    </div>
                                 </div>
                             </div>
 
-                            <!-- K線主圖（最大） -->
-                            <div class="chart-section">
-                                <div class="chart-label">K線圖</div>
-                                <img src="${images.main}" class="chart-image" />
+                            <!-- Legend -->
+                            <div class="legend">
+                                <div class="lg"><div class="lbox" style="background:#ef5350"></div><span>上漲</span></div>
+                                <div class="lg"><div class="lbox" style="background:#26a69a"></div><span>下跌</span></div>
+                                <div class="sep"></div>
+                                <div class="lg"><div class="lbox" style="background:#ffc107"></div><span>MA5</span></div>
+                                <div class="lg"><div class="lbox" style="background:#9c27b0"></div><span>MA10</span></div>
+                                <div class="lg"><div class="lbox" style="background:#2196f3"></div><span>MA20</span></div>
+                                <div class="lg"><div class="lbox" style="background:#ff9800"></div><span>MA60</span></div>
+                                <div class="lg"><div class="lbox" style="background:#9e9e9e"></div><span>MA120</span></div>
                             </div>
 
-                            <!-- 成交量圖 -->
-                            <div class="chart-section">
-                                <div class="chart-label">成交量</div>
-                                <img src="${images.volume}" class="chart-image" />
+                            <!-- Charts: K-line on top, volume + indicator side-by-side below -->
+                            <div class="charts">
+                                <div class="chart-main">
+                                    <div class="chart-wrap">
+                                        <div class="chart-lbl">K 線</div>
+                                        <img src="${images.main}" class="chart-img" />
+                                    </div>
+                                </div>
+                                <div class="chart-row">
+                                    <div class="chart-half">
+                                        <div class="chart-wrap">
+                                            <div class="chart-lbl">成交量</div>
+                                            <img src="${images.volume}" class="chart-img" />
+                                        </div>
+                                    </div>
+                                    <div class="chart-half">
+                                        <div class="chart-wrap">
+                                            <div class="chart-lbl">技術指標</div>
+                                            <img src="${images.indicator}" class="chart-img" />
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
-                            <!-- 技術指標圖 -->
-                            <div class="chart-section">
-                                <div class="chart-label">技術指標</div>
-                                <img src="${images.indicator}" class="chart-image" />
-                            </div>
-
+                            <!-- Footer -->
                             <div class="footer">
-                                <span>資料來源：TWSE / FinMind (貓星人賺大錢系統)</span>
-                                <span>資料範圍：${dataRange?.first_date || '-'} ~ ${dataRange?.last_date || '-'} (共 ${dataCount} 筆)</span>
+                                <span>TWSE / FinMind</span>
+                                <span>${dataRange?.first_date || '-'} ~ ${dataRange?.last_date || '-'} (${dataCount} 筆)</span>
                             </div>
                         </div>
                     </body>
