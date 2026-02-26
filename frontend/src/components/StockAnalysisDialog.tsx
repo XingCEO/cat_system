@@ -437,14 +437,14 @@ export function StockAnalysisDialog({ open, onClose, symbol, name }: StockAnalys
 
     return (
         <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-            <DialogContent className={`${chartHeights.dialogWidth} max-h-[95vh] overflow-y-auto transition-all duration-300 ease-in-out`}>
+            <DialogContent className={`${chartHeights.dialogWidth} max-h-[95vh] overflow-y-auto transition-all duration-300 ease-in-out p-4 sm:p-5 focus:outline-none`}>
                 <DialogHeader className="no-print">
-                    <DialogTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <DialogTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pr-8">
                         <div className="flex items-center gap-3">
-                            <span className="font-mono text-lg bg-blue-100 dark:bg-blue-900 px-2 py-0.5 rounded">{symbol}</span>
-                            <span className="text-xl font-bold">{stockName}</span>
+                            <span className="font-mono text-base font-semibold bg-primary/10 text-primary px-2.5 py-1 rounded-lg">{symbol}</span>
+                            <span className="text-lg font-bold">{stockName}</span>
                             {industry && (
-                                <span className="text-sm text-muted-foreground px-2 py-0.5 bg-muted rounded">
+                                <span className="text-xs text-muted-foreground px-2 py-0.5 bg-muted rounded-full">
                                     {industry}
                                 </span>
                             )}
@@ -502,26 +502,26 @@ export function StockAnalysisDialog({ open, onClose, symbol, name }: StockAnalys
 
                 {/* 報價資訊 (即時跟隨滑鼠) */}
                 {displayData && (
-                    <div className="grid grid-cols-5 gap-2 p-2 bg-gradient-to-r from-slate-50 to-blue-50 dark:from-slate-800 dark:to-blue-900 rounded-lg text-sm mb-2">
+                    <div className="grid grid-cols-5 gap-2 p-3 bg-gradient-to-r from-muted/50 to-accent/30 dark:from-muted/30 dark:to-accent/20 rounded-xl text-sm mb-2 ring-1 ring-border/30">
                         <div className="text-center">
-                            <div className="text-[10px] text-muted-foreground">開盤價</div>
-                            <div className="text-base font-bold">{displayData.open?.toFixed(2) ?? '-'}</div>
+                            <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">開盤</div>
+                            <div className="text-base font-bold font-mono tabular-nums">{displayData.open?.toFixed(2) ?? '-'}</div>
                         </div>
                         <div className="text-center">
-                            <div className="text-[10px] text-muted-foreground">收盤價</div>
-                            <div className={`text-base font-bold ${changeColor}`}>{displayData.close?.toFixed(2) ?? '-'}</div>
+                            <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">收盤</div>
+                            <div className={`text-base font-bold font-mono tabular-nums ${changeColor}`}>{displayData.close?.toFixed(2) ?? '-'}</div>
                         </div>
                         <div className="text-center">
-                            <div className="text-[10px] text-muted-foreground">最高價</div>
-                            <div className="text-base font-bold text-red-500">{displayData.high?.toFixed(2) ?? '-'}</div>
+                            <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">最高</div>
+                            <div className="text-base font-bold text-red-500 font-mono tabular-nums">{displayData.high?.toFixed(2) ?? '-'}</div>
                         </div>
                         <div className="text-center">
-                            <div className="text-[10px] text-muted-foreground">最低價</div>
-                            <div className="text-base font-bold text-green-600">{displayData.low?.toFixed(2) ?? '-'}</div>
+                            <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">最低</div>
+                            <div className="text-base font-bold text-green-600 font-mono tabular-nums">{displayData.low?.toFixed(2) ?? '-'}</div>
                         </div>
                         <div className="text-center">
-                            <div className="text-[10px] text-muted-foreground">漲跌幅</div>
-                            <div className={`text-base font-bold flex items-center justify-center ${changeColor}`}>
+                            <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">漲跌幅</div>
+                            <div className={`text-base font-bold flex items-center justify-center font-mono tabular-nums ${changeColor}`}>
                                 <PriceIcon className="h-3 w-3 mr-0.5" />
                                 {displayData.changePct != null ? `${isUp ? '+' : ''}${displayData.changePct.toFixed(2)}%` : '-'}
                             </div>

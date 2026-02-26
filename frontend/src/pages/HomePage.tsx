@@ -58,13 +58,13 @@ export function HomePage() {
     };
 
     return (
-        <div className="container mx-auto py-8 px-4 max-w-7xl">
-            <div className="mb-8">
-                <h1 className="text-2xl font-bold tracking-tight">TWSE 漲幅區間篩選器</h1>
-                <p className="text-muted-foreground mt-1">
-                    <span className="font-mono">{queryDate || '載入中...'}</span>
+        <div className="container mx-auto py-6 px-4 max-w-7xl space-y-6">
+            <div>
+                <h1 className="text-2xl font-bold tracking-tight">台股即時篩選器</h1>
+                <p className="text-muted-foreground mt-1 text-sm">
+                    <span className="font-mono tabular-nums">{queryDate || '載入中...'}</span>
                     {tradingDateData && !tradingDateData.is_today_trading && (
-                        <span className="ml-2 text-xs bg-muted px-2 py-0.5 rounded-full">今日非交易日</span>
+                        <span className="ml-2 text-xs bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full font-medium">今日非交易日</span>
                     )}
                 </p>
                 {/* 顯示警告訊息 */}

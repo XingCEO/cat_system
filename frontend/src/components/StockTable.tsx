@@ -58,11 +58,11 @@ export function StockTable({ stocks, total, page, pageSize, onPageChange, onStoc
     }, [stocks, sortField, sortOrder]);
 
     const SortHeader = ({ field, children }: { field: string; children: React.ReactNode }) => (
-        <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider cursor-pointer hover:bg-muted/50"
+        <th className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider cursor-pointer hover:bg-muted/50 transition-colors"
             onClick={() => handleSort(field)}>
             <div className="flex items-center gap-1">
                 {children}
-                <ArrowUpDown className={`w-3 h-3 ${sortField === field ? 'opacity-100' : 'opacity-30'}`} />
+                <ArrowUpDown className={`w-3 h-3 transition-opacity ${sortField === field ? 'opacity-100 text-primary' : 'opacity-30'}`} />
             </div>
         </th>
     );
@@ -91,8 +91,8 @@ export function StockTable({ stocks, total, page, pageSize, onPageChange, onStoc
         <Card>
             <CardHeader className="pb-2">
                 <CardTitle className="text-lg flex items-center justify-between">
-                    <span className="flex items-center gap-2"><TrendingUp className="w-5 h-5" /> 篩選結果</span>
-                    <span className="text-sm font-normal text-muted-foreground">共 {total} 筆</span>
+                    <span className="flex items-center gap-2"><TrendingUp className="w-5 h-5 text-primary" /> 篩選結果</span>
+                    <span className="text-sm font-normal text-muted-foreground font-mono tabular-nums">共 {total} 筆</span>
                 </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
@@ -114,8 +114,8 @@ export function StockTable({ stocks, total, page, pageSize, onPageChange, onStoc
                         </thead>
                         <tbody className="divide-y">
                             {sortedStocks.map((stock, idx) => (
-                                <tr key={stock.symbol} className={`hover:bg-muted/50 cursor-pointer transition-colors duration-150 ${idx % 2 === 0 ? '' : 'bg-muted/10'}`} onClick={() => onStockClick(stock)}>
-                                    <td className="px-3 py-3 font-mono font-medium">{stock.symbol}</td>
+                                <tr key={stock.symbol} className={`hover:bg-primary/5 cursor-pointer transition-colors duration-150 ${idx % 2 === 0 ? '' : 'bg-muted/30'}`} onClick={() => onStockClick(stock)}>
+                                    <td className="px-3 py-3 font-mono font-semibold text-primary">{stock.symbol}</td>
                                     <td className="px-3 py-3">{stock.name}</td>
                                     <td className="px-3 py-3 text-muted-foreground text-xs">{stock.industry || '-'}</td>
                                     <td className="px-3 py-3 font-mono">{formatPrice(stock.close_price)}</td>

@@ -484,6 +484,17 @@ export const InteractiveChartContainer = forwardRef<InteractiveChartContainerRef
         }
     }, [data.length, jumpToRange]);
 
+    // 根據實際資料筆數，過濾出可用的時間範圍選項
+    const availableTimeRanges = useMemo(() => {
+        if (!data || data.length === 0) return [];
+        const totalBars = data.length;
+        return TIME_RANGE_OPTIONS.filter(opt => {
+            if (opt.key === 'all') return true; // 「全部」永遠顯示
+            // 只有當資料筆數 >= 該選項需要的天數的 70% 時才顯示
+            return totalBars >= opt.days * 0.7;
+        });
+    }, [data]);
+
     if (!data || data.length === 0) {
         return (
             <div className="flex items-center justify-center h-64 text-muted-foreground">
@@ -503,12 +514,16 @@ export const InteractiveChartContainer = forwardRef<InteractiveChartContainerRef
             <div className="flex flex-wrap items-center justify-between gap-2 px-2">
                 {/* 時間範圍選擇 */}
                 <div className="flex items-center gap-1">
-                    {TIME_RANGE_OPTIONS.map(opt => (
+                    {availableTimeRanges.map(opt => (
                         <Button
                             key={opt.key}
                             variant={activeTimeRange === opt.key ? 'default' : 'outline'}
                             size="sm"
-                            className="h-7 px-2 text-xs"
+                            className={`h-7 px-2.5 text-xs font-medium transition-all ${
+                                activeTimeRange === opt.key
+                                    ? 'bg-primary text-primary-foreground shadow-sm'
+                                    : 'hover:bg-accent'
+                            }`}
                             onClick={() => jumpToRange(opt.days, opt.key)}
                         >
                             {opt.label}
@@ -644,7 +659,7 @@ export const InteractiveChartContainer = forwardRef<InteractiveChartContainerRef
             </div>
 
             {/* K 線主圖 */}
-            <div ref={mainChartContainerRef} className="border rounded-lg overflow-hidden relative transition-all duration-300 ease-in-out" style={{ height: chartHeights.main }}>
+            <div ref={mainChartContainerRef} className="rounded-xl overflow-hidden relative transition-all duration-300 ease-in-out ring-1 ring-border/50" style={{ height: chartHeights.main }}>
                 {isLoading && (
                     <div className="absolute inset-0 bg-background/50 flex items-center justify-center z-10">
                         <Loader2 className="h-6 w-6 animate-spin" />
@@ -677,7 +692,7 @@ export const InteractiveChartContainer = forwardRef<InteractiveChartContainerRef
             </div>
 
             {/* 成交量副圖 */}
-            <div className="border rounded-lg overflow-hidden transition-all duration-300 ease-in-out" style={{ height: chartHeights.volume + 28 }}>
+            <div className="rounded-xl overflow-hidden transition-all duration-300 ease-in-out ring-1 ring-border/50" style={{ height: chartHeights.volume + 28 }}>
                 <div className="flex items-center gap-2 px-3 py-1 text-xs text-muted-foreground border-b">
                     <span>成交量</span>
                     <span className="ml-2">
@@ -711,7 +726,7 @@ export const InteractiveChartContainer = forwardRef<InteractiveChartContainerRef
                     <TabsTrigger value="all">全部</TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="macd" className="border rounded-lg overflow-hidden mt-2">
+                <TabsContent value="macd" className="rounded-xl overflow-hidden mt-2 ring-1 ring-border/50">
                     <LightweightMACDChart
                         data={data}
                         height={chartHeights.indicator}
@@ -719,7 +734,7 @@ export const InteractiveChartContainer = forwardRef<InteractiveChartContainerRef
                     />
                 </TabsContent>
 
-                <TabsContent value="kd" className="border rounded-lg overflow-hidden mt-2">
+                <TabsContent value="kd" className="rounded-xl overflow-hidden mt-2 ring-1 ring-border/50">
                     <LightweightKDChart
                         data={data}
                         height={chartHeights.indicator}
@@ -727,7 +742,7 @@ export const InteractiveChartContainer = forwardRef<InteractiveChartContainerRef
                     />
                 </TabsContent>
 
-                <TabsContent value="rsi" className="border rounded-lg overflow-hidden mt-2">
+                <TabsContent value="rsi" className="rounded-xl overflow-hidden mt-2 ring-1 ring-border/50">
                     <LightweightRSIChart
                         data={data}
                         height={chartHeights.indicator}
@@ -736,20 +751,20 @@ export const InteractiveChartContainer = forwardRef<InteractiveChartContainerRef
                 </TabsContent>
 
                 <TabsContent value="all" className="space-y-2 mt-2">
-                    <div className="border rounded-lg overflow-hidden">
+                    <div className="rounded-xl overflow-hidden ring-1 ring-border/50">
                         <LightweightMACDChart
                             data={data}
                             height={150}
                             onChartReady={handleIndicatorChartReady}
                         />
                     </div>
-                    <div className="border rounded-lg overflow-hidden">
+                    <div className="rounded-xl overflow-hidden ring-1 ring-border/50">
                         <LightweightKDChart
                             data={data}
                             height={150}
                         />
                     </div>
-                    <div className="border rounded-lg overflow-hidden">
+                    <div className="rounded-xl overflow-hidden ring-1 ring-border/50">
                         <LightweightRSIChart
                             data={data}
                             height={140}

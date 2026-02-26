@@ -36,29 +36,31 @@ export function LightweightMACDChart({
     useEffect(() => {
         if (!containerRef.current) return;
 
+        const dark = document.documentElement.classList.contains('dark');
         const chart = createChart(containerRef.current, {
             width: containerRef.current.clientWidth,
             height: height,
             layout: {
-                background: { type: ColorType.Solid, color: '#ffffff' },
-                textColor: '#333333',
+                background: { type: ColorType.Solid, color: dark ? '#0a0f1a' : '#ffffff' },
+                textColor: dark ? '#94a3b8' : '#475569',
+                fontFamily: "'Inter', system-ui, sans-serif",
             },
             grid: {
-                vertLines: { color: 'rgba(197, 203, 206, 0.3)' },
-                horzLines: { color: 'rgba(197, 203, 206, 0.3)' },
+                vertLines: { color: dark ? 'rgba(51, 65, 85, 0.4)' : 'rgba(203, 213, 225, 0.5)' },
+                horzLines: { color: dark ? 'rgba(51, 65, 85, 0.4)' : 'rgba(203, 213, 225, 0.5)' },
             },
             crosshair: {
                 mode: CrosshairMode.Normal,
             },
             rightPriceScale: {
-                borderColor: 'rgba(197, 203, 206, 0.8)',
+                borderColor: dark ? 'rgba(51, 65, 85, 0.6)' : 'rgba(203, 213, 225, 0.8)',
                 scaleMargins: {
                     top: 0.1,
                     bottom: 0.1,
                 },
             },
             timeScale: {
-                borderColor: 'rgba(197, 203, 206, 0.8)',
+                borderColor: dark ? 'rgba(51, 65, 85, 0.6)' : 'rgba(203, 213, 225, 0.8)',
                 visible: false,
                 rightOffset: 0,
                 fixRightEdge: true,

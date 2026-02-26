@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-do
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { useStore } from '@/stores/store';
-import { Moon, Sun, TrendingUp, Flame, Trophy, Activity, Zap, Loader2, Menu, X, Search, BarChart3, BookMarked } from 'lucide-react';
+import { Moon, Sun, TrendingUp, Flame, Trophy, Activity, Zap, Loader2, Menu, X, BarChart3, BookMarked, Cat } from 'lucide-react';
 
 // Lazy load pages for code splitting
 const HomePage = lazy(() => import('@/pages/HomePage').then(m => ({ default: m.HomePage })));
@@ -49,8 +49,8 @@ function NavBar() {
     }, [location.pathname]);
 
     const navItems = [
-        { to: '/', label: '即時篩選', icon: null },
-        { to: '/screen', label: '🐱 喵喵選股', icon: <Search className="w-4 h-4 text-amber-500" /> },
+        { to: '/', label: '即時篩選', icon: <TrendingUp className="w-4 h-4" /> },
+        { to: '/screen', label: '喵喵選股', icon: <Cat className="w-4 h-4 text-amber-500" /> },
         { to: '/chart-pro', label: '增強K線', icon: <BarChart3 className="w-4 h-4 text-cyan-500" /> },
         { to: '/strategies', label: '策略管理', icon: <BookMarked className="w-4 h-4 text-emerald-500" /> },
         { to: '/top20-limit-up', label: '前200周轉漲停', icon: <Trophy className="w-4 h-4 text-yellow-500" /> },
@@ -64,31 +64,42 @@ function NavBar() {
     ];
 
     return (
-        <header className="border-b bg-card sticky top-0 z-50">
+        <header className="border-b border-border/40 bg-background/95 backdrop-blur-md supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
             <div className="container mx-auto flex items-center justify-between h-14 px-4">
-                <Link to="/" className="flex items-center gap-2 font-bold text-lg">
-                    <TrendingUp className="w-6 h-6 text-primary" />
-                    TWSE 篩選器
+                <Link to="/" className="flex items-center gap-2 font-bold text-lg tracking-tight group">
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-primary-foreground shadow-sm group-hover:shadow-md transition-shadow">
+                        <Cat className="w-5 h-5" />
+                    </div>
+                    <span className="bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">喵喵選股</span>
                 </Link>
                 {/* Desktop Nav */}
-                <nav className="hidden md:flex items-center gap-1">
-                    {navItems.map((item) => (
-                        <Button key={item.to} variant="ghost" size="sm" asChild>
-                            <Link to={item.to} className="flex items-center gap-1">
+                <nav className="hidden lg:flex items-center gap-0.5">
+                    {navItems.map((item) => {
+                        const isActive = location.pathname === item.to;
+                        return (
+                            <Link
+                                key={item.to}
+                                to={item.to}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                                    isActive
+                                        ? 'bg-primary/10 text-primary shadow-sm'
+                                        : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                                }`}
+                            >
                                 {item.icon}{item.label}
                             </Link>
-                        </Button>
-                    ))}
+                        );
+                    })}
                 </nav>
                 <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="icon" onClick={toggleTheme}>
+                    <Button variant="ghost" size="icon" onClick={toggleTheme} className="rounded-lg">
                         {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
                     </Button>
                     {/* Mobile Menu Button */}
                     <Button
                         variant="ghost"
                         size="icon"
-                        className="md:hidden"
+                        className="lg:hidden rounded-lg"
                         onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                         aria-label="開啟選單"
                     >
@@ -98,13 +109,13 @@ function NavBar() {
             </div>
             {/* Mobile Nav Dropdown */}
             {mobileMenuOpen && (
-                <nav className="md:hidden border-t bg-card/95 backdrop-blur-sm">
-                    <div className="container mx-auto px-4 py-2 flex flex-col gap-1">
+                <nav className="lg:hidden border-t border-border/40 bg-background/95 backdrop-blur-md">
+                    <div className="container mx-auto px-4 py-2 flex flex-col gap-0.5">
                         {navItems.map((item) => (
                             <Link
                                 key={item.to}
                                 to={item.to}
-                                className={`flex items-center gap-2 px-3 py-2.5 rounded-md text-sm font-medium transition-colors hover:bg-muted ${location.pathname === item.to ? 'bg-muted text-primary' : 'text-foreground'}`}
+                                className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors hover:bg-accent ${location.pathname === item.to ? 'bg-primary/10 text-primary' : 'text-foreground'}`}
                             >
                                 {item.icon}{item.label}
                             </Link>
