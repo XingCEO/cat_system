@@ -1,7 +1,7 @@
 """
 Stock Schemas
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List
 from datetime import date
 
@@ -38,9 +38,8 @@ class StockResponse(StockBase):
     
     # Trade date
     trade_date: Optional[date] = Field(None, description="交易日期")
-    
-    class Config:
-        from_attributes = True
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DailyDataResponse(BaseModel):
@@ -51,9 +50,8 @@ class DailyDataResponse(BaseModel):
     low: Optional[float]
     close: Optional[float]
     volume: Optional[int]
-    
-    class Config:
-        from_attributes = True
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class StockFilterParams(BaseModel):

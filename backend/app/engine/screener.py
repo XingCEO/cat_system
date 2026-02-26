@@ -248,10 +248,6 @@ def _compute_screen_sync(
             logger.error(f"自訂公式錯誤: {e}")
             continue
 
-    # 如果是多天資料，只保留最新日期的記錄作為結果
-    latest_date = df["date"].max()
-    if needs_multi_day:
-
     # 套用所有規則
     masks = []
     for rule in request.rules:
@@ -273,6 +269,7 @@ def _compute_screen_sync(
 
     # 如果是多天資料，只取最新日期的結果
     if needs_multi_day:
+        latest_date = df["date"].max()
         combined = combined & (df["date"] == latest_date)
 
     filtered = df[combined]

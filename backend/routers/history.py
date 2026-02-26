@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 
 from database import get_db
@@ -22,9 +22,8 @@ class QueryHistoryResponse(BaseModel):
     result_count: int
     query_type: str
     executed_at: str
-    
-    class Config:
-        from_attributes = True
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class FavoriteCreate(BaseModel):
@@ -41,9 +40,8 @@ class FavoriteResponse(BaseModel):
     description: Optional[str]
     conditions: dict
     use_count: int
-    
-    class Config:
-        from_attributes = True
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 @router.get("/history", response_model=APIResponse[List[QueryHistoryResponse]])

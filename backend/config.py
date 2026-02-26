@@ -2,6 +2,7 @@
 TWSE Stock Filter - Configuration
 """
 from pydantic_settings import BaseSettings
+from pydantic import ConfigDict
 from functools import lru_cache
 from typing import Optional
 
@@ -44,10 +45,11 @@ class Settings(BaseSettings):
     # Legacy/extra cache settings
     cache_expire_seconds: int = 300
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        extra = "ignore"
+    model_config = ConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 
 @lru_cache()

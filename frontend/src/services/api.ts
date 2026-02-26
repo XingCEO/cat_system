@@ -1,19 +1,9 @@
 import axios from 'axios';
 import type {
     Stock, StockDetail, FilterParams, APIResponse, PaginatedResponse,
-    TechnicalIndicators, BacktestRequest, BacktestResult, Watchlist, Favorite, BatchCompareItem
+    TechnicalIndicators, BacktestRequest, BacktestResult, Watchlist, Favorite, BatchCompareItem,
+    StockHistoryRecord
 } from '@/types';
-
-/** 歷史日K資料 (TODO: move to @/types) */
-export interface StockHistoryRecord {
-    date: string;
-    open: number | null;
-    high: number | null;
-    low: number | null;
-    close: number | null;
-    volume: number | null;
-    change_percent?: number | null;
-}
 
 const api = axios.create({
     baseURL: '/api',

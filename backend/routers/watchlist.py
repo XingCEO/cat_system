@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 import logging
 
 from database import get_db
@@ -43,9 +43,8 @@ class WatchlistItemResponse(BaseModel):
     is_active: bool
     notes: Optional[str]
     trigger_count: int
-    
-    class Config:
-        from_attributes = True
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class WatchlistResponse(BaseModel):
@@ -53,9 +52,8 @@ class WatchlistResponse(BaseModel):
     name: str
     description: Optional[str]
     items: List[WatchlistItemResponse]
-    
-    class Config:
-        from_attributes = True
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 @router.get("", response_model=APIResponse[List[WatchlistResponse]])

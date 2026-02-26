@@ -252,3 +252,13 @@ export interface KLineResponse {
     };
 }
 
+/** 歷史日K資料 */
+export interface StockHistoryRecord {
+    date: string;
+    open: number | null;
+    high: number | null;
+    low: number | null;
+    close: number | null;
+    volume: number | null;
+    change_percent?: number | null;
+}
