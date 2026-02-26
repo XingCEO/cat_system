@@ -280,11 +280,21 @@ def _compute_screen_sync(
     # 構建結果
     results = []
     for _, row in filtered.iterrows():
+        # 安全取得字串欄位，處理 NaN
+        ticker_id = row.get("ticker_id", "")
+        ticker_id = str(ticker_id) if pd.notna(ticker_id) else ""
+        name = row.get("name", "")
+        name = str(name) if pd.notna(name) else ticker_id
+        market_type = row.get("market_type")
+        market_type = str(market_type) if pd.notna(market_type) else None
+        industry = row.get("industry")
+        industry = str(industry) if pd.notna(industry) else None
+
         results.append(TickerResult(
-            ticker_id=str(row.get("ticker_id", "")),
-            name=str(row.get("name", "")),
-            market_type=row.get("market_type"),
-            industry=row.get("industry"),
+            ticker_id=ticker_id,
+            name=name,
+            market_type=market_type,
+            industry=industry,
             close=_safe_float(row.get("close")),
             change_percent=_safe_float(row.get("change_percent")),
             volume=_safe_int(row.get("volume")),

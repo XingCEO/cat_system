@@ -40,39 +40,65 @@ async def sync_tickers(db: AsyncSession) -> int:
         ))
         count += 1
 
-    await db.commit()
-    logger.info(f"Synced {count} new tickers")
+    if count > 0:
+        await db.commit()
+    logger.info(f"Synced {count} new tickers (total existing: {len(existing_ids)})")
     return count
 
 
 async def sync_daily_prices(db: AsyncSession, trade_date: Optional[str] = None) -> int:
-    """同步日K線資料到 daily_prices 表"""
+    """
+    同步日K線資料到 daily_prices 表
+
+    重要修復：使用 API 回傳的**實際日期**，而非傳入的查詢日期。
+    TWSE API 通常回傳最近交易日的資料（可能是昨天）。
+    使用批次查詢避免 N+1 問題。
+    """
     if trade_date is None:
         trade_date = datetime.now().strftime("%Y-%m-%d")
 
     daily_df = await data_fetcher.get_daily_data(trade_date)
     if daily_df.empty:
+        logger.warning(f"No daily data returned for {trade_date}")
         return 0
 
-    date_obj = datetime.strptime(trade_date, "%Y-%m-%d").date()
-    count = 0
+    # 使用 API 回傳的**實際日期**，而非傳入的查詢日期
+    if "date" in daily_df.columns:
+        actual_date_str = str(daily_df["date"].iloc[0])
+        try:
+            date_obj = datetime.strptime(actual_date_str, "%Y-%m-%d").date()
+        except ValueError:
+            date_obj = datetime.strptime(trade_date, "%Y-%m-%d").date()
+        logger.info(f"Daily data actual date: {date_obj} (queried: {trade_date})")
+    else:
+        date_obj = datetime.strptime(trade_date, "%Y-%m-%d").date()
 
+    # 批次查詢：取得該日已存在的所有 ticker_ids
+    existing_result = await db.execute(
+        select(DailyPrice.ticker_id).where(DailyPrice.date == date_obj)
+    )
+    existing_tickers = set(existing_result.scalars().all())
+
+    # 取得所有已知 ticker_ids（只同步有基本資料的股票，避免 orphan records）
+    known_result = await db.execute(select(Ticker.ticker_id))
+    known_tickers = set(known_result.scalars().all())
+
+    if existing_tickers:
+        logger.info(f"Already have {len(existing_tickers)} prices for {date_obj}, checking for new...")
+
+    skipped_unknown = 0
+    count = 0
     for _, row in daily_df.iterrows():
         ticker_id = str(row.get("stock_id", row.get("Code", "")))
-        if not ticker_id:
+        if not ticker_id or ticker_id in existing_tickers:
+            continue
+        # 只同步已知 tickers（skipREITs、受益憑證等沒有基本資料的）
+        if ticker_id not in known_tickers:
+            skipped_unknown += 1
             continue
 
         close = _safe_float(row, "close", "ClosingPrice")
         if close is None:
-            continue
-
-        existing = await db.execute(
-            select(DailyPrice).where(
-                DailyPrice.ticker_id == ticker_id,
-                DailyPrice.date == date_obj
-            )
-        )
-        if existing.scalar_one_or_none():
             continue
 
         open_p = _safe_float(row, "open", "OpeningPrice")
@@ -97,8 +123,11 @@ async def sync_daily_prices(db: AsyncSession, trade_date: Optional[str] = None) 
         ))
         count += 1
 
-    await db.commit()
-    logger.info(f"Synced {count} daily prices for {trade_date}")
+    if count > 0:
+        await db.commit()
+    if skipped_unknown > 0:
+        logger.info(f"Skipped {skipped_unknown} unknown ticker_ids (REITs, etc.)")
+    logger.info(f"Synced {count} daily prices for {date_obj}")
     return count
 
 

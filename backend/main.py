@@ -71,20 +71,27 @@ async def lifespan(app: FastAPI):
     await init_db()
     logger.info("Database initialized")
 
-    # 啟動時將 v1 股票基本資料同步移至背景任務，避免阻塞啟動流程
+    # 啟動時將 v1 資料同步移至背景任務，避免阻塞啟動流程
     import asyncio
     async def _background_sync():
-        """Background task: sync tickers without blocking startup"""
+        """Background task: sync tickers + daily prices without blocking startup"""
         try:
             await asyncio.sleep(2)  # 等待應用程式完全啟動
             from database import async_session_maker
-            from app.engine.data_sync import sync_tickers
+            from app.engine.data_sync import sync_tickers, sync_daily_prices
             async with async_session_maker() as session:
-                count = await sync_tickers(session)
-                if count > 0:
-                    logger.info(f"Background synced {count} tickers")
+                ticker_count = await sync_tickers(session)
+                if ticker_count > 0:
+                    logger.info(f"Background synced {ticker_count} tickers")
+            # 單獨的 session 來同步 daily prices
+            async with async_session_maker() as session:
+                price_count = await sync_daily_prices(session)
+                if price_count > 0:
+                    logger.info(f"Background synced {price_count} daily prices")
+                else:
+                    logger.info("Daily prices already up to date (or no data available)")
         except Exception as e:
-            logger.warning(f"Background sync tickers skipped: {e}")
+            logger.warning(f"Background sync skipped: {e}")
 
     asyncio.create_task(_background_sync())
     logger.info("Ticker sync scheduled as background task")
