@@ -13,7 +13,7 @@
 ---
 
 ## 二、總結（Executive Summary）
-1. 重大（Critical）問題：docker-compose.yml 含明文資料庫帳密（POSTGRES_PASSWORD / DATABASE_URL => `meow:meow123`），以及開放資料庫端口至 host（5432），在生產環境構成重大風險。必要立即移除硬編碼密碼並改用 CI/Secrets / Docker Secrets 或環境變數注入，並禁止在生產將 DB 端口暴露於外網。
+1. 重大（Critical）問題：docker-compose.yml 先前含明文資料庫帳密，已更新為使用環境變數引用（例如 ${POSTGRES_PASSWORD}）。請在部署平台或 CI 中以 secrets 注入實際憑證，並確保不在生產暴露 DB 端口（5432）。
 2. 高風險（High）問題：篩選引擎（screener）直接在 request handler 中執行大量 Pandas 運算（load_latest_data / load_multi_day_data / apply_rule 等），在高資料量下會造成記憶體飆升與阻塞 FastAPI 事件迴圈（CPU-bound），建議改為背景工作（worker queue）或將耗時運算移出 event loop（run_in_executor / Celery / RQ）。
 3. 中級風險（Medium）問題：啟動時自動執行資料同步（sync_tickers 在 lifespan 中），若外部 API 斷線或慢，會延長啟動時間並影響可用性；建議非同步排程或手動/工作佇列觸發。
 4. 中低風險（Medium/Low）：Dockerfile 未建立非 root 使用者，建議建立非 root 使用者以降低容器被入侵時的衝擊；CORS 與 allow_credentials 設定需注意在生產上只允許明確來源。

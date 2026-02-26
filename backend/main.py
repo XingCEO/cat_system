@@ -104,10 +104,21 @@ app = FastAPI(
 
 # Configure CORS
 origins = settings.cors_origins.split(",")
+# 在生產環境（非 localhost），如果未設定 CORS_ORIGINS，允許所有來源
+if len(origins) == 1 and "localhost" in origins[0] and os.getenv("CORS_ORIGINS") is None:
+    # 偵測到可能在雲端部署但未設定 CORS，改為寬鬆模式
+    import socket
+    try:
+        hostname = socket.gethostname()
+        if hostname != "localhost" and not hostname.startswith("DESKTOP"):
+            origins = ["*"]
+            logger.info("CORS: 雲端環境未設定 CORS_ORIGINS，已設為允許所有來源")
+    except Exception:
+        pass
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_credentials=True,
+    allow_credentials=True if "*" not in origins else False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
