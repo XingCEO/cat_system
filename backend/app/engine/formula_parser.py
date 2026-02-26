@@ -24,11 +24,15 @@ ALLOWED_FIELDS = {
     "change_percent",
 }
 
-# 允許的運算符號
-ALLOWED_OPERATORS = {"+", "-", "*", "/", "(", ")", ".", " "}
+# 允許的運算符號（移除 '.' 以禁止屬性/方法存取，避免安全風險）
+ALLOWED_OPERATORS = {"+", "-", "*", "/", "(", ")", " "}
 
-# Token 正則
-TOKEN_PATTERN = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*|[0-9]+\.?[0-9]*|[+\-*/().\s]")
+# 公式長度與複雜度上限（防 DOS）
+MAX_FORMULA_LENGTH = 500
+MAX_TOKEN_COUNT = 50
+
+# Token 正則（移除 . 作為獨立運算子）
+TOKEN_PATTERN = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*|[0-9]+\.?[0-9]*|[+\-*/()\s]")
 
 
 def tokenize(formula: str) -> list[str]:
@@ -56,9 +60,15 @@ def validate_formula(formula: str) -> tuple[bool, str]:
     if not formula or not formula.strip():
         return False, "公式不可為空"
 
+    if len(formula) > MAX_FORMULA_LENGTH:
+        return False, f"公式長度超過上限 ({MAX_FORMULA_LENGTH} 字元)"
+
     tokens = tokenize(formula)
     if not tokens:
         return False, "公式解析失敗"
+
+    if len(tokens) > MAX_TOKEN_COUNT:
+        return False, f"公式複雜度超過上限 ({MAX_TOKEN_COUNT} tokens)"
 
     for token in tokens:
         if token in ALLOWED_OPERATORS:

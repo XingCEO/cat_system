@@ -2,6 +2,7 @@
 Screener — 多維度篩選引擎
 核心邏輯：從 DB 載入資料 → 套用自訂公式 → 逐條 Rule 產生 mask → AND/OR 合併 → 回傳結果
 """
+import asyncio
 import logging
 import pandas as pd
 from typing import Optional
@@ -228,6 +229,17 @@ async def run_screen(request: ScreenRequest, db: AsyncSession) -> ScreenResponse
     if df.empty:
         return ScreenResponse(matched_count=0, data=[], logic=request.logic)
 
+    # 將 CPU-bound 的 DataFrame 運算移至 thread pool，避免阻塞 event loop
+    result = await asyncio.to_thread(
+        _compute_screen_sync, df, request, needs_multi_day
+    )
+    return result
+
+
+def _compute_screen_sync(
+    df: pd.DataFrame, request: ScreenRequest, needs_multi_day: bool
+) -> ScreenResponse:
+    """純 CPU 運算的同步函式（在 thread pool 中執行）"""
     # 套用自訂公式
     for formula in request.custom_formulas:
         try:

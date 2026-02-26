@@ -1,5 +1,11 @@
 version: '3.8'
 
+# ========================================
+# 請建立 .env 檔案（參考 .env.example）定義：
+#   POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD
+# 切勿將明文密碼提交到版本控制！
+# ========================================
+
 services:
   backend:
     build:
@@ -8,7 +14,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://meow:meow123@postgres:5432/meow_stock
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - REDIS_URL=redis://redis:6379/0
       - CORS_ORIGINS=http://localhost:5173,http://localhost:3000,http://frontend:5173
     volumes:
@@ -35,20 +41,21 @@ services:
       - backend
     restart: unless-stopped
 
-  # ===== 新增基礎服務 =====
+  # ===== 基礎服務 =====
 
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: meow_stock
-      POSTGRES_USER: meow
-      POSTGRES_PASSWORD: meow123
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    # 生產環境請勿對外暴露 DB 端口；僅供本地開發時取消註解
+    # ports:
+    #   - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U meow -d meow_stock"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -56,8 +63,9 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    # 生產環境請勿對外暴露 Redis 端口
+    # ports:
+    #   - "6379:6379"
     volumes:
       - redisdata:/data
     restart: unless-stopped
