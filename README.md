@@ -1,8 +1,8 @@
 <div align="center">
 
-# 🐱 喵喵選股 MeowStock
+# 喵喵選股 MeowStock
 
-### 台股客製化選股系統 — 機構級分析，散戶友善介面
+**台股客製化選股系統 — 機構級分析，散戶友善介面**
 
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
@@ -13,79 +13,45 @@
 [![CI](https://github.com/XingCEO/cat_system/actions/workflows/ci-build-publish.yml/badge.svg)](https://github.com/XingCEO/cat_system/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-<br />
-
-<img src="https://img.shields.io/badge/TWSE-台灣證券交易所-c41230?style=for-the-badge" alt="TWSE" />
-<img src="https://img.shields.io/badge/Yahoo_Finance-紫色-7B1FA2?style=for-the-badge&logo=yahoo&logoColor=white" alt="Yahoo" />
-<img src="https://img.shields.io/badge/FinMind-API-FF6F00?style=for-the-badge" alt="FinMind" />
+[![TWSE](https://img.shields.io/badge/TWSE-台灣證券交易所-c41230?style=flat-square)](https://www.twse.com.tw)
+[![Yahoo Finance](https://img.shields.io/badge/Yahoo_Finance-Data-7B1FA2?style=flat-square&logo=yahoo&logoColor=white)](https://finance.yahoo.com)
+[![FinMind](https://img.shields.io/badge/FinMind-API-FF6F00?style=flat-square)](https://finmind.github.io)
 
 </div>
 
 ---
 
-## ✨ 功能亮點
+## 功能亮點
 
-<table>
-<tr>
-<td width="50%">
-
-### 📊 多維度選股
-自訂漲幅、成交量、股價、技術指標條件組合，支援 AND / OR 邏輯
-
-### 🔥 週轉率 Top200
-漲停股、五日新高/新低、突破糾結均線、成交量放大、法人連買
-
-### 📈 K 線圖表
-Lightweight Charts 即時 K 線 + MA / RSI / MACD / KD / 布林通道
-
-</td>
-<td width="50%">
-
-### 🧠 v1 選股引擎
-公式解析器 + 跨越/跌破運算子 (`CROSS_UP` / `CROSS_DOWN`)
-
-### 💼 策略管理
-極度多頭 / 穩健多頭 / 支撐守穩 / 突破 四大均線策略
-
-### 🔄 回測 & 匯出
-歷史策略績效驗證 + Excel / CSV / JSON 一鍵匯出
-
-</td>
-</tr>
-</table>
+| 功能 | 說明 |
+|:-----|:-----|
+| **多維度選股** | 自訂漲幅、成交量、股價、技術指標條件組合，支援 AND / OR 邏輯 |
+| **週轉率 Top200** | 漲停股、五日新高/新低、突破糾結均線、成交量放大、法人連買 |
+| **K 線圖表** | Lightweight Charts 即時 K 線 + MA / RSI / MACD / KD / 布林通道 |
+| **v1 選股引擎** | 公式解析器 + 跨越/跌破運算子 (`CROSS_UP` / `CROSS_DOWN`) |
+| **策略管理** | 極度多頭 / 穩健多頭 / 支撐守穩 / 突破 四大均線策略 |
+| **回測 & 匯出** | 歷史策略績效驗證 + Excel / CSV / JSON 一鍵匯出 |
 
 ---
 
-## 🏗️ 技術架構
-
-```
-┌─────────────────────────────────────────────────────┐
-│                   Frontend (React 18)                │
-│  TypeScript · Vite · Tailwind · shadcn/ui · Zustand  │
-│  TanStack Query · Recharts · Lightweight Charts      │
-├─────────────────────────────────────────────────────┤
-│                   Backend (FastAPI)                   │
-│  Python 3.12 · SQLAlchemy (async) · pandas · pandas-ta│
-├──────────┬──────────┬──────────┬────────────────────┤
-│  FinMind │  Yahoo   │  TWSE    │  TWSE MIS          │
-│  API     │  Finance │  OpenAPI │  (盤中即時)         │
-└──────────┴──────────┴──────────┴────────────────────┘
-```
+## 技術架構
 
 | 層級 | 技術 |
 |:-----|:-----|
-| **後端** | Python 3.12 · FastAPI · SQLAlchemy (async) · SQLite / PostgreSQL |
 | **前端** | React 18 · TypeScript · Vite · Tailwind CSS |
 | **狀態管理** | Zustand · TanStack Query |
 | **UI 元件** | shadcn/ui (Radix) · Recharts · Lightweight Charts |
-| **資料源** | FinMind API · Yahoo Finance · TWSE Open Data · TWSE MIS |
+| **後端** | Python 3.12 · FastAPI · SQLAlchemy (async) · pandas · pandas-ta |
+| **資料庫** | SQLite (開發) / PostgreSQL (生產) |
+| **資料源** | FinMind API · Yahoo Finance · TWSE Open Data · TWSE MIS (盤中即時) |
 | **部署** | Docker · GitHub Actions · Zeabur / Render |
 
 ---
 
-## 🚀 快速開始
+## 快速開始
 
 ### 後端
+
 ```bash
 cd backend
 python -m venv venv
@@ -95,28 +61,31 @@ uvicorn main:app --reload --port 8000
 ```
 
 ### 前端
+
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-> 🌐 前端: http://localhost:5173 &nbsp;|&nbsp; 📖 API 文件: http://localhost:8000/docs
+> 前端: http://localhost:5173 | API 文件: http://localhost:8000/docs
 
-### Docker (一鍵啟動)
+### Docker
+
 ```bash
 docker build -t cat-system .
 docker run -p 8000:8000 cat-system
 ```
 
 ### Docker Compose (含 PostgreSQL + Redis)
+
 ```bash
 docker-compose up -d
 ```
 
 ---
 
-## 📡 API 架構
+## API 架構
 
 <details>
 <summary><b>Legacy API</b> — <code>/api/...</code></summary>
@@ -152,7 +121,7 @@ docker-compose up -d
 
 ---
 
-## ⚙️ 環境變數
+## 環境變數
 
 | 變數 | 說明 | 預設值 |
 |:-----|:-----|:-------|
@@ -162,7 +131,7 @@ docker-compose up -d
 
 ---
 
-## 🧪 測試
+## 測試
 
 ```bash
 cd backend
@@ -171,6 +140,6 @@ python -m pytest tests/ -v   # 31 tests
 
 ---
 
-## 📄 授權
+## 授權
 
 MIT License
