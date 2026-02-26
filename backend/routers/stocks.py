@@ -144,7 +144,7 @@ async def get_stock_detail(symbol: str):
         # Get latest trading date
         trade_date = format_date(get_previous_trading_day())
         
-        # Get daily data
+        # Get daily data (TWSE STOCK_DAY_ALL - 收盤後才更新，盤中仍為前一天)
         daily_df = await data_fetcher.get_daily_data(trade_date)
         stock_daily = daily_df[daily_df["stock_id"] == symbol]
         
@@ -152,31 +152,63 @@ async def get_stock_detail(symbol: str):
             raise HTTPException(status_code=404, detail=f"查無 {symbol} 的交易資料")
         
         row = stock_daily.iloc[0]
+
+        # 使用 TWSE 回傳的實際資料日期（而非日曆推算日期）
+        actual_data_date = str(row.get("date", trade_date))[:10]
+
+        # 嘗試取得盤中即時報價，如果比 STOCK_DAY_ALL 更新就優先使用
+        try:
+            realtime_quotes = await data_fetcher.get_realtime_quotes([symbol])
+            if realtime_quotes:
+                rt = realtime_quotes[0]
+                rt_close = rt.get("close", 0)
+                if rt_close and rt_close > 0:
+                    # 即時報價可用，覆蓋 STOCK_DAY_ALL 的舊資料
+                    row = {
+                        "open": rt.get("open") or row.get("open"),
+                        "max": rt.get("high") or row.get("max"),
+                        "min": rt.get("low") or row.get("min"),
+                        "close": rt_close,
+                        "Trading_Volume": (rt.get("volume", 0) or 0) * 1000,  # MIS 回傳的是張數
+                        "spread": rt.get("change", 0) or 0,
+                    }
+                    actual_data_date = trade_date
+        except Exception as e:
+            logger.debug(f"Realtime quote fallback failed for {symbol}: {e}")
         
         # Get historical data for calculations
         from datetime import datetime, timedelta
         end_date = trade_date
         start_date = (datetime.strptime(trade_date, "%Y-%m-%d") - timedelta(days=400)).strftime("%Y-%m-%d")
         hist_df = await data_fetcher.get_historical_data(symbol, start_date, end_date)
+
+        # 取值（row 可能是 Series 或 dict）
+        def _get(key, to_int=False):
+            val = row.get(key) if isinstance(row, dict) else row.get(key, None)
+            if val is None:
+                return None
+            return int(val) if to_int else val
         
         # Build response
         result = {
             "symbol": symbol,
             "name": stock_info.get("stock_name", symbol),
             "industry": stock_info.get("industry_category", ""),
-            "open_price": row.get("open"),
-            "high_price": row.get("max"),
-            "low_price": row.get("min"),
-            "close_price": row.get("close"),
-            "volume": row.get("Trading_Volume", 0) // 1000,
-            "trade_date": trade_date
+            "open_price": _get("open"),
+            "high_price": _get("max"),
+            "low_price": _get("min"),
+            "close_price": _get("close"),
+            "volume": (_get("Trading_Volume", to_int=True) or 0) // 1000,
+            "trade_date": actual_data_date
         }
         
         # Calculate prev_close and metrics
-        if "spread" in row:
-            result["prev_close"] = row["close"] - row["spread"]
+        spread = _get("spread")
+        close_val = _get("close")
+        if spread is not None and close_val is not None:
+            result["prev_close"] = close_val - spread
             if result["prev_close"] and result["prev_close"] != 0:
-                result["change_percent"] = round(row["spread"] / result["prev_close"] * 100, 2)
+                result["change_percent"] = round(spread / result["prev_close"] * 100, 2)
             else:
                 result["change_percent"] = 0.0
         
