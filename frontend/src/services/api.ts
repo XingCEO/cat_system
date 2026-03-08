@@ -293,6 +293,12 @@ export async function getComboFilter(
     return data;
 }
 
+// 趨勢選股（二選一模式：convergence=均線糾結 / individual=個股篩選）
+export async function getTrendScreen(params?: { mode?: string; date_start?: string; date_end?: string; change_min?: number; change_max?: number }): Promise<any> {
+    const { data } = await api.get<any>('/turnover/trend-screen', { params });
+    return data;
+}
+
 // Export data as file download
 export function downloadExportFile(format: 'csv' | 'excel' | 'json', data: any[], filename: string): void {
     let content: string;

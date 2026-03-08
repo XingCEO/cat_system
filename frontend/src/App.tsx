@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-do
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { useStore } from '@/stores/store';
-import { Moon, Sun, TrendingUp, Flame, Trophy, Activity, Zap, Loader2, Menu, X, BookMarked, Cat } from 'lucide-react';
+import { Moon, Sun, TrendingUp, Flame, Trophy, Activity, Zap, Loader2, Menu, X, BookMarked, Cat, Target } from 'lucide-react';
 
 // Lazy load pages for code splitting
 const HomePage = lazy(() => import('@/pages/HomePage').then(m => ({ default: m.HomePage })));
@@ -11,6 +11,7 @@ const HighTurnoverPage = lazy(() => import('@/pages/HighTurnoverPage').then(m =>
 const Top20TurnoverLimitUpPage = lazy(() => import('@/pages/Top20TurnoverLimitUpPage').then(m => ({ default: m.Top20TurnoverLimitUpPage })));
 const TurnoverFiltersPage = lazy(() => import('@/pages/TurnoverFiltersPage').then(m => ({ default: m.TurnoverFiltersPage })));
 const MaBreakoutPage = lazy(() => import('@/pages/MaBreakoutPage').then(m => ({ default: m.MaBreakoutPage })));
+const TrendScreenPage = lazy(() => import('@/pages/TrendScreenPage').then(m => ({ default: m.TrendScreenPage })));
 
 // Lazy load OtherPages components individually
 const BacktestPage = lazy(() => import('@/pages/OtherPages').then(m => ({ default: m.BacktestPage })));
@@ -52,6 +53,7 @@ function NavBar() {
         { to: '/top20-limit-up', label: '前200周轉漲停', icon: <Trophy className="w-4 h-4 text-yellow-500" /> },
         { to: '/turnover-filters', label: '篩選器', icon: <Activity className="w-4 h-4 text-blue-500" /> },
         { to: '/ma-breakout', label: '均線突破', icon: <Zap className="w-4 h-4 text-purple-500" /> },
+        { to: '/trend-screen', label: '趨勢選股', icon: <Target className="w-4 h-4 text-amber-500" /> },
         { to: '/turnover', label: '高周轉漲停', icon: <Flame className="w-4 h-4 text-orange-500" /> },
         { to: '/batch', label: '批次比對', icon: null },
         { to: '/backtest', label: '回測分析', icon: null },
@@ -141,6 +143,7 @@ function AppContent() {
                     <Route path="/top20-limit-up" element={<Top20TurnoverLimitUpPage />} />
                     <Route path="/turnover-filters" element={<TurnoverFiltersPage />} />
                     <Route path="/ma-breakout" element={<MaBreakoutPage />} />
+                    <Route path="/trend-screen" element={<TrendScreenPage />} />
                     <Route path="/turnover" element={<HighTurnoverPage />} />
                     <Route path="/batch" element={<BatchComparePage />} />
                     <Route path="/backtest" element={<BacktestPage />} />
