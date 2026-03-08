@@ -226,7 +226,9 @@ export function MaBreakoutPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-lg font-semibold">{formatDateDisplay()}</div>
-                        {isDateRange && <div className="text-xs text-muted-foreground">共 {totalDays} 天</div>}
+                        {isDateRange && <div className="text-xs text-muted-foreground">
+                            {isLoading ? <span className="animate-pulse">計算中...</span> : `共 ${totalDays} 天`}
+                        </div>}
                     </CardContent>
                 </Card>
                 <Card className={`border-l-4 ${direction === 'breakout' ? 'border-purple-500' : 'border-rose-500'}`}>
@@ -236,7 +238,9 @@ export function MaBreakoutPage() {
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className={`text-2xl font-bold ${direction === 'breakout' ? 'text-violet-400' : 'text-rose-400'}`}>{breakoutCount} 檔</div>
+                        <div className={`text-2xl font-bold ${direction === 'breakout' ? 'text-violet-400' : 'text-rose-400'}`}>
+                            {isLoading ? <span className="animate-pulse">—</span> : `${breakoutCount} 檔`}
+                        </div>
                     </CardContent>
                 </Card>
                 <Card>
@@ -274,7 +278,7 @@ export function MaBreakoutPage() {
                             <Zap className="w-5 h-5" /> {direction === 'breakout' ? '突破' : '跌破'}糾結均線股票
                         </span>
                         <span className="text-sm font-normal text-muted-foreground">
-                            共 {stocks.length} 筆
+                            {isLoading ? '查詢中...' : `共 ${stocks.length} 筆`}
                         </span>
                     </CardTitle>
                 </CardHeader>
@@ -319,7 +323,7 @@ export function MaBreakoutPage() {
                                             <td className="px-3 py-3 font-mono">{stock.symbol}</td>
                                             <td className="px-3 py-3">
                                                 {stock.name}
-                                                <span className="ml-1">{direction === 'breakout' ? '⚡' : '💥'}</span>
+                                                <span className="ml-1">{direction === 'breakout' ? <Zap className="w-3.5 h-3.5 inline text-amber-400" /> : <TrendingDown className="w-3.5 h-3.5 inline text-red-400" />}</span>
                                             </td>
                                             <td className="px-3 py-3 text-muted-foreground text-xs">{stock.industry || '-'}</td>
                                             <td className="px-3 py-3 font-mono">{formatPrice(stock.close_price)}</td>

@@ -176,10 +176,10 @@ export function LightweightMACDChart({
         <div className="w-full">
             <div className="flex items-center gap-3 px-3 py-1 text-xs border-b">
                 <span className="font-medium">MACD (12, 26, 9)</span>
-                <span><span style={{ color: '#2196f3' }}>●</span> MACD</span>
-                <span><span style={{ color: '#ff9800' }}>●</span> Signal</span>
-                <span>
-                    <span className="text-red-500">■</span>/<span className="text-green-500">■</span> Histogram
+                <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: '#2196f3' }}></span> MACD</span>
+                <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: '#ff9800' }}></span> Signal</span>
+                <span className="flex items-center gap-1">
+                    <span className="inline-block w-2 h-2 bg-red-500"></span>/<span className="inline-block w-2 h-2 bg-green-500"></span> Histogram
                 </span>
             </div>
             <div

@@ -135,7 +135,7 @@ export function LightweightRSIChart({
         <div className="w-full">
             <div className="flex items-center gap-3 px-3 py-1 text-xs border-b">
                 <span className="font-medium">RSI 相對強弱指標 (14)</span>
-                <span><span style={{ color: '#9c27b0' }}>●</span> RSI</span>
+                <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: '#9c27b0' }}></span> RSI</span>
                 <span className="text-muted-foreground">超買 70+ / 超賣 30-</span>
             </div>
             <div className="relative">

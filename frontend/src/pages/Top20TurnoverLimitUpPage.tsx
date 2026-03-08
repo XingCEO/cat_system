@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
@@ -21,7 +21,7 @@ import { getTop20LimitUp, downloadExportFile, getTradingDate } from '@/services/
 import { useStore } from '@/stores/store';
 import {
     ChevronLeft, ChevronRight, Flame, Trophy, Search,
-    Download, Calendar, ArrowUpDown, AlertCircle, BarChart2, LineChart
+    Download, Calendar, ArrowUpDown, AlertCircle, BarChart2, LineChart, Star
 } from 'lucide-react';
 
 interface TurnoverStock {
@@ -52,19 +52,26 @@ interface Stats {
 }
 
 // Medal icons for top 3
-function getMedalIcon(rank: number): string {
-    if (rank === 1) return '🥇';
-    if (rank === 2) return '🥈';
-    if (rank === 3) return '🥉';
-    return '';
+function getMedalIcon(rank: number): React.ReactNode {
+    if (rank === 1) return <Trophy className="w-4 h-4 text-yellow-400" />;
+    if (rank === 2) return <Trophy className="w-4 h-4 text-gray-400" />;
+    if (rank === 3) return <Trophy className="w-4 h-4 text-amber-600" />;
+    return null;
 }
 
 // Special annotations
-function getStockAnnotations(stock: TurnoverStock): string[] {
-    const annotations: string[] = [];
-    if (stock.limit_up_type === '一字板') annotations.push('🔥');
+function getStockAnnotations(stock: TurnoverStock): React.ReactNode[] {
+    const annotations: React.ReactNode[] = [];
+    if (stock.limit_up_type === '一字板') annotations.push(<Flame key="flame" className="w-3.5 h-3.5 text-red-500" />);
     if (stock.consecutive_up_days && stock.consecutive_up_days >= 2) {
-        annotations.push('⭐'.repeat(Math.min(stock.consecutive_up_days, 5)));
+        const count = Math.min(stock.consecutive_up_days, 5);
+        annotations.push(
+            <span key="stars" className="inline-flex">
+                {Array.from({ length: count }).map((_, i) => (
+                    <Star key={i} className="w-3 h-3 text-amber-400 fill-amber-400" />
+                ))}
+            </span>
+        );
     }
     return annotations;
 }
@@ -510,7 +517,7 @@ export function Top20TurnoverLimitUpPage() {
                     ) : stocks.length === 0 ? (
                         /* Empty State */
                         <div className="py-16 px-8 text-center">
-                            <div className="text-6xl mb-4">📊</div>
+                            <div className="mb-4 flex justify-center"><BarChart2 className="w-16 h-16 text-muted-foreground/50" /></div>
                             <h3 className="text-lg font-semibold mb-2">今日周轉率前100名中無漲停股票</h3>
                             <div className="text-sm text-muted-foreground space-y-4 max-w-md mx-auto">
                                 <div>
@@ -645,7 +652,7 @@ export function Top20TurnoverLimitUpPage() {
                                     <td className="px-3 py-2 font-mono text-blue-500">{stock.turnover_rate?.toFixed(2)}%</td>
                                     <td className="px-3 py-2">
                                         {stock.is_limit_up ? (
-                                            <span className="px-2 py-0.5 rounded bg-red-500 text-white text-xs">漲停 🔥</span>
+                                            <span className="px-2 py-0.5 rounded bg-red-500 text-white text-xs inline-flex items-center gap-1">漲停 <Flame className="w-3 h-3" /></span>
                                         ) : (
                                             <span className="text-muted-foreground text-xs">-</span>
                                         )}

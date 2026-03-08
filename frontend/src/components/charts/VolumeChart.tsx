@@ -47,8 +47,8 @@ export function VolumeChart({ data, height = 120 }: VolumeChartProps) {
             <div className="flex items-center gap-2 mb-1 text-xs text-muted-foreground">
                 <span>成交量</span>
                 <span className="ml-2">
-                    <span className="text-red-500">●</span> 上漲
-                    <span className="text-green-500 ml-2">●</span> 下跌
+                    <span className="inline-block w-2 h-2 rounded-full bg-red-500"></span> 上漲
+                    <span className="inline-block w-2 h-2 rounded-full bg-green-500 ml-2"></span> 下跌
                     <span className="ml-2" style={{ color: '#ff9800' }}>- -</span> 5日均量
                 </span>
             </div>

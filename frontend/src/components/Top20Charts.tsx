@@ -4,7 +4,7 @@ import {
     PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip,
     ResponsiveContainer, ScatterChart, Scatter, CartesianGrid, Legend, ReferenceLine
 } from 'recharts';
-import { BarChart2, PieChart as PieChartIcon, TrendingUp, DollarSign, Clock } from 'lucide-react';
+import { BarChart2, PieChart as PieChartIcon, TrendingUp, DollarSign, Clock, Flame } from 'lucide-react';
 
 interface TurnoverStock {
     turnover_rank: number;
@@ -252,7 +252,7 @@ export function Top20Charts({ stocks, top20Full = [] }: Top20ChartsProps) {
                                                 <div className="font-bold">{d.symbol} {d.name}</div>
                                                 <div>周轉率: {d.turnover_rate?.toFixed(2)}%</div>
                                                 <div>漲幅: {d.change_percent?.toFixed(2)}%</div>
-                                                <div>{d.is_limit_up ? '🔥 漲停' : ''}</div>
+                                                <div>{d.is_limit_up ? <span className="flex items-center gap-1 text-red-500"><TrendingUp className="w-3 h-3" /> 漲停</span> : ''}</div>
                                             </div>
                                         );
                                     }
@@ -296,7 +296,13 @@ export function Top20Charts({ stocks, top20Full = [] }: Top20ChartsProps) {
                                     if (payload && payload.length) {
                                         const d = payload[0].payload;
                                         const idx = amountData.length - amountData.indexOf(d) - 1;
-                                        const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '';
+                                        const medal = idx === 0
+                                            ? <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-500 text-white text-[10px] font-bold">1</span>
+                                            : idx === 1
+                                            ? <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-slate-400 text-white text-[10px] font-bold">2</span>
+                                            : idx === 2
+                                            ? <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-700 text-white text-[10px] font-bold">3</span>
+                                            : null;
                                         return (
                                             <div className="bg-popover p-2 rounded shadow text-xs border">
                                                 <div className="font-bold">{medal} {d.symbol}</div>
@@ -357,7 +363,7 @@ export function Top20Charts({ stocks, top20Full = [] }: Top20ChartsProps) {
             <Card>
                 <CardHeader className="pb-2">
                     <CardTitle className="text-sm flex items-center gap-2">
-                        🔥 漲停類型
+                        <Flame className="w-4 h-4 text-red-500" /> 漲停類型
                     </CardTitle>
                 </CardHeader>
                 <CardContent>

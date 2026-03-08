@@ -12,6 +12,7 @@ import {
     ReferenceLine,
     ReferenceArea,
 } from 'recharts';
+import { AlertTriangle, TrendingUp, TrendingDown, ArrowDownCircle } from 'lucide-react';
 import type { KLineDataPoint } from '@/types';
 
 interface KDChartProps {
@@ -29,11 +30,11 @@ const CustomTooltip = ({ active, payload }: any) => {
     const kValue = data.k || 0;
     const dValue = data.d || 0;
 
-    let signal = '';
-    if (kValue > 80 && dValue > 80) signal = '⚠️ 超買區';
-    else if (kValue < 20 && dValue < 20) signal = '💚 超賣區';
-    else if (kValue > dValue && kValue < 80) signal = '📈 多頭';
-    else if (kValue < dValue && kValue > 20) signal = '📉 空頭';
+    let signal: JSX.Element | null = null;
+    if (kValue > 80 && dValue > 80) signal = <span className="flex items-center gap-1 text-red-500"><AlertTriangle className="w-3 h-3" /> 超買區</span>;
+    else if (kValue < 20 && dValue < 20) signal = <span className="flex items-center gap-1 text-green-500"><ArrowDownCircle className="w-3 h-3" /> 超賣區</span>;
+    else if (kValue > dValue && kValue < 80) signal = <span className="flex items-center gap-1 text-orange-500"><TrendingUp className="w-3 h-3" /> 多頭</span>;
+    else if (kValue < dValue && kValue > 20) signal = <span className="flex items-center gap-1 text-blue-500"><TrendingDown className="w-3 h-3" /> 空頭</span>;
 
     return (
         <div className="bg-background/95 backdrop-blur border rounded-lg shadow-lg p-2 text-xs">
@@ -44,7 +45,7 @@ const CustomTooltip = ({ active, payload }: any) => {
                 <span style={{ color: '#ff9800' }}>D值:</span>
                 <span className="font-mono">{dValue.toFixed(2)}</span>
             </div>
-            {signal && <p className="mt-1 pt-1 border-t">{signal}</p>}
+            {signal && <div className="mt-1 pt-1 border-t">{signal}</div>}
         </div>
     );
 };
@@ -62,8 +63,8 @@ export function KDChart({ data, height = 200 }: KDChartProps) {
         <div className="w-full">
             <div className="flex items-center gap-3 mb-1 text-xs">
                 <span className="font-medium">KD 隨機指標 (9, 3, 3)</span>
-                <span><span style={{ color: '#2196f3' }}>●</span> K值</span>
-                <span><span style={{ color: '#ff9800' }}>●</span> D值</span>
+                <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: '#2196f3' }}></span> K值</span>
+                <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: '#ff9800' }}></span> D值</span>
                 <span className="text-muted-foreground">超買 80+ / 超賣 20-</span>
             </div>
             <ResponsiveContainer width="100%" height={height}>

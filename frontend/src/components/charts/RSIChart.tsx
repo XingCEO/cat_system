@@ -12,6 +12,7 @@ import {
     ReferenceLine,
     ReferenceArea,
 } from 'recharts';
+import { AlertTriangle, TrendingUp, TrendingDown, ArrowDownCircle } from 'lucide-react';
 import type { KLineDataPoint } from '@/types';
 
 interface RSIChartProps {
@@ -28,20 +29,15 @@ const CustomTooltip = ({ active, payload }: any) => {
 
     const rsiValue = data.rsi || 0;
 
-    let signal = '';
-    let signalColor = '';
+    let signal: JSX.Element;
     if (rsiValue >= 70) {
-        signal = '⚠️ 超買區 - 可能回調';
-        signalColor = 'text-red-500';
+        signal = <span className="flex items-center gap-1 text-red-500"><AlertTriangle className="w-3 h-3" /> 超買區 - 可能回調</span>;
     } else if (rsiValue <= 30) {
-        signal = '💚 超賣區 - 可能反彈';
-        signalColor = 'text-green-500';
+        signal = <span className="flex items-center gap-1 text-green-500"><ArrowDownCircle className="w-3 h-3" /> 超賣區 - 可能反彈</span>;
     } else if (rsiValue >= 50) {
-        signal = '📈 偏多格局';
-        signalColor = 'text-orange-500';
+        signal = <span className="flex items-center gap-1 text-orange-500"><TrendingUp className="w-3 h-3" /> 偏多格局</span>;
     } else {
-        signal = '📉 偏空格局';
-        signalColor = 'text-blue-500';
+        signal = <span className="flex items-center gap-1 text-blue-500"><TrendingDown className="w-3 h-3" /> 偏空格局</span>;
     }
 
     return (
@@ -51,7 +47,7 @@ const CustomTooltip = ({ active, payload }: any) => {
                 <span style={{ color: '#9c27b0' }}>RSI(14):</span>
                 <span className="font-mono font-bold">{rsiValue.toFixed(2)}</span>
             </div>
-            <p className={`mt-1 pt-1 border-t ${signalColor}`}>{signal}</p>
+            <div className="mt-1 pt-1 border-t">{signal}</div>
         </div>
     );
 };
@@ -69,7 +65,7 @@ export function RSIChart({ data, height = 180 }: RSIChartProps) {
         <div className="w-full">
             <div className="flex items-center gap-3 mb-1 text-xs">
                 <span className="font-medium">RSI 相對強弱指標 (14)</span>
-                <span><span style={{ color: '#9c27b0' }}>●</span> RSI</span>
+                <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: '#9c27b0' }}></span> RSI</span>
                 <span className="text-muted-foreground">超買 70+ / 超賣 30-</span>
             </div>
             <ResponsiveContainer width="100%" height={height}>

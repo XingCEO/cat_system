@@ -97,7 +97,7 @@ export function TurnoverCharts({ stocks }: TurnoverChartsProps) {
                                             <div className="bg-popover p-2 rounded shadow text-xs">
                                                 <div>#{d.rank} {d.symbol}</div>
                                                 <div>周轉率: {d.turnover_rate}%</div>
-                                                <div>{d.is_limit_up ? '🔥 漲停' : ''}</div>
+                                                <div>{d.is_limit_up ? <span className="flex items-center gap-1 text-red-500"><TrendingUp className="w-3 h-3" /> 漲停</span> : ''}</div>
                                             </div>
                                         );
                                     }

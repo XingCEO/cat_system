@@ -210,11 +210,11 @@ export function KLineChart({ data, showBollinger = false, height = 400 }: KLineC
                 <div className="flex flex-wrap gap-3 text-xs">
                     <span><span className="inline-block w-3 h-3 mr-1" style={{ backgroundColor: UP_COLOR }}></span> 上漲</span>
                     <span><span className="inline-block w-3 h-3 mr-1" style={{ backgroundColor: DOWN_COLOR }}></span> 下跌</span>
-                    <span className="ml-2"><span style={{ color: '#ffc107' }}>●</span> MA5</span>
-                    <span><span style={{ color: '#9c27b0' }}>●</span> MA10</span>
-                    <span><span style={{ color: '#2196f3' }}>●</span> MA20</span>
-                    <span><span style={{ color: '#ff9800' }}>●</span> MA60</span>
-                    <span><span style={{ color: '#9e9e9e' }}>●</span> MA120</span>
+                    <span className="flex items-center gap-1 ml-2"><span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: '#ffc107' }}></span> MA5</span>
+                    <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: '#9c27b0' }}></span> MA10</span>
+                    <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: '#2196f3' }}></span> MA20</span>
+                    <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: '#ff9800' }}></span> MA60</span>
+                    <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: '#9e9e9e' }}></span> MA120</span>
                     {showBollinger && (
                         <>
                             <span className="ml-4"><span style={{ color: '#e91e63' }}>- -</span> 布林上軌</span>

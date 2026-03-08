@@ -733,8 +733,8 @@ export const InteractiveChartContainer = forwardRef<InteractiveChartContainerRef
                 <div className="flex items-center gap-2 px-3 py-1 text-xs text-muted-foreground border-b">
                     <span>成交量</span>
                     <span className="ml-2">
-                        <span className="text-red-500">●</span> 上漲
-                        <span className="text-green-500 ml-2">●</span> 下跌
+                        <span className="inline-block w-2 h-2 rounded-full bg-red-500"></span> 上漲
+                        <span className="inline-block w-2 h-2 rounded-full bg-green-500 ml-2"></span> 下跌
                         <span className="ml-2" style={{ color: '#ff9800' }}>- -</span> 5日均量
                     </span>
                 </div>
