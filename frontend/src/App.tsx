@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-do
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { useStore } from '@/stores/store';
-import { Moon, Sun, TrendingUp, Flame, Trophy, Activity, Zap, Loader2, Menu, X, BarChart3, BookMarked, Cat } from 'lucide-react';
+import { Moon, Sun, TrendingUp, Flame, Trophy, Activity, Zap, Loader2, Menu, X, BookMarked, Cat } from 'lucide-react';
 
 // Lazy load pages for code splitting
 const HomePage = lazy(() => import('@/pages/HomePage').then(m => ({ default: m.HomePage })));
@@ -18,9 +18,7 @@ const WatchlistPage = lazy(() => import('@/pages/OtherPages').then(m => ({ defau
 const HistoryPage = lazy(() => import('@/pages/OtherPages').then(m => ({ default: m.HistoryPage })));
 const BatchComparePage = lazy(() => import('@/pages/OtherPages').then(m => ({ default: m.BatchComparePage })));
 
-// 喵喵選股 v1 新頁面
-const ScreenPage = lazy(() => import('@/pages/ScreenPage'));
-const ChartProPage = lazy(() => import('@/pages/ChartProPage'));
+// 喵喵選股 v1
 const StrategiesPage = lazy(() => import('@/pages/StrategiesPage'));
 
 const queryClient = new QueryClient({
@@ -50,8 +48,6 @@ function NavBar() {
 
     const navItems = [
         { to: '/', label: '即時篩選', icon: <TrendingUp className="w-4 h-4" /> },
-        { to: '/screen', label: '喵喵選股', icon: <Cat className="w-4 h-4 text-amber-500" /> },
-        { to: '/chart-pro', label: '增強K線', icon: <BarChart3 className="w-4 h-4 text-cyan-500" /> },
         { to: '/strategies', label: '策略管理', icon: <BookMarked className="w-4 h-4 text-emerald-500" /> },
         { to: '/top20-limit-up', label: '前200周轉漲停', icon: <Trophy className="w-4 h-4 text-yellow-500" /> },
         { to: '/turnover-filters', label: '篩選器', icon: <Activity className="w-4 h-4 text-blue-500" /> },
@@ -140,9 +136,6 @@ function AppContent() {
             <Suspense fallback={<PageLoader />}>
                 <Routes>
                     <Route path="/" element={<HomePage />} />
-                    {/* 喵喵選股 v1 新功能 */}
-                    <Route path="/screen" element={<ScreenPage />} />
-                    <Route path="/chart-pro" element={<ChartProPage />} />
                     <Route path="/strategies" element={<StrategiesPage />} />
                     {/* 原有功能 */}
                     <Route path="/top20-limit-up" element={<Top20TurnoverLimitUpPage />} />
@@ -153,6 +146,15 @@ function AppContent() {
                     <Route path="/backtest" element={<BacktestPage />} />
                     <Route path="/watchlist" element={<WatchlistPage />} />
                     <Route path="/history" element={<HistoryPage />} />
+                    {/* 404 catch-all */}
+                    <Route path="*" element={
+                        <div className="flex flex-col items-center justify-center min-h-[50vh] text-center">
+                            <Cat className="w-16 h-16 text-muted-foreground/50 mb-4" />
+                            <h2 className="text-xl font-semibold mb-2">找不到此頁面</h2>
+                            <p className="text-muted-foreground mb-4">此頁面不存在或已移除</p>
+                            <Link to="/" className="text-primary hover:underline">回到首頁</Link>
+                        </div>
+                    } />
                 </Routes>
             </Suspense>
         </div>

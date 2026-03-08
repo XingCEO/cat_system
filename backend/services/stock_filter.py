@@ -33,10 +33,22 @@ class StockFilter:
         # Get trading date
         trade_date = params.date or await self.data_fetcher.get_latest_trading_date()
         
+        # Check if this date is a trading day first
+        from utils.date_utils import is_trading_day
+        _is_trading = is_trading_day(trade_date)
+        
         # Fetch daily data
-        daily_df = await self.data_fetcher.get_daily_data(trade_date)
+        try:
+            daily_df = await self.data_fetcher.get_daily_data(trade_date)
+        except Exception as e:
+            logger.error(f"get_daily_data failed for {trade_date}: {e}")
+            daily_df = pd.DataFrame()
         
         if daily_df.empty:
+            if not _is_trading:
+                msg = f"{trade_date} 非交易日（週末或假日）"
+            else:
+                msg = f"{trade_date} 暫無資料，外部資料來源可能延遲或尚未更新"
             return {
                 "items": [],
                 "total": 0,
@@ -44,24 +56,29 @@ class StockFilter:
                 "page_size": params.page_size,
                 "total_pages": 0,
                 "query_date": trade_date,
-                "is_trading_day": False,
-                "message": f"{trade_date} 非交易日或無資料"
+                "is_trading_day": _is_trading,
+                "message": msg
             }
         
         # Get stock info for names and industries
         stock_list = await self.data_fetcher.get_stock_list()
         
-        # Merge stock info - handle column name conflicts
+        # Merge stock info - prefer stock_list names but keep daily_df names as fallback
         if not stock_list.empty:
-            # Remove stock_name from daily_df if it exists (prefer stock_list names)
-            if "stock_name" in daily_df.columns:
-                daily_df = daily_df.drop(columns=["stock_name"])
+            has_daily_name = "stock_name" in daily_df.columns
+            if has_daily_name:
+                daily_df = daily_df.rename(columns={"stock_name": "_daily_name"})
             
             daily_df = daily_df.merge(
                 stock_list[["stock_id", "stock_name", "industry_category"]],
                 on="stock_id",
                 how="left"
             )
+            
+            # Fill missing stock_name from daily data (fallback)
+            if has_daily_name:
+                daily_df["stock_name"] = daily_df["stock_name"].fillna(daily_df["_daily_name"])
+                daily_df = daily_df.drop(columns=["_daily_name"])
         
         # Apply filters
         filtered_df = self._apply_filters(daily_df, params)
@@ -78,14 +95,11 @@ class StockFilter:
         end_idx = start_idx + params.page_size
         paginated_results = enriched_results[start_idx:end_idx]
         
-        # Track data quality warnings
+        # Track data quality warnings (only show if significant portion is missing)
         warnings = []
         missing_name = sum(1 for r in enriched_results if not r.get("name") or r["name"] == r.get("symbol"))
-        missing_industry = sum(1 for r in enriched_results if not r.get("industry"))
-        if missing_name > 0:
+        if missing_name > 0 and missing_name > total * 0.1:
             warnings.append(f"{missing_name} 檔股票缺少名稱")
-        if missing_industry > 0:
-            warnings.append(f"{missing_industry} 檔股票缺少產業資料")
         
         return {
             "items": paginated_results,
@@ -190,8 +204,8 @@ class StockFilter:
                 stock_name = symbol
 
             industry = row.get("industry_category")
-            if pd.isna(industry):
-                industry = ""
+            if pd.isna(industry) or not industry:
+                industry = "其他"
 
             # Build result dict from daily data (no slow per-stock API calls)
             result = {

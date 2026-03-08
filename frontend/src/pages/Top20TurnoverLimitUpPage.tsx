@@ -110,6 +110,8 @@ export function Top20TurnoverLimitUpPage() {
         queryKey: ['top20LimitUp', queryDate],
         queryFn: () => getTop20LimitUp(queryDate),
         enabled: !!queryDate,
+        retry: 2,
+        retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
     });
 
     const stats: Stats | undefined = data?.stats;
@@ -446,7 +448,7 @@ export function Top20TurnoverLimitUpPage() {
                     <CardContent className="pt-6">
                         <div className="flex items-center gap-2 text-destructive">
                             <AlertCircle className="w-5 h-5" />
-                            <span>資料載入失敗，請重試</span>
+                            <span>資料載入失敗：{(error as Error)?.message || '請檢查網路連線或後端服務是否正常'}</span>
                         </div>
                         <Button variant="outline" size="sm" className="mt-4" onClick={() => refetch()}>
                             重新載入

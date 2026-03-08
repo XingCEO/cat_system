@@ -275,7 +275,9 @@ class EnhancedKLineService:
                     records.append(record)
                 
                 # 使用 upsert (自動偵測 SQLite / PostgreSQL)
-                dialect_name = session.bind.dialect.name if session.bind else "sqlite"
+                # 使用全域 engine 偵測資料庫方言（SQLAlchemy 2.0 已棄用 session.bind）
+                from database import engine as _db_engine
+                dialect_name = _db_engine.dialect.name
                 insert_fn = pg_insert if (dialect_name == "postgresql" and pg_insert) else sqlite_insert
                 for record in records:
                     stmt = insert_fn(KLineCache).values(**record)

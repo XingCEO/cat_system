@@ -105,7 +105,9 @@ async def filter_stocks(
             page_size=result["page_size"],
             total_pages=result["total_pages"],
             query_date=result["query_date"],
-            is_trading_day=result["is_trading_day"]
+            is_trading_day=result["is_trading_day"],
+            message=result.get("message"),
+            warning=result.get("warning"),
         )
         
         return APIResponse.ok(data=response_data)
@@ -113,6 +115,20 @@ async def filter_stocks(
     except Exception as e:
         logger.error(f"filter_stocks error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="篩選股票時發生錯誤")
+
+
+@router.get("/industries")
+async def get_industries():
+    """取得所有產業類別列表"""
+    try:
+        stock_list = await data_fetcher.get_stock_list()
+        if stock_list.empty or "industry_category" not in stock_list.columns:
+            return {"success": True, "data": []}
+        industries = sorted(stock_list["industry_category"].dropna().unique().tolist())
+        return {"success": True, "data": industries}
+    except Exception as e:
+        logger.error(f"get_industries error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="取得產業列表時發生錯誤")
 
 
 @router.get("/realtime")

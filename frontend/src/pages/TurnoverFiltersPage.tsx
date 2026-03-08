@@ -187,6 +187,7 @@ export function TurnoverFiltersPage() {
         queryKey: ['top200LimitUp', startDate, endDate, queryKey],
         queryFn: () => getTop200LimitUp(startDate, endDate),
         enabled: !!startDate && !!endDate && activeFilter === 'limit_up',
+        retry: 2,
     });
 
     // 週轉率前200名且漲幅區間
@@ -194,6 +195,7 @@ export function TurnoverFiltersPage() {
         queryKey: ['top200ChangeRange', startDate, endDate, changeMin, changeMax, queryKey],
         queryFn: () => getTop200ChangeRange(startDate, endDate, changeMin ? parseFloat(changeMin) : undefined, changeMax ? parseFloat(changeMax) : undefined),
         enabled: !!startDate && !!endDate && activeFilter === 'change_range',
+        retry: 2,
     });
 
     // 週轉率前200名且五日創新高
@@ -201,6 +203,7 @@ export function TurnoverFiltersPage() {
         queryKey: ['top200_5DayHigh', startDate, endDate, queryKey],
         queryFn: () => getTop200_5DayHigh(startDate, endDate),
         enabled: !!startDate && !!endDate && activeFilter === '5day_high',
+        retry: 2,
     });
 
     // 週轉率前200名且五日創新低
@@ -208,6 +211,7 @@ export function TurnoverFiltersPage() {
         queryKey: ['top200_5DayLow', startDate, endDate, queryKey],
         queryFn: () => getTop200_5DayLow(startDate, endDate),
         enabled: !!startDate && !!endDate && activeFilter === '5day_low',
+        retry: 2,
     });
 
     // 突破/跌破糾結均線
@@ -215,6 +219,7 @@ export function TurnoverFiltersPage() {
         queryKey: ['maBreakout', startDate, endDate, maChangeMin, maChangeMax, maDirection, queryKey],
         queryFn: () => getMaBreakout(startDate, endDate, maChangeMin ? parseFloat(maChangeMin) : undefined, maChangeMax ? parseFloat(maChangeMax) : undefined, maDirection),
         enabled: !!startDate && !!endDate && activeFilter === 'ma_breakout',
+        retry: 2,
     });
 
     // 成交量放大
@@ -222,6 +227,7 @@ export function TurnoverFiltersPage() {
         queryKey: ['volumeSurge', startDate, endDate, volumeRatio, queryKey],
         queryFn: () => getVolumeSurge(startDate, endDate, volumeRatio ? parseFloat(volumeRatio) : 1.5),
         enabled: !!startDate && !!endDate && activeFilter === 'volume_surge',
+        retry: 2,
     });
 
     // 法人連買
@@ -229,6 +235,7 @@ export function TurnoverFiltersPage() {
         queryKey: ['institutionalBuy', startDate, endDate, minBuyDays, queryKey],
         queryFn: () => getInstitutionalBuy(startDate, endDate, minBuyDays ? parseInt(minBuyDays) : 3),
         enabled: !!startDate && !!endDate && activeFilter === 'institutional_buy',
+        retry: 2,
     });
 
     // 複合篩選

@@ -222,10 +222,11 @@ class HighTurnoverAnalyzer:
                 df = df[~df["symbol"].str.startswith("00")]
             
             # 排除成交量過低
+            # Trading_Volume 單位為「股」，1張=1000股，所以「至少1000張」= >1_000_000股
             if "Trading_Volume" in df.columns:
-                df = df[df["Trading_Volume"] > 1000]  # 至少1000張
+                df = df[df["Trading_Volume"] > 1_000_000]
             elif "volume" in df.columns:
-                df = df[df["volume"] > 1000]
+                df = df[df["volume"] > 1_000_000]
             
             # Merge stock info for names and industries
             stock_list = await self.data_fetcher.get_stock_list()

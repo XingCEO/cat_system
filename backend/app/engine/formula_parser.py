@@ -22,6 +22,14 @@ ALLOWED_FIELDS = {
     "foreign_buy", "trust_buy", "margin_balance",
     # 漲跌
     "change_percent",
+    # 延伸指標
+    "turnover",
+    "avg_volume_20",
+    "avg_turnover_20",
+    "lower_shadow",
+    "lowest_lower_shadow_20",
+    "wma10", "wma20", "wma60",
+    "market_ok",
 }
 
 # 允許的運算符號（移除 '.' 以禁止屬性/方法存取，避免安全風險）
@@ -114,7 +122,11 @@ def safe_eval_formula(df: pd.DataFrame, name: str, formula: str) -> pd.DataFrame
         raise ValueError(f"公式驗證失敗: {error_msg}")
 
     try:
-        df[name] = df.eval(formula, engine="numexpr")
+        # numexpr 提升效能；若未安裝則自動降級為 python engine
+        try:
+            df[name] = df.eval(formula, engine="numexpr")
+        except ImportError:
+            df[name] = df.eval(formula, engine="python")
         logger.info(f"自訂公式 '{name}' = '{formula}' 計算完成")
     except Exception as e:
         raise ValueError(f"公式執行失敗: {str(e)}")

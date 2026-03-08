@@ -75,6 +75,8 @@ export function HighTurnoverPage() {
         queryKey: ['highTurnoverLimitUp', queryDate],
         queryFn: () => getHighTurnoverLimitUp(queryDate),
         enabled: !!queryDate,
+        retry: 2,
+        retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
     });
 
     // 取得周轉率前20完整名單
@@ -82,6 +84,8 @@ export function HighTurnoverPage() {
         queryKey: ['top20Turnover', queryDate],
         queryFn: () => getTop20Turnover(queryDate),
         enabled: !!queryDate && viewMode === 'top20',
+        retry: 2,
+        retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
     });
 
     // 取得最新交易日

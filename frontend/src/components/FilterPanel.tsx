@@ -42,11 +42,11 @@ export function FilterPanel({ onSearch, isLoading, queryDate, onDateChange }: Fi
                 </CardTitle>
             </CardHeader>
             <CardContent>
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
                     {/* 日期 */}
                     <div className="space-y-2">
                         <Label>查詢日期</Label>
-                        <Input type="date" value={queryDate} onChange={(e) => onDateChange(e.target.value)} />
+                        <Input type="date" value={queryDate} onChange={(e) => onDateChange(e.target.value)} className="max-w-[160px]" />
                     </div>
 
                     {/* 漲幅區間 */}

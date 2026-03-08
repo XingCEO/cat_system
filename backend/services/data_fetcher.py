@@ -225,40 +225,51 @@ class DataFetcher:
         """
         query_cache_key = f"daily_{trade_date}"
 
-        try:
-            # Use TWSE OpenAPI - returns today's data
-            url = "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
+        def _parse_num(val, to_float=False):
+            """TWSE 資料欄位數值解析（迴圈外定義避免重複建立）"""
+            if not val or val == "--":
+                return None
+            val_str = str(val).replace(",", "")
+            try:
+                return float(val_str) if to_float else int(float(val_str))
+            except (ValueError, TypeError):
+                return None
 
-            client = await self.get_client()
-            response = await client.get(url)
-            response.raise_for_status()
-            data = response.json()
+        # Retry TWSE API up to 3 times with backoff
+        last_error = None
+        for attempt in range(3):
+            try:
+                url = "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
 
-            if data:
+                client = await self.get_client()
+                response = await client.get(url, timeout=20.0)
+                response.raise_for_status()
+                data = response.json()
+
+                if not data:
+                    logger.warning(f"TWSE OpenAPI returned empty response (attempt {attempt+1})")
+                    if attempt < 2:
+                        await asyncio.sleep(2 * (attempt + 1))
+                        continue
+                    return pd.DataFrame()
+
                 stocks = []
                 for item in data:
                     try:
                         symbol = item.get("Code", "").strip()
-                        # Skip ETFs and special securities
+                        if not symbol:
+                            continue
+                        # Skip ETFs and special securities at data layer
                         if symbol.startswith("00") or len(symbol) > 6:
                             continue
                         if symbol.startswith("7") or symbol.startswith("9"):
                             continue
 
-                        def parse_num(val, to_float=False):
-                            if not val or val == "--":
-                                return None
-                            val_str = str(val).replace(",", "")
-                            try:
-                                return float(val_str) if to_float else int(float(val_str))
-                            except (ValueError, TypeError):
-                                return None
-
-                        volume = parse_num(item.get("TradeVolume"))
+                        volume = _parse_num(item.get("TradeVolume"))
                         if volume is None or volume < 1000:
                             continue
 
-                        close_price = parse_num(item.get("ClosingPrice"), True)
+                        close_price = _parse_num(item.get("ClosingPrice"), True)
                         if close_price is None:
                             continue
 
@@ -276,14 +287,14 @@ class DataFetcher:
                             "stock_id": symbol,
                             "stock_name": item.get("Name", symbol),
                             "Trading_Volume": volume,
-                            "open": parse_num(item.get("OpeningPrice"), True),
-                            "max": parse_num(item.get("HighestPrice"), True),
-                            "min": parse_num(item.get("LowestPrice"), True),
+                            "open": _parse_num(item.get("OpeningPrice"), True),
+                            "max": _parse_num(item.get("HighestPrice"), True),
+                            "min": _parse_num(item.get("LowestPrice"), True),
                             "close": close_price,
-                            "spread": parse_num(item.get("Change"), True) or 0,
+                            "spread": _parse_num(item.get("Change"), True) or 0,
                             "date": actual_date
                         })
-                    except Exception as e:
+                    except Exception:
                         continue
 
                 if stocks:
@@ -299,12 +310,22 @@ class DataFetcher:
                         cache_manager.set(query_cache_key, records, "daily")
                     logger.info(f"Loaded {len(stocks)} stocks from TWSE OpenAPI (date={actual_date})")
                     return df
+                else:
+                    logger.warning(f"TWSE OpenAPI returned data but 0 stocks parsed (attempt {attempt+1})")
+                    if attempt < 2:
+                        await asyncio.sleep(2 * (attempt + 1))
+                        continue
 
-        except Exception as e:
-            logger.error(f"TWSE OpenAPI daily fetch failed: {e}")
+            except Exception as e:
+                last_error = e
+                logger.warning(f"TWSE OpenAPI daily fetch attempt {attempt+1} failed: {e}")
+                if attempt < 2:
+                    await asyncio.sleep(2 * (attempt + 1))
 
+        if last_error:
+            logger.error(f"TWSE OpenAPI daily fetch failed after 3 attempts: {last_error}")
         return pd.DataFrame()
-    
+
     async def get_historical_data(
         self,
         symbol: str,
@@ -539,8 +560,12 @@ class DataFetcher:
     async def _fetch_yahoo_historical(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
         """Fetch historical data from Yahoo Finance API"""
         try:
-            # Yahoo Finance uses .TW suffix for Taiwan stocks
-            yahoo_symbol = f"{symbol}.TW"
+            # Yahoo Finance uses .TW suffix for Taiwan stocks,
+            # but special symbols like ^TWII, ^DJI etc. are already fully qualified
+            if symbol.startswith("^") or "." in symbol:
+                yahoo_symbol = symbol
+            else:
+                yahoo_symbol = f"{symbol}.TW"
 
             # Calculate range based on date difference
             start_dt = datetime.strptime(start_date, "%Y-%m-%d")

@@ -52,14 +52,14 @@ class TestApplyRule:
         mask = apply_rule(df, rule)
         assert mask.sum() == 2  # 2330: 600>590, 2454: 900>880
 
-    def test_missing_field_returns_all_true(self):
+    def test_missing_field_returns_all_false(self):
         df = self._make_df()
         rule = {"field": "nonexistent", "operator": ">", "target_type": "value", "target_value": 0}
         mask = apply_rule(df, rule)
-        assert mask.all()
+        assert not mask.any()  # 無效欄位應全部拒絕，避免誤放行
 
-    def test_unknown_operator_returns_all_true(self):
+    def test_unknown_operator_returns_all_false(self):
         df = self._make_df()
         rule = {"field": "close", "operator": "???", "target_type": "value", "target_value": 0}
         mask = apply_rule(df, rule)
-        assert mask.all()
+        assert not mask.any()  # 不支援的運算子應全部拒絕，避免誤放行

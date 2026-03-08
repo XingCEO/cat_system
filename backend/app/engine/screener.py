@@ -18,6 +18,35 @@ from app.engine.operators import OPERATOR_MAP, CROSS_OPERATORS
 
 logger = logging.getLogger(__name__)
 
+# 從 DailyPrice 載入的所有欄位（含延伸指標）
+_DAILY_PRICE_COLS = [
+    DailyPrice.ticker_id,
+    DailyPrice.date,
+    DailyPrice.open,
+    DailyPrice.high,
+    DailyPrice.low,
+    DailyPrice.close,
+    DailyPrice.volume,
+    DailyPrice.ma5,
+    DailyPrice.ma10,
+    DailyPrice.ma20,
+    DailyPrice.ma60,
+    DailyPrice.rsi14,
+    DailyPrice.pe_ratio,
+    DailyPrice.eps,
+    DailyPrice.change_percent,
+    # 延伸指標
+    DailyPrice.turnover,
+    DailyPrice.avg_volume_20,
+    DailyPrice.avg_turnover_20,
+    DailyPrice.lower_shadow,
+    DailyPrice.lowest_lower_shadow_20,
+    DailyPrice.wma10,
+    DailyPrice.wma20,
+    DailyPrice.wma60,
+    DailyPrice.market_ok,
+]
+
 
 async def load_latest_data(db: AsyncSession) -> pd.DataFrame:
     """
@@ -32,25 +61,9 @@ async def load_latest_data(db: AsyncSession) -> pd.DataFrame:
     if latest_date is None:
         return pd.DataFrame()
 
-    # 載入當天所有股票的價格資料
+    # 載入當天所有股票的價格資料（含延伸指標）
     price_query = (
-        select(
-            DailyPrice.ticker_id,
-            DailyPrice.date,
-            DailyPrice.open,
-            DailyPrice.high,
-            DailyPrice.low,
-            DailyPrice.close,
-            DailyPrice.volume,
-            DailyPrice.ma5,
-            DailyPrice.ma10,
-            DailyPrice.ma20,
-            DailyPrice.ma60,
-            DailyPrice.rsi14,
-            DailyPrice.pe_ratio,
-            DailyPrice.eps,
-            DailyPrice.change_percent,
-        )
+        select(*_DAILY_PRICE_COLS)
         .where(DailyPrice.date == latest_date)
     )
     price_result = await db.execute(price_query)
@@ -95,25 +108,8 @@ async def load_multi_day_data(db: AsyncSession, days: int = 2) -> pd.DataFrame:
     載入多天資料 (供 CROSS_UP/CROSS_DOWN 使用)
     """
     price_query = (
-        select(
-            DailyPrice.ticker_id,
-            DailyPrice.date,
-            DailyPrice.open,
-            DailyPrice.high,
-            DailyPrice.low,
-            DailyPrice.close,
-            DailyPrice.volume,
-            DailyPrice.ma5,
-            DailyPrice.ma10,
-            DailyPrice.ma20,
-            DailyPrice.ma60,
-            DailyPrice.rsi14,
-            DailyPrice.pe_ratio,
-            DailyPrice.eps,
-            DailyPrice.change_percent,
-        )
+        select(*_DAILY_PRICE_COLS)
         .order_by(DailyPrice.date.desc())
-        # 動態計算上限：先查實際股票數量
     )
     # 取得實際 ticker 數量來設定合理上限
     ticker_count_result = await db.execute(select(func.count(Ticker.ticker_id)))
@@ -175,8 +171,8 @@ def apply_rule(df: pd.DataFrame, rule_dict: dict) -> pd.Series:
     target_value = rule_dict["target_value"]
 
     if field not in df.columns:
-        logger.warning(f"欄位 '{field}' 不存在，跳過此規則")
-        return pd.Series(True, index=df.index)
+        logger.error(f"篩選規則錯誤：欄位 '{field}' 不存在，此規則將讓所有股票不通過")
+        return pd.Series(False, index=df.index)
 
     # 處理 CROSS_UP / CROSS_DOWN
     if operator in CROSS_OPERATORS:
@@ -189,15 +185,15 @@ def apply_rule(df: pd.DataFrame, rule_dict: dict) -> pd.Series:
     # 一般比較運算子
     compare_fn = OPERATOR_MAP.get(operator)
     if compare_fn is None:
-        logger.warning(f"不支援的運算子 '{operator}'，跳過此規則")
-        return pd.Series(True, index=df.index)
+        logger.error(f"篩選規則錯誤：不支援的運算子 '{operator}'，此規則將讓所有股票不通過")
+        return pd.Series(False, index=df.index)
 
     series_a = df[field]
     if target_type == "field":
         target_col = str(target_value)
         if target_col not in df.columns:
-            logger.warning(f"目標欄位 '{target_col}' 不存在，跳過此規則")
-            return pd.Series(True, index=df.index)
+            logger.error(f"篩選規則錯誤：目標欄位 '{target_col}' 不存在，此規則將讓所有股票不通過")
+            return pd.Series(False, index=df.index)
         target = df[target_col]
     else:
         target = float(target_value)
@@ -308,6 +304,16 @@ def _compute_screen_sync(
             foreign_buy=_safe_int(row.get("foreign_buy")),
             trust_buy=_safe_int(row.get("trust_buy")),
             margin_balance=_safe_int(row.get("margin_balance")),
+            # 延伸指標
+            turnover=_safe_float(row.get("turnover")),
+            avg_volume_20=_safe_float(row.get("avg_volume_20")),
+            avg_turnover_20=_safe_float(row.get("avg_turnover_20")),
+            lower_shadow=_safe_float(row.get("lower_shadow")),
+            lowest_lower_shadow_20=_safe_float(row.get("lowest_lower_shadow_20")),
+            wma10=_safe_float(row.get("wma10")),
+            wma20=_safe_float(row.get("wma20")),
+            wma60=_safe_float(row.get("wma60")),
+            market_ok=_safe_bool(row.get("market_ok")),
         ))
 
     return ScreenResponse(
@@ -335,3 +341,15 @@ def _safe_int(val) -> Optional[int]:
         return int(val)
     except (ValueError, TypeError):
         return None
+
+
+def _safe_bool(val) -> Optional[bool]:
+    """安全轉換為 bool，NaN/None → None"""
+    if val is None:
+        return None
+    try:
+        if pd.isna(val):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return bool(val)

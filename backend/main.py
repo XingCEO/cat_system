@@ -42,11 +42,11 @@ logger.info(f"BASE_DIR: {BASE_DIR}")
 logger.info(f"CWD: {CWD}")
 
 FRONTEND_PATHS = [
-    os.path.join(BASE_DIR, "static"),                       # Render: backend/static
-    os.path.join(CWD, "static"),                            # Render: cwd/static
+    os.path.join(BASE_DIR, "..", "frontend", "dist"),       # dev: relative to main.py
     os.path.join(CWD, "..", "frontend", "dist"),           # portable: from backend/, ../frontend/dist
     os.path.join(CWD, "frontend", "dist"),                  # if cwd is project root
-    os.path.join(BASE_DIR, "..", "frontend", "dist"),       # dev: relative to main.py
+    os.path.join(BASE_DIR, "static"),                       # Render/Docker: backend/static
+    os.path.join(CWD, "static"),                            # Render: cwd/static
 ]
 
 for path in FRONTEND_PATHS:
@@ -97,9 +97,9 @@ async def lifespan(app: FastAPI):
                 ticker_count = await sync_tickers(session)
                 if ticker_count > 0:
                     logger.info(f"Background synced {ticker_count} tickers")
-            # 單獨的 session 來同步 daily prices
+            # 單獨的 session 來同步 daily prices（傳入正確 trade_date，避免預設用今天（可能是週末））
             async with async_session_maker() as session:
-                price_count = await sync_daily_prices(session)
+                price_count = await sync_daily_prices(session, trade_date)
                 if price_count > 0:
                     logger.info(f"Background synced {price_count} daily prices")
                 else:

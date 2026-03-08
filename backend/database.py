@@ -67,18 +67,59 @@ class Base(DeclarativeBase):
 async def get_db() -> AsyncSession:
     """Dependency for getting database session"""
     async with async_session_maker() as session:
-        try:
-            yield session
-        finally:
-            await session.close()
+        yield session
 
 
 async def init_db():
-    """Initialize database tables"""
+    """Initialize database tables and run column migrations for existing DBs"""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    # SQLite: add new columns to existing tables that may not have them yet
+    if "sqlite" in db_url:
+        await _migrate_sqlite_columns()
 
 
 async def close_db():
     """Close database connection"""
     await engine.dispose()
+
+
+async def _migrate_sqlite_columns():
+    """
+    SQLite doesn't support ALTER TABLE ADD COLUMN IF NOT EXISTS.
+    We query pragma and add missing columns manually.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # New columns for daily_prices table
+    new_daily_price_cols = [
+        ("turnover",                  "REAL"),
+        ("avg_volume_20",             "REAL"),
+        ("avg_turnover_20",           "REAL"),
+        ("lower_shadow",              "REAL"),
+        ("lowest_lower_shadow_20",    "REAL"),
+        ("wma10",                     "REAL"),
+        ("wma20",                     "REAL"),
+        ("wma60",                     "REAL"),
+        ("market_ok",                 "INTEGER"),  # Boolean as INTEGER in SQLite
+    ]
+
+    async with engine.begin() as conn:
+        # Get existing columns for daily_prices
+        pragma_result = await conn.execute(
+            __import__("sqlalchemy").text("PRAGMA table_info(daily_prices)")
+        )
+        existing = {row[1] for row in pragma_result.fetchall()}
+
+        for col_name, col_type in new_daily_price_cols:
+            if col_name not in existing:
+                await conn.execute(
+                    __import__("sqlalchemy").text(
+                        f"ALTER TABLE daily_prices ADD COLUMN {col_name} {col_type}"
+                    )
+                )
+                logger.info(f"Migration: added column daily_prices.{col_name}")
+
+    logger.info("SQLite column migration complete")

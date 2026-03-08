@@ -114,6 +114,8 @@ class StockListResponse(BaseModel):
     total_pages: int
     query_date: str
     is_trading_day: bool
+    message: Optional[str] = Field(None, description="狀態訊息（非交易日、無資料等）")
+    warning: Optional[str] = Field(None, description="資料品質警告")
 
 
 class StockDetailResponse(StockResponse):

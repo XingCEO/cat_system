@@ -42,6 +42,16 @@ export interface TickerResult {
     foreign_buy?: number;
     trust_buy?: number;
     margin_balance?: number;
+    // 延伸指標
+    turnover?: number;
+    avg_volume_20?: number;
+    avg_turnover_20?: number;
+    lower_shadow?: number;
+    lowest_lower_shadow_20?: number;
+    wma10?: number;
+    wma20?: number;
+    wma60?: number;
+    market_ok?: boolean;
 }
 
 export interface ScreenResponse {
@@ -123,6 +133,16 @@ export const AVAILABLE_FIELDS: FieldOption[] = [
     { label: 'MA60', value: 'ma60', category: 'indicator' },
     { label: 'RSI(14)', value: 'rsi14', category: 'indicator' },
     { label: '漲跌幅%', value: 'change_percent', category: 'indicator' },
+    // 延伸指標
+    { label: '成交值', value: 'turnover', category: 'indicator' },
+    { label: '20日均量', value: 'avg_volume_20', category: 'indicator' },
+    { label: '20日均成交值', value: 'avg_turnover_20', category: 'indicator' },
+    { label: '下引價', value: 'lower_shadow', category: 'indicator' },
+    { label: '近20日下引價最低(前日基準)', value: 'lowest_lower_shadow_20', category: 'indicator' },
+    { label: '週MA10', value: 'wma10', category: 'indicator' },
+    { label: '週MA20', value: 'wma20', category: 'indicator' },
+    { label: '週MA60', value: 'wma60', category: 'indicator' },
+    { label: '大盤多頭OK', value: 'market_ok', category: 'indicator' },
     // 基本面
     { label: '本益比', value: 'pe_ratio', category: 'fundamental' },
     { label: 'EPS', value: 'eps', category: 'fundamental' },

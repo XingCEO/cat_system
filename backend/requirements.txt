@@ -14,6 +14,7 @@ asyncpg>=0.29.0
 # Data Processing
 pandas>=2.0.0
 numpy>=1.24.0
+numexpr>=2.8.0
 
 # HTTP Client
 httpx>=0.26.0

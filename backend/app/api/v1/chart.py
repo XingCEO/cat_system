@@ -107,7 +107,14 @@ def _aggregate_weekly(rows) -> tuple:
             close=group[-1].close,
             volume=sum(r.volume or 0 for r in group),
         ))
-    indicators = {}
+    # 取每週最後一天的指標值（代表本週終值）
+    indicators = {
+        "ma5": [g[-1].ma5 for g in [weeks[k] for k in sorted(weeks.keys())]],
+        "ma10": [g[-1].ma10 for g in [weeks[k] for k in sorted(weeks.keys())]],
+        "ma20": [g[-1].ma20 for g in [weeks[k] for k in sorted(weeks.keys())]],
+        "ma60": [g[-1].ma60 for g in [weeks[k] for k in sorted(weeks.keys())]],
+        "rsi14": [g[-1].rsi14 for g in [weeks[k] for k in sorted(weeks.keys())]],
+    }
     return candles, indicators
 
 
@@ -131,5 +138,12 @@ def _aggregate_monthly(rows) -> tuple:
             close=group[-1].close,
             volume=sum(r.volume or 0 for r in group),
         ))
-    indicators = {}
+    # 取每月最後一天的指標值（代表本月終值）
+    indicators = {
+        "ma5": [g[-1].ma5 for g in [months[k] for k in sorted(months.keys())]],
+        "ma10": [g[-1].ma10 for g in [months[k] for k in sorted(months.keys())]],
+        "ma20": [g[-1].ma20 for g in [months[k] for k in sorted(months.keys())]],
+        "ma60": [g[-1].ma60 for g in [months[k] for k in sorted(months.keys())]],
+        "rsi14": [g[-1].rsi14 for g in [months[k] for k in sorted(months.keys())]],
+    }
     return candles, indicators

@@ -55,6 +55,16 @@ class TickerResult(BaseModel):
     foreign_buy: Optional[int] = None
     trust_buy: Optional[int] = None
     margin_balance: Optional[int] = None
+    # 延伸指標
+    turnover: Optional[float] = None
+    avg_volume_20: Optional[float] = None
+    avg_turnover_20: Optional[float] = None
+    lower_shadow: Optional[float] = None
+    lowest_lower_shadow_20: Optional[float] = None
+    wma10: Optional[float] = None
+    wma20: Optional[float] = None
+    wma60: Optional[float] = None
+    market_ok: Optional[bool] = None
 
 
 class ScreenResponse(BaseModel):
