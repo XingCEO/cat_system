@@ -479,3 +479,34 @@ async def get_combo_filter(
 
     return result
 
+
+@router.get("/trend-screen")
+async def get_trend_screen(
+    mode: str = "convergence",
+    date_start: str = None,
+    date_end: str = None,
+    change_min: float = None,
+    change_max: float = None,
+):
+    """
+    趨勢選股：兩種模式二選一
+    mode=convergence: 均線糾結條件（大盤+糾結）
+    mode=individual:  個股篩選條件（大盤+量/週線/趨勢）
+    """
+    if mode not in ("convergence", "individual"):
+        raise HTTPException(status_code=400, detail="mode 必須為 convergence 或 individual")
+    from datetime import datetime as dt
+    for d in [date_start, date_end]:
+        if d:
+            try:
+                dt.strptime(d, "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(status_code=400, detail="日期格式錯誤，請使用 YYYY-MM-DD")
+    result = await high_turnover_analyzer.get_trend_alignment_screen(
+        mode=mode, date_start=date_start, date_end=date_end,
+        change_min=change_min, change_max=change_max,
+    )
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "查詢失敗"))
+    return result
+

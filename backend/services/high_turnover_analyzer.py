@@ -1090,9 +1090,16 @@ class HighTurnoverAnalyzer:
         需要至少 21 個交易日（MA20 + 昨日），使用 3mo range 以覆蓋長假
         加入速率限制和重試機制避免 429 錯誤
         包含開盤價用於「今日開盤 > 昨日開盤」判斷
+        結果快取 4 小時避免重複請求
         """
         import asyncio
         from datetime import datetime, timezone
+
+        # 檢查快取
+        cache_key = f"yahoo_ma_history_{symbol}"
+        cached = cache_manager.get(cache_key, "daily")
+        if cached is not None:
+            return pd.DataFrame(cached)
 
         yahoo_symbol = f"{symbol}.TW"
         url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_symbol}"
@@ -1153,7 +1160,8 @@ class HighTurnoverAnalyzer:
 
                             if records:
                                 df = pd.DataFrame(records)
-                                df = df.sort_values("date", ascending=False)
+                                df = df.sort_values("date", ascending=False).reset_index(drop=True)
+                                cache_manager.set(cache_key, df.to_dict("records"), "daily")
                                 return df
                     break  # 成功但無資料
 
@@ -1163,6 +1171,376 @@ class HighTurnoverAnalyzer:
                     await asyncio.sleep(1)
 
         return pd.DataFrame()
+
+    # ===== 趨勢選股 =====
+
+    async def _fetch_yahoo_chart(
+        self, yahoo_symbol: str, range_str: str = "2y"
+    ) -> pd.DataFrame:
+        """
+        通用 Yahoo Finance chart 資料獲取（含快取）
+        支援 TAIEX (^TWII) 和個股 (xxxx.TW)
+        """
+        import asyncio
+        from datetime import datetime, timezone
+
+        cache_key = f"yahoo_chart_{yahoo_symbol}_{range_str}"
+        cached = cache_manager.get(cache_key, "daily")
+        if cached is not None:
+            return pd.DataFrame(cached)
+
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_symbol}"
+        params = {"interval": "1d", "range": range_str}
+        client = await self.data_fetcher.get_client()
+
+        for attempt in range(3):
+            try:
+                response = await client.get(url, params=params, timeout=15.0)
+                if response.status_code == 429:
+                    await asyncio.sleep((attempt + 1) * 2)
+                    continue
+                if response.status_code == 200:
+                    data = response.json()
+                    result = data.get("chart", {}).get("result", [])
+                    if result:
+                        chart = result[0]
+                        timestamps = chart.get("timestamp", [])
+                        quote = chart.get("indicators", {}).get("quote", [{}])[0]
+                        records = []
+                        closes = quote.get("close", [])
+                        opens = quote.get("open", [])
+                        lows = quote.get("low", [])
+                        highs = quote.get("high", [])
+                        volumes = quote.get("volume", [])
+                        for i, ts in enumerate(timestamps):
+                            try:
+                                c = closes[i] if i < len(closes) else None
+                                if c is not None:
+                                    dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+                                    records.append({
+                                        "date": dt.strftime("%Y-%m-%d"),
+                                        "close": c,
+                                        "open": opens[i] if i < len(opens) else None,
+                                        "high": highs[i] if i < len(highs) else None,
+                                        "low": lows[i] if i < len(lows) else None,
+                                        "volume": volumes[i] if i < len(volumes) else None,
+                                    })
+                            except (ValueError, TypeError, KeyError):
+                                continue
+                        if records:
+                            df = pd.DataFrame(records)
+                            df = df.sort_values("date", ascending=False).reset_index(drop=True)
+                            cache_manager.set(cache_key, df.to_dict("records"), "daily")
+                            return df
+                    break
+            except Exception as e:
+                logger.debug(f"Yahoo chart fetch failed for {yahoo_symbol}: {e}")
+                if attempt < 2:
+                    await asyncio.sleep(1)
+        return pd.DataFrame()
+
+    @staticmethod
+    def _daily_to_weekly(daily_df: pd.DataFrame) -> pd.DataFrame:
+        """將日線資料轉換為週線（以每週最後一個交易日收盤為週收盤）"""
+        if daily_df.empty:
+            return pd.DataFrame()
+        df = daily_df.copy()
+        df["_dt"] = pd.to_datetime(df["date"])
+        df = df.sort_values("_dt")
+
+        # 以 ISO week 分組
+        df["_yw"] = (
+            df["_dt"].dt.isocalendar().year.astype(str)
+            + "W"
+            + df["_dt"].dt.isocalendar().week.astype(str).str.zfill(2)
+        )
+        rows = []
+        for _, grp in df.groupby("_yw", sort=True):
+            rows.append({
+                "date": grp["_dt"].iloc[-1].strftime("%Y-%m-%d"),
+                "close": grp["close"].iloc[-1],
+                "low": grp["low"].min() if "low" in grp else None,
+                "volume": grp["volume"].sum() if "volume" in grp else None,
+            })
+        result = pd.DataFrame(rows)
+        result = result.sort_values("date", ascending=False).reset_index(drop=True)
+        return result
+
+    async def get_trend_alignment_screen(self, mode: str = "convergence", date_start: str = None, date_end: str = None, change_min: float = None, change_max: float = None) -> Dict[str, Any]:
+        """
+        趨勢選股 — 兩種模式二選一
+        mode="convergence": 均線糾結條件（大盤 + MA糾結）
+        mode="individual":  個股篩選條件（大盤 + 量/週線/趨勢）
+        支援日期區間：對區間內每個交易日檢查條件，任一天通過即納入結果
+        """
+        import asyncio
+
+        # ── 1. 大盤條件（用最新資料判斷） ──
+        taiex_df = await self._fetch_yahoo_chart("%5ETWII", "2y")
+        if taiex_df.empty or len(taiex_df) < 60:
+            return {"success": False, "error": "無法取得大盤資料"}
+
+        tc = taiex_df["close"].tolist()
+        t_close, t_ma20, t_ma60 = tc[0], sum(tc[:20]) / 20, sum(tc[:60]) / 60
+
+        taiex_weekly = self._daily_to_weekly(taiex_df)
+        if len(taiex_weekly) < 20:
+            return {"success": False, "error": "大盤週線資料不足"}
+        twc = taiex_weekly["close"].tolist()
+        twl = taiex_weekly["low"].tolist()
+        tw_low, tw_ma20 = twl[0], sum(twc[:20]) / 20
+
+        taiex_conds = {
+            "close_gte_ma20": t_close >= t_ma20,
+            "ma20_gte_ma60": t_ma20 >= t_ma60,
+            "weekly_low_gte_weekly_ma20": tw_low >= tw_ma20,
+        }
+        taiex_status = {
+            "close": round(t_close, 2),
+            "ma20": round(t_ma20, 2),
+            "ma60": round(t_ma60, 2),
+            "weekly_low": round(tw_low, 2),
+            "weekly_ma20": round(tw_ma20, 2),
+            "conditions": taiex_conds,
+            "all_pass": all(taiex_conds.values()),
+        }
+
+        if not taiex_status["all_pass"]:
+            return {
+                "success": True,
+                "taiex_status": taiex_status,
+                "total_checked": 0,
+                "match_count": 0,
+                "items": [],
+                "message": "大盤條件不符，目前非多頭格局",
+            }
+
+        # ── 2. 取得全市場股票列表 ──
+        from utils.date_utils import get_latest_trading_day
+        date = date_end if date_end else get_latest_trading_day()
+        all_stocks_df = await self._fetch_daily_data(date)
+        if all_stocks_df.empty:
+            return {"success": False, "error": "無法取得股票資料"}
+
+        float_shares_map = await self._get_float_shares()
+        all_stocks = self._calculate_turnover_rates(all_stocks_df, float_shares_map)
+        stock_info_map = {
+            s["symbol"]: s
+            for s in all_stocks
+            if s.get("symbol") and (s.get("close_price", 0) or 0) > 0
+        }
+
+        total_symbols = len(stock_info_map)
+        logger.info(f"Trend alignment: checking {total_symbols} stocks")
+
+        # ── 3. 並行獲取 Yahoo 2年歷史 ──
+        semaphore = asyncio.Semaphore(10)
+        symbol_history: Dict[str, pd.DataFrame] = {}
+        processed = [0]
+
+        async def fetch(sym):
+            async with semaphore:
+                try:
+                    df = await self._fetch_yahoo_chart(f"{sym}.TW", "2y")
+                    if not df.empty and len(df) >= 60:
+                        symbol_history[sym] = df
+                except Exception:
+                    pass
+                finally:
+                    processed[0] += 1
+                    if processed[0] % 200 == 0:
+                        logger.info(f"Trend alignment history: {processed[0]}/{total_symbols}")
+
+        symbols = list(stock_info_map.keys())
+        for i in range(0, len(symbols), 50):
+            batch = symbols[i:i + 50]
+            await asyncio.gather(*(fetch(s) for s in batch), return_exceptions=True)
+            if i + 50 < len(symbols):
+                await asyncio.sleep(0.3)
+
+        logger.info(f"Trend alignment: fetched {len(symbol_history)} stocks history")
+
+        # ── 4. 計算要檢查的日期偏移量 ──
+        # Yahoo 資料按日期降序排列，index 0=最新
+        # 建立 date→index 對照表（用大盤資料的日期列）
+        taiex_dates = taiex_df["date"].tolist()
+
+        if date_start and date_end:
+            target_indices = [
+                idx for idx, d in enumerate(taiex_dates)
+                if date_start <= d <= date_end
+            ]
+            if not target_indices:
+                target_indices = [0]
+        elif date_end:
+            target_indices = [
+                idx for idx, d in enumerate(taiex_dates)
+                if d == date_end
+            ]
+            if not target_indices:
+                target_indices = [0]
+        else:
+            target_indices = [0]
+
+        logger.info(f"Trend alignment: checking {len(target_indices)} trading days in range")
+
+        # ── 5. 逐檔篩選（對每個日期偏移檢查） ──
+        result_stocks = []
+        seen_symbols = set()
+
+        for symbol, hist in symbol_history.items():
+            try:
+                dates_list = hist["date"].tolist()
+                closes = hist["close"].tolist()
+                lows = hist["low"].tolist()
+                vols = hist["volume"].tolist()
+
+                # 建立此股票的 date→index 對照
+                date_idx_map = {d: idx for idx, d in enumerate(dates_list)}
+
+                # 決定要檢查的偏移：用大盤日期對應到個股的 index
+                offsets_to_check = []
+                if date_start and date_end:
+                    for d in taiex_dates:
+                        if date_start <= d <= date_end and d in date_idx_map:
+                            offsets_to_check.append((d, date_idx_map[d]))
+                elif date_end:
+                    if date_end in date_idx_map:
+                        offsets_to_check.append((date_end, date_idx_map[date_end]))
+                    else:
+                        offsets_to_check.append((dates_list[0], 0))
+                else:
+                    offsets_to_check.append((dates_list[0], 0))
+
+                if not offsets_to_check:
+                    continue
+
+                for match_date, offset in offsets_to_check:
+                    if symbol in seen_symbols:
+                        break
+
+                    if offset + 60 > len(closes) or offset + 21 > len(lows) or offset + 21 > len(vols):
+                        continue
+
+                    cl = closes[offset]
+                    lo = lows[offset]
+                    vol = vols[offset]
+                    if not cl or not lo or not vol or cl <= 0:
+                        continue
+
+                    # 日線均線
+                    ma5 = sum(closes[offset:offset + 5]) / 5
+                    ma10 = sum(closes[offset:offset + 10]) / 10
+                    ma20 = sum(closes[offset:offset + 20]) / 20
+                    ma60 = sum(closes[offset:offset + 60]) / 60
+
+                    # ── 依模式篩選 ──
+                    if mode == "convergence":
+                        # 均線糾結條件
+                        # 收盤>=MA20, MA20>=MA60
+                        if cl < ma20 or ma20 < ma60:
+                            continue
+                        # MA5 >= MA10 >= MA20 多頭排列
+                        if not (ma5 >= ma10 >= ma20):
+                            continue
+                        # 價格貼近MA20（收盤不超過MA20的6%）
+                        if cl > ma20 * 1.06:
+                            continue
+                        # 糾結度：(Max-Min)/Min <= 3%
+                        ma_max = max(ma5, ma10, ma20)
+                        ma_min = min(ma5, ma10, ma20)
+                        convergence = (ma_max - ma_min) / ma_min if ma_min > 0 else 999
+                        if convergence > 0.03:
+                            continue
+                        # 收盤價在糾結均線3%以內
+                        ma_avg = (ma5 + ma10 + ma20) / 3
+                        if ma_avg > 0 and abs(cl - ma_avg) / ma_avg > 0.03:
+                            continue
+                    else:
+                        # 個股篩選條件
+                        convergence = 0
+                        # 日線：收盤>=MA20, MA20>=MA60
+                        if cl < ma20 or ma20 < ma60:
+                            continue
+                        # 成交量 >= 1.5 倍昨日成交量
+                        if offset + 1 >= len(vols):
+                            continue
+                        yesterday_vol = vols[offset + 1]
+                        if not yesterday_vol or yesterday_vol <= 0 or vol < yesterday_vol * 1.5:
+                            continue
+                        # 收盤價 >= 前20日收盤價
+                        if offset + 20 < len(closes) and closes[offset + 20] and cl < closes[offset + 20]:
+                            continue
+
+                    # 週線條件：週最低價 >= 週MA20
+                    hist_from_offset = hist.iloc[offset:].reset_index(drop=True)
+                    weekly = self._daily_to_weekly(hist_from_offset)
+                    if len(weekly) < 60:
+                        continue
+                    wc = weekly["close"].tolist()
+                    wl = weekly["low"].tolist()
+                    w_low = wl[0] if wl[0] is not None else wc[0]
+                    w_ma10 = sum(wc[:10]) / 10
+                    w_ma20 = sum(wc[:20]) / 20
+                    w_ma60 = sum(wc[:60]) / 60
+
+                    if w_low < w_ma20:
+                        continue
+
+                    # 漲跌幅過濾（用 Yahoo 資料計算）
+                    if offset + 1 < len(closes) and closes[offset + 1]:
+                        chg_pct = (cl - closes[offset + 1]) / closes[offset + 1] * 100
+                    else:
+                        chg_pct = 0
+                    if change_min is not None and chg_pct < change_min:
+                        continue
+                    if change_max is not None and chg_pct > change_max:
+                        continue
+
+                    # ✅ 通過
+                    info = stock_info_map.get(symbol, {})
+                    seen_symbols.add(symbol)
+                    y_vol = vols[offset + 1] if offset + 1 < len(vols) and vols[offset + 1] else vol
+                    result_stocks.append({
+                        "symbol": symbol,
+                        "name": info.get("name", ""),
+                        "industry": info.get("industry", ""),
+                        "close_price": round(cl, 2),
+                        "change_percent": round(chg_pct, 2),
+                        "match_date": match_date,
+                        "volume": int(vol / 1000),
+                        "yesterday_volume": int(y_vol / 1000),
+                        "volume_ratio": round(vol / y_vol, 2) if y_vol > 0 else 0,
+                        "turnover_rate": info.get("turnover_rate"),
+                        "ma5": round(ma5, 2),
+                        "ma10": round(ma10, 2),
+                        "ma20": round(ma20, 2),
+                        "ma60": round(ma60, 2),
+                        "ma_convergence": round(convergence * 100, 2),
+                        "weekly_low": round(w_low, 2),
+                        "weekly_ma10": round(w_ma10, 2),
+                        "weekly_ma20": round(w_ma20, 2),
+                        "weekly_ma60": round(w_ma60, 2),
+                        "low": round(lo, 2),
+                        "mode": mode,
+                    })
+                    break  # 同一檔股票只取第一個符合的日期
+
+            except Exception as e:
+                logger.debug(f"Trend check error {symbol}: {e}")
+                continue
+
+        result_stocks.sort(key=lambda x: x.get("volume_ratio", 0), reverse=True)
+        logger.info(f"Trend alignment: {len(result_stocks)} matched")
+
+        return {
+            "success": True,
+            "taiex_status": taiex_status,
+            "total_checked": len(symbol_history),
+            "match_count": len(result_stocks),
+            "items": result_stocks,
+            "date_range": {"start": date_start, "end": date_end} if date_start else None,
+        }
 
     # ===== 日期區間查詢方法 =====
 
@@ -1667,27 +2045,212 @@ class HighTurnoverAnalyzer:
         """
         糾結均線突破/跌破（支援日期區間和漲幅區間）
         direction: "breakout" (突破) 或 "breakdown" (跌破)
+
+        效能優化：每檔股票只獲取一次 Yahoo 歷史資料，
+        然後掃描所有目標日期，避免 O(days × stocks) 的 API 呼叫。
         """
         dates = await self._get_date_range(start_date, end_date)
+
+        if not dates:
+            return {
+                "success": True,
+                "start_date": start_date,
+                "end_date": end_date,
+                "direction": direction,
+                "filter": {"min_change": min_change, "max_change": max_change},
+                "total_days": 0,
+                "breakout_count": 0,
+                "daily_stats": [],
+                "items": [],
+            }
+
+        # 單日查詢保持原有邏輯
+        if len(dates) == 1:
+            result = await self.get_ma_breakout(dates[0], min_change, max_change, direction)
+            items = []
+            if result.get("success"):
+                for item in result.get("items", []):
+                    copied = dict(item)
+                    copied["query_date"] = dates[0]
+                    items.append(copied)
+            return {
+                "success": True,
+                "start_date": dates[0],
+                "end_date": dates[0],
+                "direction": direction,
+                "filter": {"min_change": min_change, "max_change": max_change},
+                "total_days": 1,
+                "breakout_count": len(items),
+                "daily_stats": [{"date": dates[0], "count": len(items)}],
+                "items": items,
+            }
+
+        # === 多日查詢：一次獲取歷史資料，掃描所有日期 ===
+        import asyncio
+
+        is_breakout = direction != "breakdown"
+        direction_label = "突破" if is_breakout else "跌破"
+
+        # 1. 取得全市場股票列表（用於取得 symbol/name/industry）
+        all_stocks_df = await self._fetch_daily_data(dates[-1])
+        if all_stocks_df.empty:
+            return {"success": False, "error": "無法取得股票列表"}
+
+        float_shares_map = await self._get_float_shares()
+        all_stocks = self._calculate_turnover_rates(all_stocks_df, float_shares_map)
+
+        if not all_stocks:
+            return {"success": False, "error": "無有效資料"}
+
+        # 2. 建立 symbol → stock info 對照表
+        stock_info_map = {}
+        for stock in all_stocks:
+            symbol = stock.get("symbol", "")
+            if symbol and (stock.get("close_price", 0) or 0) > 0:
+                stock_info_map[symbol] = stock
+
+        total_symbols = len(stock_info_map)
+        logger.info(f"MA {direction_label} range: scanning {len(dates)} days × {total_symbols} stocks")
+
+        # 3. 並行獲取所有股票的 Yahoo 歷史資料（每檔只呼叫一次）
+        semaphore = asyncio.Semaphore(10)
+        symbol_history: Dict[str, pd.DataFrame] = {}
+        processed = [0]
+
+        async def fetch_history(symbol):
+            async with semaphore:
+                try:
+                    df = await self._fetch_yahoo_history_for_ma(symbol)
+                    if not df.empty and len(df) >= 21:
+                        symbol_history[symbol] = df
+                except Exception as e:
+                    logger.debug(f"Error fetching history for {symbol}: {e}")
+                finally:
+                    processed[0] += 1
+                    if processed[0] % 200 == 0:
+                        logger.info(f"MA {direction_label} history fetch: {processed[0]}/{total_symbols}")
+
+        symbols = list(stock_info_map.keys())
+        batch_size = 50
+        for i in range(0, len(symbols), batch_size):
+            batch = symbols[i:i + batch_size]
+            tasks = [fetch_history(s) for s in batch]
+            await asyncio.gather(*tasks, return_exceptions=True)
+            if i + batch_size < len(symbols):
+                await asyncio.sleep(0.3)
+
+        logger.info(f"MA {direction_label} range: fetched history for {len(symbol_history)} stocks")
+
+        # 4. 對每個日期，掃描所有股票的歷史資料
         all_items = []
         daily_stats = []
 
         for date in dates:
-            result = await self.get_ma_breakout(date, min_change, max_change, direction)
-            if result.get("success"):
-                for item in result.get("items", []):
-                    copied = dict(item)
-                    copied["query_date"] = date
-                    all_items.append(copied)
-                daily_stats.append({
-                    "date": date,
-                    "count": result.get("breakout_count", 0)
-                })
+            day_items = []
+
+            for symbol, history_df in symbol_history.items():
+                try:
+                    # 在 Yahoo 歷史中找到目標日期的位置
+                    date_mask = history_df["date"] == date
+                    if not date_mask.any():
+                        continue
+
+                    idx = history_df.index[date_mask][0]
+                    remaining = len(history_df) - idx
+                    if remaining < 21:
+                        continue
+
+                    closes = history_df["close"].iloc[idx:idx + 25].tolist()
+                    if len(closes) < 21:
+                        continue
+
+                    current_close = closes[0]
+                    if current_close is None or current_close <= 0:
+                        continue
+
+                    # 計算當日漲跌幅（從歷史資料）
+                    if len(closes) >= 2 and closes[1] and closes[1] > 0:
+                        change_pct = (closes[0] - closes[1]) / closes[1] * 100
+                    else:
+                        continue
+
+                    # 漲跌幅篩選
+                    if min_change is not None and change_pct < min_change:
+                        continue
+                    if max_change is not None and change_pct > max_change:
+                        continue
+
+                    # 計算今日均線
+                    ma5 = sum(closes[:5]) / 5
+                    ma10 = sum(closes[:10]) / 10
+                    ma20 = sum(closes[:20]) / 20
+
+                    # 計算昨日均線（用於判斷糾結）
+                    yesterday_closes = closes[1:21]
+                    yesterday_ma5 = sum(yesterday_closes[:5]) / 5
+                    yesterday_ma10 = sum(yesterday_closes[:10]) / 10
+                    yesterday_ma20 = sum(yesterday_closes[:20]) / 20
+
+                    # 昨日均線糾結（範圍 ≤ 3%）
+                    ma_values = [yesterday_ma5, yesterday_ma10, yesterday_ma20]
+                    ma_avg = sum(ma_values) / 3
+                    if ma_avg <= 0:
+                        continue
+
+                    ma_range = (max(ma_values) - min(ma_values)) / ma_avg * 100
+                    if ma_range > 3.0:
+                        continue
+
+                    # 突破/跌破判斷
+                    if is_breakout:
+                        if current_close <= max(ma5, ma10, ma20):
+                            continue
+                    else:
+                        if current_close >= min(ma5, ma10, ma20):
+                            continue
+
+                    # 符合條件
+                    stock_info = stock_info_map.get(symbol, {})
+                    matched = {
+                        "symbol": symbol,
+                        "name": stock_info.get("name", ""),
+                        "industry": stock_info.get("industry", ""),
+                        "close_price": round(current_close, 2),
+                        "change_percent": round(change_pct, 2),
+                        "turnover_rate": stock_info.get("turnover_rate"),
+                        "volume": stock_info.get("volume"),
+                        "ma5": round(ma5, 2),
+                        "ma10": round(ma10, 2),
+                        "ma20": round(ma20, 2),
+                        "ma_range": round(ma_range, 2),
+                        "is_breakout": is_breakout,
+                        "direction": direction,
+                        "query_date": date,
+                    }
+                    day_items.append(matched)
+
+                except Exception as e:
+                    logger.debug(f"Error scanning {symbol} on {date}: {e}")
+                    continue
+
+            # 排序：突破依漲幅降序，跌破依漲幅升序
+            day_items.sort(
+                key=lambda x: x.get("change_percent", 0),
+                reverse=is_breakout
+            )
+
+            all_items.extend(day_items)
+            daily_stats.append({
+                "date": date,
+                "count": len(day_items)
+            })
+
+        logger.info(f"MA {direction_label} range completed: {len(all_items)} stocks across {len(dates)} days")
 
         return {
             "success": True,
-            "start_date": start_date or dates[0] if dates else None,
-            "end_date": end_date or dates[-1] if dates else None,
+            "start_date": start_date or (dates[0] if dates else None),
+            "end_date": end_date or (dates[-1] if dates else None),
             "direction": direction,
             "filter": {"min_change": min_change, "max_change": max_change},
             "total_days": len(dates),
