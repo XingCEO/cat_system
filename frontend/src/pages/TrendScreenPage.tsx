@@ -7,7 +7,7 @@ import { formatPercent, formatNumber, formatPrice, getChangeColor } from '@/util
 import { getTrendScreen } from '@/services/api';
 import {
     Target, ChevronLeft, LineChart, TrendingUp,
-    Search, CheckCircle2, XCircle, Activity, CalendarDays
+    Search, CheckCircle2, Activity, CalendarDays
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -34,19 +34,6 @@ interface TrendStock {
     match_date?: string;
 }
 
-interface TaiexStatus {
-    close: number;
-    ma20: number;
-    ma60: number;
-    weekly_low: number;
-    weekly_ma20: number;
-    conditions: {
-        close_gte_ma20: boolean;
-        ma20_gte_ma60: boolean;
-        weekly_low_gte_weekly_ma20: boolean;
-    };
-    all_pass: boolean;
-}
 
 export function TrendScreenPage() {
     const [queryKey, setQueryKey] = useState(0);
@@ -74,10 +61,8 @@ export function TrendScreenPage() {
     });
 
     const stocks: TrendStock[] = data?.items || [];
-    const taiex: TaiexStatus | null = data?.taiex_status || null;
     const totalChecked = data?.total_checked || 0;
     const matchCount = data?.match_count || 0;
-    const message = data?.message || '';
     const loading = isLoading || isFetching;
 
     const handleSearch = () => setQueryKey(prev => prev + 1);
@@ -86,14 +71,6 @@ export function TrendScreenPage() {
         setSelectedStock({ symbol, name });
         setIsChartDialogOpen(true);
     };
-
-    const CondBadge = ({ pass: ok, label }: { pass: boolean; label: string }) => (
-        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${ok ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'
-            }`}>
-            {ok ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-            {label}
-        </span>
-    );
 
     return (
         <div className="container mx-auto py-6 px-4">
@@ -108,7 +85,7 @@ export function TrendScreenPage() {
                         趨勢選股
                     </h1>
                     <p className="text-sm text-muted-foreground">
-                        大盤多方格局 + 個股均線糾結多頭排列 + 量增突破
+                        個股均線糾結多頭排列 + 量增突破
                     </p>
                 </div>
                 <Button onClick={handleSearch} className="ml-auto gap-1" disabled={loading}>
@@ -215,12 +192,6 @@ export function TrendScreenPage() {
             <Card className={`mb-6 border-l-4 ${mode === 'convergence' ? 'border-emerald-500' : 'border-sky-500'}`}>
                 <CardContent className="pt-6">
                     <div className="text-sm">
-                        <p className="text-xs text-muted-foreground/70 mb-1">▸ 大盤條件（共用）</p>
-                        <ul className="space-y-1 text-muted-foreground mb-3">
-                            <li>• 收盤 ≥ MA20</li>
-                            <li>• MA20 ≥ MA60</li>
-                            <li>• 週最低價 ≥ 週MA20</li>
-                        </ul>
                         {mode === 'convergence' ? (
                             <>
                                 <p className="text-xs text-emerald-400/70 mb-1">▸ 均線糾結</p>
@@ -246,31 +217,6 @@ export function TrendScreenPage() {
                 </CardContent>
             </Card>
 
-            {/* 大盤狀態 */}
-            {taiex && (
-                <Card className={`mb-6 border-l-4 ${taiex.all_pass ? 'border-emerald-500' : 'border-rose-500'}`}>
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium flex items-center gap-2">
-                            {taiex.all_pass
-                                ? <><CheckCircle2 className="w-4 h-4 text-emerald-400" /> 大盤多方格局確認</>
-                                : <><XCircle className="w-4 h-4 text-rose-400" /> 大盤條件不符</>
-                            }
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="flex flex-wrap gap-4 items-center text-sm">
-                            <div className="space-y-1">
-                                <CondBadge pass={taiex.conditions.close_gte_ma20} label={`收盤 ${taiex.close} ≥ MA20 ${taiex.ma20}`} />
-                                <CondBadge pass={taiex.conditions.ma20_gte_ma60} label={`MA20 ${taiex.ma20} ≥ MA60 ${taiex.ma60}`} />
-                                <CondBadge pass={taiex.conditions.weekly_low_gte_weekly_ma20} label={`週最低價 ${taiex.weekly_low} ≥ 週MA20 ${taiex.weekly_ma20}`} />
-                            </div>
-                        </div>
-                        {message && !taiex.all_pass && (
-                            <p className="mt-3 text-rose-400 text-sm font-medium">{message}</p>
-                        )}
-                    </CardContent>
-                </Card>
-            )}
 
             {/* 統計 */}
             {queryKey > 0 && (
@@ -327,9 +273,7 @@ export function TrendScreenPage() {
                             </div>
                         ) : stocks.length === 0 ? (
                             <div className="py-20 text-center text-muted-foreground">
-                                {taiex && !taiex.all_pass
-                                    ? '大盤條件不符，非多頭格局，不進行個股掃描'
-                                    : '無符合所有條件的股票'}
+                                無符合所有條件的股票
                             </div>
                         ) : (
                             <div className="overflow-x-auto">

@@ -1275,7 +1275,7 @@ class HighTurnoverAnalyzer:
         """
         import asyncio
 
-        # ── 1. 大盤條件（用最新資料判斷） ──
+        # ── 1. 取得大盤資料（僅供參考，不作為篩選門檻） ──
         taiex_df = await self._fetch_yahoo_chart("%5ETWII", "2y")
         if taiex_df.empty or len(taiex_df) < 60:
             return {"success": False, "error": "無法取得大盤資料"}
@@ -1286,34 +1286,6 @@ class HighTurnoverAnalyzer:
         taiex_weekly = self._daily_to_weekly(taiex_df)
         if len(taiex_weekly) < 20:
             return {"success": False, "error": "大盤週線資料不足"}
-        twc = taiex_weekly["close"].tolist()
-        twl = taiex_weekly["low"].tolist()
-        tw_low, tw_ma20 = twl[0], sum(twc[:20]) / 20
-
-        taiex_conds = {
-            "close_gte_ma20": t_close >= t_ma20,
-            "ma20_gte_ma60": t_ma20 >= t_ma60,
-            "weekly_low_gte_weekly_ma20": tw_low >= tw_ma20,
-        }
-        taiex_status = {
-            "close": round(t_close, 2),
-            "ma20": round(t_ma20, 2),
-            "ma60": round(t_ma60, 2),
-            "weekly_low": round(tw_low, 2),
-            "weekly_ma20": round(tw_ma20, 2),
-            "conditions": taiex_conds,
-            "all_pass": all(taiex_conds.values()),
-        }
-
-        if not taiex_status["all_pass"]:
-            return {
-                "success": True,
-                "taiex_status": taiex_status,
-                "total_checked": 0,
-                "match_count": 0,
-                "items": [],
-                "message": "大盤條件不符，目前非多頭格局",
-            }
 
         # ── 2. 取得全市場股票列表 ──
         from utils.date_utils import get_latest_trading_day
@@ -1535,7 +1507,6 @@ class HighTurnoverAnalyzer:
 
         return {
             "success": True,
-            "taiex_status": taiex_status,
             "total_checked": len(symbol_history),
             "match_count": len(result_stocks),
             "items": result_stocks,
