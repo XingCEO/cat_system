@@ -456,7 +456,7 @@ export function StockAnalysisDialog({ open, onClose, symbol, name }: StockAnalys
 
                 {/* 報價資訊 (即時跟隨滑鼠) */}
                 {displayData && (
-                    <div className="grid grid-cols-5 gap-2 p-3 bg-gradient-to-r from-muted/50 to-accent/30 dark:from-muted/30 dark:to-accent/20 rounded-xl text-sm mb-2 ring-1 ring-border/30">
+                    <div className="grid grid-cols-6 gap-2 p-3 bg-gradient-to-r from-muted/50 to-accent/30 dark:from-muted/30 dark:to-accent/20 rounded-xl text-sm mb-2 ring-1 ring-border/30">
                         <div className="text-center">
                             <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">開盤</div>
                             <div className="text-base font-bold font-mono tabular-nums">{displayData.open?.toFixed(2) ?? '-'}</div>
@@ -472,6 +472,10 @@ export function StockAnalysisDialog({ open, onClose, symbol, name }: StockAnalys
                         <div className="text-center">
                             <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">最低</div>
                             <div className="text-base font-bold text-green-600 font-mono tabular-nums">{displayData.low?.toFixed(2) ?? '-'}</div>
+                        </div>
+                        <div className="text-center">
+                            <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">成交量</div>
+                            <div className="text-base font-bold font-mono tabular-nums">{displayData.volume != null ? (displayData.volume >= 1e8 ? (displayData.volume / 1e8).toFixed(1) + '億' : displayData.volume >= 1e4 ? (displayData.volume / 1e4).toFixed(0) + '萬' : displayData.volume.toLocaleString()) : '-'}</div>
                         </div>
                         <div className="text-center">
                             <div className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">漲跌幅</div>
