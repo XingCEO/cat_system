@@ -15,6 +15,9 @@ from app.schemas.screen import KlineCandle, KlineResponse
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# v1 DB 資料量低於此閾值時 fallback 到 Legacy data_fetcher
+_MIN_ROWS_THRESHOLD = 20
+
 
 @router.get(
     "/chart/{ticker_id}/kline",
@@ -45,8 +48,11 @@ async def get_kline(
     result = await db.execute(query)
     rows = result.scalars().all()
 
-    if not rows:
-        raise HTTPException(status_code=404, detail=f"找不到 {ticker_id} 的 K 線資料")
+    # v1 DB 資料不足時 fallback 到 Legacy (Yahoo/TWSE)
+    if len(rows) < _MIN_ROWS_THRESHOLD:
+        # 月K 預設上限較小，避免抓取過多歷史
+        effective_limit = min(limit, 24) if period == "monthly" else limit
+        return await _fallback_legacy_kline(ticker_id, name, period, effective_limit)
 
     # 反轉為時間正序
     rows = list(reversed(rows))
@@ -85,9 +91,121 @@ async def get_kline(
     )
 
 
+async def _fallback_legacy_kline(
+    ticker_id: str, name: str, period: str, limit: int
+) -> KlineResponse:
+    """v1 DB 資料不足時，使用 Legacy data_fetcher 取得完整歷史 K 線"""
+    from datetime import datetime, timedelta
+    from services.data_fetcher import data_fetcher
+    import pandas as pd
+
+    period_map = {"daily": "day", "weekly": "week", "monthly": "month"}
+    legacy_period = period_map.get(period, "day")
+
+    # 計算需要的日期範圍
+    fetch_days = limit + 150  # 額外資料供 MA60/MA120 計算
+    if legacy_period == "week":
+        fetch_days = limit * 7 + 150
+    elif legacy_period == "month":
+        fetch_days = limit * 30 + 150
+
+    end_date = datetime.now().strftime("%Y-%m-%d")
+    start_date = (datetime.now() - timedelta(days=fetch_days)).strftime("%Y-%m-%d")
+
+    df = await data_fetcher.get_historical_data(ticker_id, start_date, end_date)
+
+    if df.empty:
+        raise HTTPException(
+            status_code=404, detail=f"找不到 {ticker_id} 的 K 線資料"
+        )
+
+    # 準備欄位
+    col_map = {"max": "high", "min": "low", "Trading_Volume": "volume"}
+    df = df.rename(columns=col_map)
+    df = df.drop_duplicates(subset=["date"], keep="last")
+    df = df.sort_values("date").reset_index(drop=True)
+
+    for col in ["open", "high", "low", "close", "volume"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    df = df.dropna(subset=["close"])
+
+    # 週/月重新取樣
+    if legacy_period == "week":
+        df = _resample(df, "W")
+    elif legacy_period == "month":
+        df = _resample(df, "ME")
+
+    # 計算指標
+    df["ma5"] = df["close"].rolling(5).mean()
+    df["ma10"] = df["close"].rolling(10).mean()
+    df["ma20"] = df["close"].rolling(20).mean()
+    df["ma60"] = df["close"].rolling(60).mean()
+
+    # RSI
+    delta = df["close"].diff()
+    gain = delta.where(delta > 0, 0)
+    loss = -delta.where(delta < 0, 0)
+    avg_gain = gain.rolling(14).mean()
+    avg_loss = loss.rolling(14).mean()
+    rs = avg_gain / avg_loss
+    df["rsi14"] = 100 - (100 / (1 + rs))
+
+    # 取最後 limit 筆
+    df = df.tail(limit)
+
+    candles = [
+        KlineCandle(
+            date=str(row["date"])[:10],
+            open=_safe_round(row.get("open")),
+            high=_safe_round(row.get("high")),
+            low=_safe_round(row.get("low")),
+            close=_safe_round(row.get("close")),
+            volume=int(row["volume"]) if pd.notna(row.get("volume")) else 0,
+        )
+        for _, row in df.iterrows()
+    ]
+    indicators = {
+        "ma5": [_safe_round(v) for v in df["ma5"]],
+        "ma10": [_safe_round(v) for v in df["ma10"]],
+        "ma20": [_safe_round(v) for v in df["ma20"]],
+        "ma60": [_safe_round(v) for v in df["ma60"]],
+        "rsi14": [_safe_round(v) for v in df["rsi14"]],
+    }
+
+    return KlineResponse(
+        ticker_id=ticker_id,
+        name=name,
+        period=period,
+        candles=candles,
+        indicators=indicators,
+    )
+
+
+def _resample(df, rule: str):
+    """將日 K 重新取樣為週/月 K"""
+    import pandas as pd
+
+    df["date"] = pd.to_datetime(df["date"])
+    df = df.set_index("date")
+    resampled = df.resample(rule).agg(
+        {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}
+    ).dropna()
+    resampled = resampled.reset_index()
+    resampled["date"] = resampled["date"].dt.strftime("%Y-%m-%d")
+    return resampled
+
+
+def _safe_round(val, decimals=2):
+    """安全地四捨五入，處理 NaN/None"""
+    import pandas as pd
+
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return None
+    return round(float(val), decimals)
+
+
 def _aggregate_weekly(rows) -> tuple:
     """將日 K 聚合為週 K"""
-    from datetime import timedelta
     weeks = {}
     for r in rows:
         # ISO 週數作為 key

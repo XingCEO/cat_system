@@ -234,7 +234,20 @@ async def get_stock_detail(symbol: str):
             hist_df = hist_df.sort_values("date", ascending=False)
             enriched = calculator.enrich_stock_data(result, hist_df)
             result.update(enriched)
-        
+
+        # Calculate technical indicators (MA/RSI/MACD/KD/BB)
+        try:
+            from services.technical_analysis import technical_analyzer
+            indicators = await technical_analyzer.get_indicators(symbol)
+            if indicators and "error" not in indicators:
+                for key in ["ma5", "ma10", "ma20", "ma60",
+                            "rsi_14", "macd", "macd_signal", "macd_hist",
+                            "k", "d", "bb_upper", "bb_middle", "bb_lower"]:
+                    if indicators.get(key) is not None:
+                        result[key] = indicators[key]
+        except Exception as e:
+            logger.debug(f"Technical indicators failed for {symbol}: {e}")
+
         return APIResponse.ok(data=StockDetailResponse(**result))
         
     except HTTPException:
@@ -270,7 +283,10 @@ async def get_stock_history(
         
         if df.empty:
             return APIResponse.ok(data=[])
-        
+
+        # Deduplicate by date (keep last entry per date)
+        df = df.drop_duplicates(subset=["date"], keep="last")
+
         # Format for chart
         df = df.sort_values("date")
         result = []
