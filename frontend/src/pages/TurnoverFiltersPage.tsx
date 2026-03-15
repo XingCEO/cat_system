@@ -727,7 +727,8 @@ export function TurnoverFiltersPage() {
                                     {stocks.map((stock: TurnoverStock, index: number) => (
                                         <tr
                                             key={`${stock.symbol}-${stock.query_date || index}`}
-                                            className={`hover:bg-muted/40 transition-colors duration-150 ${activeFilter !== 'ma_breakout' && stock.turnover_rank <= 10 ? 'font-medium bg-amber-500/5' : ''}`}
+                                            className={`hover:bg-muted/40 cursor-pointer transition-colors duration-150 ${activeFilter !== 'ma_breakout' && stock.turnover_rank <= 10 ? 'font-medium bg-amber-500/5' : ''}`}
+                                            onClick={() => openChartDialog(stock.symbol, stock.name)}
                                         >
                                             {isDateRange && (
                                                 <td className="px-4 py-3 text-xs text-muted-foreground font-mono">

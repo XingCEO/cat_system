@@ -563,7 +563,7 @@ export function Top20TurnoverLimitUpPage() {
                                     </thead>
                                     <tbody className="divide-y">
                                         {table.getRowModel().rows.map(row => (
-                                            <tr key={row.id} className="hover:bg-muted/30">
+                                            <tr key={row.id} className="hover:bg-muted/30 cursor-pointer transition-colors duration-150" onClick={() => openChartDialog(row.original.symbol, row.original.name)}>
                                                 {row.getVisibleCells().map(cell => (
                                                     <td key={cell.id} className="px-3 py-3">
                                                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -632,7 +632,8 @@ export function Top20TurnoverLimitUpPage() {
                             {top20FullList.map(stock => (
                                 <tr
                                     key={stock.symbol}
-                                    className={`hover:bg-muted/30 ${stock.is_limit_up ? 'bg-orange-500/5' : ''}`}
+                                    className={`hover:bg-muted/30 cursor-pointer transition-colors duration-150 ${stock.is_limit_up ? 'bg-orange-500/5' : ''}`}
+                                    onClick={() => openChartDialog(stock.symbol, stock.name)}
                                 >
                                     <td className="px-3 py-2">
                                         <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs ${stock.turnover_rank <= 3 ? 'bg-yellow-500 text-white' :

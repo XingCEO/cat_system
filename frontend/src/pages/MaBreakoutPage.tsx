@@ -313,7 +313,8 @@ export function MaBreakoutPage() {
                                     {stocks.map((stock: BreakoutStock, index: number) => (
                                         <tr
                                             key={`${stock.symbol}-${stock.query_date || index}`}
-                                            className="hover:bg-muted/30"
+                                            className="hover:bg-muted/30 cursor-pointer transition-colors duration-150"
+                                            onClick={() => openChartDialog(stock.symbol, stock.name)}
                                         >
                                             {isDateRange && (
                                                 <td className="px-3 py-3 text-xs text-muted-foreground">

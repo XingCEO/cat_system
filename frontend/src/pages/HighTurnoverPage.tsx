@@ -336,7 +336,8 @@ export function HighTurnoverPage() {
                                     {stocks.map((stock) => (
                                         <tr
                                             key={stock.symbol}
-                                            className={`hover:bg-muted/40 transition-colors duration-150 ${stock.is_limit_up ? 'bg-orange-500/5' : ''} ${stock.turnover_rank <= 10 ? 'font-medium bg-amber-500/5' : ''}`}
+                                            className={`hover:bg-muted/40 cursor-pointer transition-colors duration-150 ${stock.is_limit_up ? 'bg-orange-500/5' : ''} ${stock.turnover_rank <= 10 ? 'font-medium bg-amber-500/5' : ''}`}
+                                            onClick={() => openChartDialog(stock.symbol, stock.name)}
                                         >
                                             <td className="px-4 py-3">
                                                 <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold ${stock.turnover_rank <= 10 ? 'bg-amber-500 text-white shadow-sm' : 'bg-muted text-muted-foreground'}`}>

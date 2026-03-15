@@ -335,6 +335,7 @@ export function TrendScreenPage() {
                                                 key={stock.symbol}
                                                 className="hover:bg-muted/30 cursor-pointer transition-colors duration-150 animate-fade-in-up"
                                                 style={{ animationDelay: `${Math.min(idx * 30, 600)}ms` }}
+                                                onClick={() => openChartDialog(stock.symbol, stock.name)}
                                             >
                                                 <td className="px-3 py-3 font-mono">{stock.symbol}</td>
                                                 <td className="px-3 py-3 flex items-center gap-1">
