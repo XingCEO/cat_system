@@ -136,6 +136,12 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   cursor: pointer;
 }
 
+/* 移除 Dialog 點擊時的白色 outline */
+[role="dialog"]:focus,
+[role="dialog"]:focus-visible {
+  outline: none !important;
+}
+
 @media print {
   .no-print {
     display: none !important;
