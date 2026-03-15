@@ -77,7 +77,7 @@ export function TrendScreenPage() {
     return (
         <div className="container mx-auto py-6 px-4">
             {/* 頁首 */}
-            <div className="flex items-center gap-4 mb-6">
+            <div className="flex items-center gap-4 mb-6 animate-fade-in-up">
                 <Button variant="ghost" size="icon" asChild>
                     <Link to="/"><ChevronLeft className="w-5 h-5" /></Link>
                 </Button>
@@ -90,19 +90,19 @@ export function TrendScreenPage() {
                         個股均線糾結多頭排列 + 量增突破
                     </p>
                 </div>
-                <Button onClick={handleSearch} className="ml-auto gap-1" disabled={loading}>
+                <Button onClick={handleSearch} className="ml-auto gap-1 transition-all duration-200 hover:shadow-md hover:shadow-primary/20" disabled={loading}>
                     {loading ? <Activity className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
                     {loading ? '掃描中...' : '開始掃描'}
                 </Button>
             </div>
 
             {/* 模式選擇 */}
-            <div className="flex gap-3 mb-6">
+            <div className="flex gap-3 mb-6 animate-fade-in-up" style={{ animationDelay: '50ms' }}>
                 <button
                     onClick={() => setMode('convergence')}
                     aria-label="均線糾結篩選模式"
-                    className={`flex-1 px-4 py-3 rounded-lg border-2 text-left transition-all cursor-pointer ${mode === 'convergence'
-                        ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
+                    className={`flex-1 px-4 py-3 rounded-lg border-2 text-left transition-all duration-200 cursor-pointer hover:scale-[1.01] active:scale-[0.99] ${mode === 'convergence'
+                        ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400 shadow-sm shadow-emerald-500/10'
                         : 'border-muted hover:border-muted-foreground/30 text-muted-foreground'
                     }`}
                 >
@@ -114,8 +114,8 @@ export function TrendScreenPage() {
                 <button
                     onClick={() => setMode('individual')}
                     aria-label="個股篩選模式"
-                    className={`flex-1 px-4 py-3 rounded-lg border-2 text-left transition-all cursor-pointer ${mode === 'individual'
-                        ? 'border-sky-500 bg-sky-500/10 text-sky-400'
+                    className={`flex-1 px-4 py-3 rounded-lg border-2 text-left transition-all duration-200 cursor-pointer hover:scale-[1.01] active:scale-[0.99] ${mode === 'individual'
+                        ? 'border-sky-500 bg-sky-500/10 text-sky-400 shadow-sm shadow-sky-500/10'
                         : 'border-muted hover:border-muted-foreground/30 text-muted-foreground'
                     }`}
                 >
@@ -127,7 +127,7 @@ export function TrendScreenPage() {
             </div>
 
             {/* 參數輸入 */}
-            <Card className="mb-6">
+            <Card className="mb-6 animate-fade-in-up" style={{ animationDelay: '100ms' }}>
                 <CardContent className="pt-6">
                     <div className="flex flex-wrap items-end gap-4">
                         <div className="flex flex-col gap-1.5">
@@ -139,7 +139,7 @@ export function TrendScreenPage() {
                                 type="date"
                                 value={dateStart}
                                 onChange={(e) => setDateStart(e.target.value)}
-                                className="h-9 px-3 rounded-md border border-input bg-background text-sm"
+                                className="h-9 px-3 rounded-md border border-input bg-background text-sm transition-colors duration-150 focus:border-primary focus:ring-1 focus:ring-primary/30"
                             />
                         </div>
                         <div className="flex flex-col gap-1.5">
@@ -151,7 +151,7 @@ export function TrendScreenPage() {
                                 type="date"
                                 value={dateEnd}
                                 onChange={(e) => setDateEnd(e.target.value)}
-                                className="h-9 px-3 rounded-md border border-input bg-background text-sm"
+                                className="h-9 px-3 rounded-md border border-input bg-background text-sm transition-colors duration-150 focus:border-primary focus:ring-1 focus:ring-primary/30"
                             />
                         </div>
                         <div className="flex flex-col gap-1.5">
@@ -162,7 +162,7 @@ export function TrendScreenPage() {
                                 step="0.1"
                                 value={changeMin}
                                 onChange={(e) => setChangeMin(e.target.value)}
-                                className="h-9 w-28 px-3 rounded-md border border-input bg-background text-sm"
+                                className="h-9 w-28 px-3 rounded-md border border-input bg-background text-sm transition-colors duration-150 focus:border-primary focus:ring-1 focus:ring-primary/30"
                                 placeholder="例：-3"
                             />
                         </div>
@@ -174,12 +174,12 @@ export function TrendScreenPage() {
                                 step="0.1"
                                 value={changeMax}
                                 onChange={(e) => setChangeMax(e.target.value)}
-                                className="h-9 w-28 px-3 rounded-md border border-input bg-background text-sm"
+                                className="h-9 w-28 px-3 rounded-md border border-input bg-background text-sm transition-colors duration-150 focus:border-primary focus:ring-1 focus:ring-primary/30"
                                 placeholder="例：10"
                             />
                         </div>
                         {mode === 'convergence' && (
-                            <div className="flex flex-col gap-1.5">
+                            <div className="flex flex-col gap-1.5 animate-scale-in">
                                 <label htmlFor="trend-ma20-pct" className="text-xs font-medium text-muted-foreground">貼近 MA20 (%)</label>
                                 <input
                                     id="trend-ma20-pct"
@@ -188,7 +188,7 @@ export function TrendScreenPage() {
                                     min="0"
                                     value={ma20Pct}
                                     onChange={(e) => setMa20Pct(e.target.value)}
-                                    className="h-9 w-28 px-3 rounded-md border border-input bg-background text-sm"
+                                    className="h-9 w-28 px-3 rounded-md border border-input bg-background text-sm transition-colors duration-150 focus:border-primary focus:ring-1 focus:ring-primary/30"
                                     placeholder="6"
                                 />
                             </div>
@@ -206,9 +206,9 @@ export function TrendScreenPage() {
             </Card>
 
             {/* 篩選條件說明（依選擇模式顯示） */}
-            <Card className={`mb-6 border-l-4 ${mode === 'convergence' ? 'border-emerald-500' : 'border-sky-500'}`}>
+            <Card className={`mb-6 border-l-4 transition-colors duration-300 ${mode === 'convergence' ? 'border-emerald-500' : 'border-sky-500'}`}>
                 <CardContent className="pt-6">
-                    <div className="text-sm">
+                    <div className="text-sm animate-fade-in" key={mode}>
                         {mode === 'convergence' ? (
                             <>
                                 <p className="text-xs text-emerald-400/70 mb-1">▸ 均線糾結</p>
@@ -238,40 +238,48 @@ export function TrendScreenPage() {
             {/* 統計 */}
             {queryKey > 0 && (
                 <div className="grid gap-4 md:grid-cols-3 mb-6">
-                    <Card>
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium text-muted-foreground">掃描範圍</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-lg font-semibold">
-                                {loading ? <span className="animate-pulse">掃描中...</span> : `全市場 ${totalChecked} 檔`}
-                            </div>
-                        </CardContent>
-                    </Card>
-                    <Card className="border-l-4 border-amber-500">
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium text-amber-400">符合條件</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold text-amber-400">
-                                {loading ? <span className="animate-pulse">—</span> : `${matchCount} 檔`}
-                            </div>
-                        </CardContent>
-                    </Card>
-                    <Card>
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium text-muted-foreground">排序方式</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-sm">量比（成交量/均量）由高到低</div>
-                        </CardContent>
-                    </Card>
+                    {[
+                        { delay: '0ms', content: (
+                            <Card className="animate-fade-in-up" style={{ animationDelay: '0ms' }}>
+                                <CardHeader className="pb-2">
+                                    <CardTitle className="text-sm font-medium text-muted-foreground">掃描範圍</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="text-lg font-semibold">
+                                        {loading ? <span className="animate-pulse">掃描中...</span> : `全市場 ${totalChecked} 檔`}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        )},
+                        { delay: '80ms', content: (
+                            <Card className="border-l-4 border-amber-500 animate-fade-in-up" style={{ animationDelay: '80ms' }}>
+                                <CardHeader className="pb-2">
+                                    <CardTitle className="text-sm font-medium text-amber-400">符合條件</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="text-2xl font-bold text-amber-400">
+                                        {loading ? <span className="animate-pulse">—</span> : `${matchCount} 檔`}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        )},
+                        { delay: '160ms', content: (
+                            <Card className="animate-fade-in-up" style={{ animationDelay: '160ms' }}>
+                                <CardHeader className="pb-2">
+                                    <CardTitle className="text-sm font-medium text-muted-foreground">排序方式</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="text-sm">量比（成交量/均量）由高到低</div>
+                                </CardContent>
+                            </Card>
+                        )},
+                    ].map((item, i) => <div key={i}>{item.content}</div>)}
                 </div>
             )}
 
             {/* 結果表格 */}
             {queryKey > 0 && (
-                <Card>
+                <Card className="animate-fade-in-up" style={{ animationDelay: '200ms' }}>
                     <CardHeader className="pb-2">
                         <CardTitle className="text-lg flex items-center justify-between">
                             <span className="flex items-center gap-2 text-amber-400">
@@ -285,11 +293,18 @@ export function TrendScreenPage() {
                     <CardContent className="p-0">
                         {loading ? (
                             <div className="py-20 text-center text-muted-foreground">
-                                <Activity className="w-8 h-8 mx-auto mb-3 animate-spin text-amber-400" />
+                                <div className="relative w-16 h-16 mx-auto mb-4">
+                                    <Activity className="w-8 h-8 absolute inset-0 m-auto animate-spin text-amber-400" />
+                                    <div className="absolute inset-0 rounded-full border-2 border-amber-400/20" />
+                                    <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-amber-400 animate-spin" style={{ animationDuration: '1.5s' }} />
+                                </div>
                                 <p className="animate-pulse">掃描全市場中，首次約需 2-3 分鐘...</p>
+                                <div className="mt-4 mx-auto max-w-xs h-1 rounded-full bg-muted overflow-hidden">
+                                    <div className="h-full w-1/3 rounded-full bg-gradient-to-r from-amber-500/0 via-amber-400 to-amber-500/0 animate-scan-line" />
+                                </div>
                             </div>
                         ) : stocks.length === 0 ? (
-                            <div className="py-20 text-center text-muted-foreground">
+                            <div className="py-20 text-center text-muted-foreground animate-fade-in">
                                 無符合所有條件的股票
                             </div>
                         ) : (
@@ -315,8 +330,12 @@ export function TrendScreenPage() {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y">
-                                        {stocks.map((stock) => (
-                                            <tr key={stock.symbol} className="hover:bg-muted/30 cursor-pointer">
+                                        {stocks.map((stock, idx) => (
+                                            <tr
+                                                key={stock.symbol}
+                                                className="hover:bg-muted/30 cursor-pointer transition-colors duration-150 animate-fade-in-up"
+                                                style={{ animationDelay: `${Math.min(idx * 30, 600)}ms` }}
+                                            >
                                                 <td className="px-3 py-3 font-mono">{stock.symbol}</td>
                                                 <td className="px-3 py-3 flex items-center gap-1">
                                                     {stock.name}
@@ -329,7 +348,7 @@ export function TrendScreenPage() {
                                                     {formatPercent(stock.change_percent)}
                                                 </td>
                                                 <td className="px-3 py-3 font-mono">
-                                                    <span className={`px-2 py-0.5 rounded text-xs ${(stock.volume_ratio || 0) >= 2 ? 'bg-amber-500/10 text-amber-400' : 'text-sky-400'}`}>
+                                                    <span className={`px-2 py-0.5 rounded text-xs transition-colors ${(stock.volume_ratio || 0) >= 2 ? 'bg-amber-500/10 text-amber-400' : 'text-sky-400'}`}>
                                                         {stock.volume_ratio?.toFixed(1)}x
                                                     </span>
                                                 </td>
@@ -354,7 +373,7 @@ export function TrendScreenPage() {
                                                         variant="ghost"
                                                         size="sm"
                                                         onClick={() => openChartDialog(stock.symbol, stock.name)}
-                                                        className="h-8 w-8 p-0"
+                                                        className="h-8 w-8 p-0 hover:text-amber-400 transition-colors"
                                                         title="查看K線圖"
                                                     >
                                                         <LineChart className="h-4 w-4" />
@@ -372,9 +391,9 @@ export function TrendScreenPage() {
 
             {/* 未開始掃描 */}
             {queryKey === 0 && (
-                <Card>
+                <Card className="animate-fade-in-up" style={{ animationDelay: '150ms' }}>
                     <CardContent className="py-20 text-center text-muted-foreground">
-                        <Target className="w-12 h-12 mx-auto mb-4 text-amber-400/50" />
+                        <Target className="w-12 h-12 mx-auto mb-4 text-amber-400/50 animate-float" />
                         <p className="text-lg font-medium mb-2">點擊「開始掃描」進行全市場趨勢選股</p>
                         <p className="text-sm">將掃描所有上市股票，首次約需 2-3 分鐘</p>
                     </CardContent>
