@@ -1266,7 +1266,7 @@ class HighTurnoverAnalyzer:
         result = result.sort_values("date", ascending=False).reset_index(drop=True)
         return result
 
-    async def get_trend_alignment_screen(self, mode: str = "convergence", date_start: str = None, date_end: str = None, change_min: float = None, change_max: float = None) -> Dict[str, Any]:
+    async def get_trend_alignment_screen(self, mode: str = "convergence", date_start: str = None, date_end: str = None, change_min: float = None, change_max: float = None, ma20_pct: float = 6.0) -> Dict[str, Any]:
         """
         趨勢選股 — 兩種模式二選一
         mode="convergence": 均線糾結條件（大盤 + MA糾結）
@@ -1415,8 +1415,8 @@ class HighTurnoverAnalyzer:
                         # MA5 >= MA10 >= MA20 多頭排列
                         if not (ma5 >= ma10 >= ma20):
                             continue
-                        # 價格貼近MA20（收盤不超過MA20的6%）
-                        if cl > ma20 * 1.06:
+                        # 價格貼近MA20（收盤不超過MA20的N%）
+                        if cl > ma20 * (1 + ma20_pct / 100):
                             continue
                         # 糾結度：(Max-Min)/Min <= 3%
                         ma_max = max(ma5, ma10, ma20)

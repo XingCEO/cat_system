@@ -44,6 +44,7 @@ export function TrendScreenPage() {
     const [dateEnd, setDateEnd] = useState('');
     const [changeMin, setChangeMin] = useState('');
     const [changeMax, setChangeMax] = useState('');
+    const [ma20Pct, setMa20Pct] = useState('6');
 
     const params = {
         mode,
@@ -51,6 +52,7 @@ export function TrendScreenPage() {
         ...(dateEnd ? { date_end: dateEnd } : {}),
         ...(changeMin ? { change_min: parseFloat(changeMin) } : {}),
         ...(changeMax ? { change_max: parseFloat(changeMax) } : {}),
+        ...(ma20Pct ? { ma20_pct: parseFloat(ma20Pct) } : {}),
     };
 
     const { data, isLoading, isFetching } = useQuery({
@@ -176,10 +178,25 @@ export function TrendScreenPage() {
                                 placeholder="例：10"
                             />
                         </div>
+                        {mode === 'convergence' && (
+                            <div className="flex flex-col gap-1.5">
+                                <label htmlFor="trend-ma20-pct" className="text-xs font-medium text-muted-foreground">貼近 MA20 (%)</label>
+                                <input
+                                    id="trend-ma20-pct"
+                                    type="number"
+                                    step="0.5"
+                                    min="0"
+                                    value={ma20Pct}
+                                    onChange={(e) => setMa20Pct(e.target.value)}
+                                    className="h-9 w-28 px-3 rounded-md border border-input bg-background text-sm"
+                                    placeholder="6"
+                                />
+                            </div>
+                        )}
                         <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => { setDateStart(''); setDateEnd(''); setChangeMin(''); setChangeMax(''); }}
+                            onClick={() => { setDateStart(''); setDateEnd(''); setChangeMin(''); setChangeMax(''); setMa20Pct('6'); }}
                             className="h-9"
                         >
                             清除
@@ -197,7 +214,7 @@ export function TrendScreenPage() {
                                 <p className="text-xs text-emerald-400/70 mb-1">▸ 均線糾結</p>
                                 <ul className="space-y-1 text-muted-foreground">
                                     <li>• MA5 ≥ MA10 ≥ MA20 多頭排列</li>
-                                    <li>• 價格貼近 MA20（≤ 6%）</li>
+                                    <li>• 價格貼近 MA20（≤ {ma20Pct || '6'}%）</li>
                                     <li>• 糾結度：(Max-Min)/Min ≤ 3%</li>
                                     <li>• 收盤價在糾結均線 3% 以內</li>
                                 </ul>

@@ -294,7 +294,7 @@ export async function getComboFilter(
 }
 
 // 趨勢選股（二選一模式：convergence=均線糾結 / individual=個股篩選）
-export async function getTrendScreen(params?: { mode?: string; date_start?: string; date_end?: string; change_min?: number; change_max?: number }): Promise<any> {
+export async function getTrendScreen(params?: { mode?: string; date_start?: string; date_end?: string; change_min?: number; change_max?: number; ma20_pct?: number }): Promise<any> {
     const { data } = await api.get<any>('/turnover/trend-screen', { params });
     return data;
 }
