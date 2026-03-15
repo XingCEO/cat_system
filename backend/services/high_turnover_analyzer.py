@@ -1266,7 +1266,7 @@ class HighTurnoverAnalyzer:
         result = result.sort_values("date", ascending=False).reset_index(drop=True)
         return result
 
-    async def get_trend_alignment_screen(self, mode: str = "convergence", date_start: str = None, date_end: str = None, change_min: float = None, change_max: float = None, ma20_pct: float = 6.0) -> Dict[str, Any]:
+    async def get_trend_alignment_screen(self, mode: str = "convergence", date_start: str = None, date_end: str = None, change_min: float = None, change_max: float = None, ma20_pct: float = 6.0, ma60_pct: float = 6.0, convergence_pct: float = 3.0) -> Dict[str, Any]:
         """
         趨勢選股 — 兩種模式二選一
         mode="convergence": 均線糾結條件（大盤 + MA糾結）
@@ -1428,20 +1428,25 @@ class HighTurnoverAnalyzer:
                         ma_avg = (ma5 + ma10 + ma20) / 3
                         if ma_avg > 0 and abs(cl - ma_avg) / ma_avg > 0.03:
                             continue
-                    else:
+                    elif mode == "individual":
                         # 個股篩選條件
                         convergence = 0
                         # 日線：收盤>=MA20, MA20>=MA60
                         if cl < ma20 or ma20 < ma60:
                             continue
-                        # 成交量 >= 1.5 倍昨日成交量
-                        if offset + 1 >= len(vols):
+                    else:
+                        # convergence1: 均線糾結1
+                        # MA5 >= MA10 >= MA20 多頭排列
+                        if not (ma5 >= ma10 >= ma20):
                             continue
-                        yesterday_vol = vols[offset + 1]
-                        if not yesterday_vol or yesterday_vol <= 0 or vol < yesterday_vol * 1.5:
+                        # 價格貼近 MA60（≤ ma60_pct%）
+                        if ma60 <= 0 or abs(cl - ma60) / ma60 > ma60_pct / 100:
                             continue
-                        # 收盤價 >= 前20日收盤價
-                        if offset + 20 < len(closes) and closes[offset + 20] and cl < closes[offset + 20]:
+                        # 糾結度：(Max-Min)/Min <= convergence_pct%
+                        ma_max = max(ma5, ma10, ma20)
+                        ma_min = min(ma5, ma10, ma20)
+                        convergence = (ma_max - ma_min) / ma_min if ma_min > 0 else 999
+                        if convergence > convergence_pct / 100:
                             continue
 
                     # 週線條件：週最低價 >= 週MA20

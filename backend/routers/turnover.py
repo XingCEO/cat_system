@@ -488,15 +488,20 @@ async def get_trend_screen(
     change_min: float = None,
     change_max: float = None,
     ma20_pct: float = 6.0,
+    ma60_pct: float = 6.0,
+    convergence_pct: float = 3.0,
 ):
     """
-    趨勢選股：兩種模式二選一
-    mode=convergence: 均線糾結條件（大盤+糾結）
-    mode=individual:  個股篩選條件（大盤+量/週線/趨勢）
+    趨勢選股：三種模式
+    mode=convergence:  均線糾結條件（大盤+糾結）
+    mode=individual:   個股篩選條件（大盤+週線/趨勢）
+    mode=convergence1: 均線糾結1（多頭排列+貼近MA60+糾結度）
     ma20_pct: 價格貼近MA20的百分比上限（預設6%）
+    ma60_pct: 價格貼近MA60的百分比上限（預設6%）
+    convergence_pct: 糾結度上限（預設3%）
     """
-    if mode not in ("convergence", "individual"):
-        raise HTTPException(status_code=400, detail="mode 必須為 convergence 或 individual")
+    if mode not in ("convergence", "individual", "convergence1"):
+        raise HTTPException(status_code=400, detail="mode 必須為 convergence、individual 或 convergence1")
     from datetime import datetime as dt
     for d in [date_start, date_end]:
         if d:
@@ -507,7 +512,8 @@ async def get_trend_screen(
     result = await high_turnover_analyzer.get_trend_alignment_screen(
         mode=mode, date_start=date_start, date_end=date_end,
         change_min=change_min, change_max=change_max,
-        ma20_pct=ma20_pct,
+        ma20_pct=ma20_pct, ma60_pct=ma60_pct,
+        convergence_pct=convergence_pct,
     )
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "查詢失敗"))

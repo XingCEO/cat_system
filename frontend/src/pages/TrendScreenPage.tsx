@@ -39,12 +39,14 @@ export function TrendScreenPage() {
     const [queryKey, setQueryKey] = useState(0);
     const [selectedStock, setSelectedStock] = useState<{ symbol: string; name?: string } | null>(null);
     const [isChartDialogOpen, setIsChartDialogOpen] = useState(false);
-    const [mode, setMode] = useState<'convergence' | 'individual'>('convergence');
+    const [mode, setMode] = useState<'convergence' | 'individual' | 'convergence1'>('convergence');
     const [dateStart, setDateStart] = useState('');
     const [dateEnd, setDateEnd] = useState('');
     const [changeMin, setChangeMin] = useState('');
     const [changeMax, setChangeMax] = useState('');
     const [ma20Pct, setMa20Pct] = useState('6');
+    const [ma60Pct, setMa60Pct] = useState('6');
+    const [convergencePct, setConvergencePct] = useState('3');
 
     const params = {
         mode,
@@ -53,6 +55,8 @@ export function TrendScreenPage() {
         ...(changeMin ? { change_min: parseFloat(changeMin) } : {}),
         ...(changeMax ? { change_max: parseFloat(changeMax) } : {}),
         ...(ma20Pct ? { ma20_pct: parseFloat(ma20Pct) } : {}),
+        ...(ma60Pct ? { ma60_pct: parseFloat(ma60Pct) } : {}),
+        ...(convergencePct ? { convergence_pct: parseFloat(convergencePct) } : {}),
     };
 
     const { data, isLoading, isFetching } = useQuery({
@@ -122,7 +126,20 @@ export function TrendScreenPage() {
                     <p className="font-semibold flex items-center gap-1.5">
                         <Activity className="w-4 h-4" /> 個股篩選條件
                     </p>
-                    <p className="text-xs mt-1 opacity-70">量增突破 + 週線站穩 + 趨勢確認</p>
+                    <p className="text-xs mt-1 opacity-70">日線趨勢 + 週線站穩</p>
+                </button>
+                <button
+                    onClick={() => setMode('convergence1')}
+                    aria-label="均線糾結1篩選模式"
+                    className={`flex-1 px-4 py-3 rounded-lg border-2 text-left transition-all duration-200 cursor-pointer hover:scale-[1.01] active:scale-[0.99] ${mode === 'convergence1'
+                        ? 'border-violet-500 bg-violet-500/10 text-violet-400 shadow-sm shadow-violet-500/10'
+                        : 'border-muted hover:border-muted-foreground/30 text-muted-foreground'
+                    }`}
+                >
+                    <p className="font-semibold flex items-center gap-1.5">
+                        <TrendingUp className="w-4 h-4" /> 均線糾結1
+                    </p>
+                    <p className="text-xs mt-1 opacity-70">多頭排列 + 貼近MA60 + 糾結度</p>
                 </button>
             </div>
 
@@ -193,10 +210,40 @@ export function TrendScreenPage() {
                                 />
                             </div>
                         )}
+                        {mode === 'convergence1' && (
+                            <>
+                                <div className="flex flex-col gap-1.5 animate-scale-in">
+                                    <label htmlFor="trend-ma60-pct" className="text-xs font-medium text-muted-foreground">貼近 MA60 (%)</label>
+                                    <input
+                                        id="trend-ma60-pct"
+                                        type="number"
+                                        step="0.5"
+                                        min="0"
+                                        value={ma60Pct}
+                                        onChange={(e) => setMa60Pct(e.target.value)}
+                                        className="h-9 w-28 px-3 rounded-md border border-input bg-background text-sm transition-colors duration-150 focus:border-primary focus:ring-1 focus:ring-primary/30"
+                                        placeholder="6"
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-1.5 animate-scale-in">
+                                    <label htmlFor="trend-convergence-pct" className="text-xs font-medium text-muted-foreground">糾結度上限 (%)</label>
+                                    <input
+                                        id="trend-convergence-pct"
+                                        type="number"
+                                        step="0.5"
+                                        min="0"
+                                        value={convergencePct}
+                                        onChange={(e) => setConvergencePct(e.target.value)}
+                                        className="h-9 w-28 px-3 rounded-md border border-input bg-background text-sm transition-colors duration-150 focus:border-primary focus:ring-1 focus:ring-primary/30"
+                                        placeholder="3"
+                                    />
+                                </div>
+                            </>
+                        )}
                         <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => { setDateStart(''); setDateEnd(''); setChangeMin(''); setChangeMax(''); setMa20Pct('6'); }}
+                            onClick={() => { setDateStart(''); setDateEnd(''); setChangeMin(''); setChangeMax(''); setMa20Pct('6'); setMa60Pct('6'); setConvergencePct('3'); }}
                             className="h-9"
                         >
                             清除
@@ -206,7 +253,7 @@ export function TrendScreenPage() {
             </Card>
 
             {/* 篩選條件說明（依選擇模式顯示） */}
-            <Card className={`mb-6 border-l-4 transition-colors duration-300 ${mode === 'convergence' ? 'border-emerald-500' : 'border-sky-500'}`}>
+            <Card className={`mb-6 border-l-4 transition-colors duration-300 ${mode === 'convergence' ? 'border-emerald-500' : mode === 'convergence1' ? 'border-violet-500' : 'border-sky-500'}`}>
                 <CardContent className="pt-6">
                     <div className="text-sm animate-fade-in" key={mode}>
                         {mode === 'convergence' ? (
@@ -219,14 +266,21 @@ export function TrendScreenPage() {
                                     <li>• 收盤價在糾結均線 3% 以內</li>
                                 </ul>
                             </>
+                        ) : mode === 'convergence1' ? (
+                            <>
+                                <p className="text-xs text-violet-400/70 mb-1">▸ 均線糾結1</p>
+                                <ul className="space-y-1 text-muted-foreground">
+                                    <li>• MA5 ≥ MA10 ≥ MA20 多頭排列</li>
+                                    <li>• 價格貼近 MA60（≤ {ma60Pct || '6'}%）</li>
+                                    <li>• 糾結度：(Max-Min)/Min ≤ {convergencePct || '3'}%</li>
+                                </ul>
+                            </>
                         ) : (
                             <>
                                 <p className="text-xs text-sky-400/70 mb-1">▸ 個股篩選</p>
                                 <ul className="space-y-1 text-muted-foreground">
                                     <li>• 日線：收盤 ≥ MA20, MA20 ≥ MA60</li>
                                     <li>• 週線：週最低價 ≥ 週MA20</li>
-                                    <li>• 成交量 ≥ 1.5 倍昨日成交量</li>
-                                    <li>• 收盤價 ≥ 前20日收盤價</li>
                                 </ul>
                             </>
                         )}
