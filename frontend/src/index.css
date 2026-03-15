@@ -7,6 +7,7 @@
 
 @layer base {
   :root {
+    color-scheme: light;
     --background: 210 20% 98%;
     --foreground: 224 71% 4%;
     --card: 0 0% 100%;
@@ -32,6 +33,7 @@
   }
 
   .dark {
+    color-scheme: dark;
     --background: 224 71% 4%;
     --foreground: 210 20% 98%;
     --card: 223 47% 8%;
@@ -129,22 +131,10 @@
   margin: 10mm;
 }
 
-/* 日期選擇器樣式修復 - 確保在深色模式下可見 */
-input[type="date"]::-webkit-calendar-picker-indicator {
-  filter: invert(1);
-  cursor: pointer;
-}
-
-input[type="date"] {
-  color-scheme: dark;
-}
-
+/* 深色模式日期選擇器圖示修復 */
 .dark input[type="date"]::-webkit-calendar-picker-indicator {
   filter: invert(1);
-}
-
-.dark input[type="date"] {
-  color-scheme: dark;
+  cursor: pointer;
 }
 
 @media print {
