@@ -47,6 +47,10 @@ export function TrendScreenPage() {
     const [ma20Pct, setMa20Pct] = useState('6');
     const [ma60Pct, setMa60Pct] = useState('6');
     const [convergencePct, setConvergencePct] = useState('3');
+    const [volMin, setVolMin] = useState('50');
+    const [volMax, setVolMax] = useState('');
+    const [priceMin, setPriceMin] = useState('');
+    const [priceMax, setPriceMax] = useState('');
 
     const params = {
         mode,
@@ -57,6 +61,10 @@ export function TrendScreenPage() {
         ...(ma20Pct ? { ma20_pct: parseFloat(ma20Pct) } : {}),
         ...(ma60Pct ? { ma60_pct: parseFloat(ma60Pct) } : {}),
         ...(convergencePct ? { convergence_pct: parseFloat(convergencePct) } : {}),
+        ...(volMin ? { vol_min: parseFloat(volMin) } : {}),
+        ...(volMax ? { vol_max: parseFloat(volMax) } : {}),
+        ...(priceMin ? { price_min: parseFloat(priceMin) } : {}),
+        ...(priceMax ? { price_max: parseFloat(priceMax) } : {}),
     };
 
     const { data, isLoading, isFetching } = useQuery({
@@ -243,11 +251,61 @@ export function TrendScreenPage() {
                         <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => { setDateStart(''); setDateEnd(''); setChangeMin(''); setChangeMax(''); setMa20Pct('6'); setMa60Pct('6'); setConvergencePct('3'); }}
+                            onClick={() => { setDateStart(''); setDateEnd(''); setChangeMin(''); setChangeMax(''); setMa20Pct('6'); setMa60Pct('6'); setConvergencePct('3'); setVolMin('50'); setVolMax(''); setPriceMin(''); setPriceMax(''); }}
                             className="h-9"
                         >
                             清除
                         </Button>
+                    </div>
+                    <div className="flex flex-wrap items-end gap-4 mt-4 pt-4 border-t border-border/50">
+                        <div className="flex flex-col gap-1.5">
+                            <label className="text-xs font-medium text-amber-400/80">成交量區間 (張)</label>
+                            <div className="flex items-center gap-1.5">
+                                <input
+                                    type="number"
+                                    min="0"
+                                    value={volMin}
+                                    onChange={(e) => setVolMin(e.target.value)}
+                                    className="h-9 w-24 px-3 rounded-md border border-input bg-background text-sm transition-colors duration-150 focus:border-primary focus:ring-1 focus:ring-primary/30"
+                                    placeholder="預設 50"
+                                />
+                                <span className="text-muted-foreground text-sm">~</span>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    value={volMax}
+                                    onChange={(e) => setVolMax(e.target.value)}
+                                    className="h-9 w-24 px-3 rounded-md border border-input bg-background text-sm transition-colors duration-150 focus:border-primary focus:ring-1 focus:ring-primary/30"
+                                    placeholder="無上限"
+                                />
+                                <span className="text-muted-foreground text-sm">張</span>
+                            </div>
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                            <label className="text-xs font-medium text-amber-400/80">股價區間 (元)</label>
+                            <div className="flex items-center gap-1.5">
+                                <input
+                                    type="number"
+                                    min="0"
+                                    step="0.1"
+                                    value={priceMin}
+                                    onChange={(e) => setPriceMin(e.target.value)}
+                                    className="h-9 w-24 px-3 rounded-md border border-input bg-background text-sm transition-colors duration-150 focus:border-primary focus:ring-1 focus:ring-primary/30"
+                                    placeholder="不限"
+                                />
+                                <span className="text-muted-foreground text-sm">~</span>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    step="0.1"
+                                    value={priceMax}
+                                    onChange={(e) => setPriceMax(e.target.value)}
+                                    className="h-9 w-24 px-3 rounded-md border border-input bg-background text-sm transition-colors duration-150 focus:border-primary focus:ring-1 focus:ring-primary/30"
+                                    placeholder="不限"
+                                />
+                                <span className="text-muted-foreground text-sm">元</span>
+                            </div>
+                        </div>
                     </div>
                 </CardContent>
             </Card>

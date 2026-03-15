@@ -1266,7 +1266,7 @@ class HighTurnoverAnalyzer:
         result = result.sort_values("date", ascending=False).reset_index(drop=True)
         return result
 
-    async def get_trend_alignment_screen(self, mode: str = "convergence", date_start: str = None, date_end: str = None, change_min: float = None, change_max: float = None, ma20_pct: float = 6.0, ma60_pct: float = 6.0, convergence_pct: float = 3.0) -> Dict[str, Any]:
+    async def get_trend_alignment_screen(self, mode: str = "convergence", date_start: str = None, date_end: str = None, change_min: float = None, change_max: float = None, ma20_pct: float = 6.0, ma60_pct: float = 6.0, convergence_pct: float = 3.0, vol_min: float = None, vol_max: float = None, price_min: float = None, price_max: float = None) -> Dict[str, Any]:
         """
         趨勢選股 — 兩種模式二選一
         mode="convergence": 均線糾結條件（大盤 + MA糾結）
@@ -1448,6 +1448,18 @@ class HighTurnoverAnalyzer:
                         convergence = (ma_max - ma_min) / ma_min if ma_min > 0 else 999
                         if convergence > convergence_pct / 100:
                             continue
+
+                    # 成交量區間過濾（張 = vol / 1000）
+                    vol_in_lots = vol / 1000
+                    if vol_min is not None and vol_in_lots < vol_min:
+                        continue
+                    if vol_max is not None and vol_in_lots > vol_max:
+                        continue
+                    # 股價區間過濾
+                    if price_min is not None and cl < price_min:
+                        continue
+                    if price_max is not None and cl > price_max:
+                        continue
 
                     # 週線條件：週最低價 >= 週MA20
                     hist_from_offset = hist.iloc[offset:].reset_index(drop=True)
