@@ -936,12 +936,13 @@ class HighTurnoverAnalyzer:
         date: Optional[str] = None,
         min_change: Optional[float] = None,
         max_change: Optional[float] = None,
-        direction: str = "breakout"
+        direction: str = "breakout",
+        ma_threshold: float = 3.0,
     ) -> Dict[str, Any]:
         """
         糾結均線突破/跌破篩選（全市場）
 
-        糾結均線定義：昨日 5/10/20 日均線範圍在 3% 以內（糾結）
+        糾結均線定義：昨日 5/10/20 日均線範圍在 ma_threshold% 以內（糾結）
         突破 (breakout)：今日收盤價 > 所有今日均線
         跌破 (breakdown)：今日收盤價 < 所有今日均線
 
@@ -1012,14 +1013,14 @@ class HighTurnoverAnalyzer:
                     yesterday_ma10 = sum(yesterday_closes[:10]) / 10
                     yesterday_ma20 = sum(yesterday_closes[:20]) / 20
 
-                    # 判斷昨日均線糾結（範圍 ≤ 3%）
+                    # 判斷昨日均線糾結（範圍 ≤ ma_threshold%）
                     ma_values = [yesterday_ma5, yesterday_ma10, yesterday_ma20]
                     ma_avg = sum(ma_values) / 3
                     if ma_avg <= 0:
                         return None
 
                     ma_range = (max(ma_values) - min(ma_values)) / ma_avg * 100
-                    if ma_range > 3.0:
+                    if ma_range > ma_threshold:
                         return None
 
                     # 判斷突破或跌破
@@ -2028,11 +2029,13 @@ class HighTurnoverAnalyzer:
         end_date: Optional[str] = None,
         min_change: Optional[float] = None,
         max_change: Optional[float] = None,
-        direction: str = "breakout"
+        direction: str = "breakout",
+        ma_threshold: float = 3.0,
     ) -> Dict[str, Any]:
         """
         糾結均線突破/跌破（支援日期區間和漲幅區間）
         direction: "breakout" (突破) 或 "breakdown" (跌破)
+        ma_threshold: 糾結均線範圍上限百分比，預設 3.0
 
         效能優化：每檔股票只獲取一次 Yahoo 歷史資料，
         然後掃描所有目標日期，避免 O(days × stocks) 的 API 呼叫。
@@ -2054,7 +2057,7 @@ class HighTurnoverAnalyzer:
 
         # 單日查詢保持原有邏輯
         if len(dates) == 1:
-            result = await self.get_ma_breakout(dates[0], min_change, max_change, direction)
+            result = await self.get_ma_breakout(dates[0], min_change, max_change, direction, ma_threshold)
             items = []
             if result.get("success"):
                 for item in result.get("items", []):
@@ -2179,14 +2182,14 @@ class HighTurnoverAnalyzer:
                     yesterday_ma10 = sum(yesterday_closes[:10]) / 10
                     yesterday_ma20 = sum(yesterday_closes[:20]) / 20
 
-                    # 昨日均線糾結（範圍 ≤ 3%）
+                    # 昨日均線糾結（範圍 ≤ ma_threshold%）
                     ma_values = [yesterday_ma5, yesterday_ma10, yesterday_ma20]
                     ma_avg = sum(ma_values) / 3
                     if ma_avg <= 0:
                         continue
 
                     ma_range = (max(ma_values) - min(ma_values)) / ma_avg * 100
-                    if ma_range > 3.0:
+                    if ma_range > ma_threshold:
                         continue
 
                     # 突破/跌破判斷

@@ -36,6 +36,7 @@ export function MaBreakoutPage() {
     const [minChange, setMinChange] = useState<string>('');
     const [maxChange, setMaxChange] = useState<string>('');
     const [direction, setDirection] = useState<'breakout' | 'breakdown'>('breakout');
+    const [maThreshold, setMaThreshold] = useState<string>('3');
     const [selectedStock, setSelectedStock] = useState<{ symbol: string; name?: string } | null>(null);
     const [isChartDialogOpen, setIsChartDialogOpen] = useState(false);
     // 追蹤上次自動設定的日期，用來判斷是否被用戶手動修改過
@@ -74,8 +75,8 @@ export function MaBreakoutPage() {
 
     // 突破/跌破糾結均線（支援日期區間、漲幅區間、方向）
     const { data: breakoutData, isLoading } = useQuery({
-        queryKey: ['maBreakoutPage', startDate, endDate, minChange, maxChange, direction, queryKey],
-        queryFn: () => getMaBreakout(startDate, endDate, minChange ? parseFloat(minChange) : undefined, maxChange ? parseFloat(maxChange) : undefined, direction),
+        queryKey: ['maBreakoutPage', startDate, endDate, minChange, maxChange, direction, maThreshold, queryKey],
+        queryFn: () => getMaBreakout(startDate, endDate, minChange ? parseFloat(minChange) : undefined, maxChange ? parseFloat(maxChange) : undefined, direction, maThreshold ? parseFloat(maThreshold) : undefined),
         enabled: !!startDate && !!endDate,
     });
 
@@ -114,7 +115,7 @@ export function MaBreakoutPage() {
                         糾結均線篩選
                     </h1>
                     <p className="text-sm text-muted-foreground">
-                        5/10/20日均線在3%範圍內糾結，今日收盤突破或跌破（全市場）
+                        5/10/20日均線在指定範圍內糾結，今日收盤突破或跌破（全市場）
                     </p>
                 </div>
             </div>
@@ -196,6 +197,20 @@ export function MaBreakoutPage() {
                             />
                         </div>
 
+                        <div className="space-y-2">
+                            <Label>糾結範圍 (%)</Label>
+                            <Input
+                                type="number"
+                                step="0.5"
+                                min="0.5"
+                                max="20"
+                                value={maThreshold}
+                                onChange={(e) => setMaThreshold(e.target.value)}
+                                className="w-28"
+                                placeholder="3"
+                            />
+                        </div>
+
                         <Button onClick={handleSearch} className="gap-1">
                             <Search className="w-4 h-4" /> 查詢
                         </Button>
@@ -208,7 +223,7 @@ export function MaBreakoutPage() {
                             <div>
                                 <p className="font-medium text-foreground">糾結均線{direction === 'breakout' ? '突破' : '跌破'}條件：</p>
                                 <ul className="list-disc list-inside mt-1 space-y-0.5">
-                                    <li>昨日 5/10/20 日均線範圍在 3% 以內（糾結）</li>
+                                    <li>昨日 5/10/20 日均線範圍在 {maThreshold || '3'}% 以內（糾結）</li>
                                     <li>今日收盤價{direction === 'breakout' ? '突破所有均線' : '跌破所有均線'}</li>
                                     <li>無周轉率排名限制，搜尋全市場</li>
                                 </ul>

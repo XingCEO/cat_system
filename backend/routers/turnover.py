@@ -374,11 +374,12 @@ async def get_ma_breakout(
     min_change: Optional[float] = Query(None, description="最低漲幅(%)"),
     max_change: Optional[float] = Query(None, description="最高漲幅(%)"),
     direction: str = Query("breakout", description="方向: breakout(突破) / breakdown(跌破)"),
+    ma_threshold: float = Query(3.0, description="糾結均線範圍上限(%)，預設3%"),
 ):
     """
     糾結均線突破/跌破篩選（全市場，無周轉率限制）
 
-    糾結均線定義：昨日 5/10/20 日均線在 3% 範圍內糾結
+    糾結均線定義：昨日 5/10/20 日均線在指定百分比範圍內糾結
     突破：今日收盤價突破所有均線
     跌破：今日收盤價跌破所有均線
     """
@@ -387,7 +388,8 @@ async def get_ma_breakout(
         end_date=end_date,
         min_change=min_change,
         max_change=max_change,
-        direction=direction
+        direction=direction,
+        ma_threshold=ma_threshold,
     )
 
     if not result.get("success"):
