@@ -502,11 +502,12 @@ async def get_trend_screen(
     mode=convergence:  均線糾結條件（大盤+糾結）
     mode=individual:   個股篩選條件（大盤+週線/趨勢）
     mode=convergence1: 均線糾結1（多頭排列+貼近MA60+糾結度）
+    mode=convergence2: 均線糾結2（多頭排列+貼近MA20+糾結度）
     vol_min/vol_max: 成交量區間（張）
     price_min/price_max: 股價區間（元）
     """
-    if mode not in ("convergence", "individual", "convergence1"):
-        raise HTTPException(status_code=400, detail="mode 必須為 convergence、individual 或 convergence1")
+    if mode not in ("convergence", "individual", "convergence1", "convergence2"):
+        raise HTTPException(status_code=400, detail="mode 必須為 convergence、individual、convergence1 或 convergence2")
     from datetime import datetime as dt
     for d in [date_start, date_end]:
         if d:

@@ -39,7 +39,7 @@ export function TrendScreenPage() {
     const [queryKey, setQueryKey] = useState(0);
     const [selectedStock, setSelectedStock] = useState<{ symbol: string; name?: string } | null>(null);
     const [isChartDialogOpen, setIsChartDialogOpen] = useState(false);
-    const [mode, setMode] = useState<'convergence' | 'individual' | 'convergence1'>('convergence');
+    const [mode, setMode] = useState<'convergence' | 'individual' | 'convergence1' | 'convergence2'>('convergence');
     const [dateStart, setDateStart] = useState('');
     const [dateEnd, setDateEnd] = useState('');
     const [changeMin, setChangeMin] = useState('');
@@ -149,6 +149,19 @@ export function TrendScreenPage() {
                     </p>
                     <p className="text-xs mt-1 opacity-70">多頭排列 + 貼近MA60 + 糾結度</p>
                 </button>
+                <button
+                    onClick={() => setMode('convergence2')}
+                    aria-label="均線糾結2篩選模式"
+                    className={`flex-1 px-4 py-3 rounded-lg border-2 text-left transition-all duration-200 cursor-pointer hover:scale-[1.01] active:scale-[0.99] ${mode === 'convergence2'
+                        ? 'border-amber-500 bg-amber-500/10 text-amber-400 shadow-sm shadow-amber-500/10'
+                        : 'border-muted hover:border-muted-foreground/30 text-muted-foreground'
+                    }`}
+                >
+                    <p className="font-semibold flex items-center gap-1.5">
+                        <TrendingUp className="w-4 h-4" /> 均線糾結2
+                    </p>
+                    <p className="text-xs mt-1 opacity-70">多頭排列 + 貼近MA20 + 糾結度</p>
+                </button>
             </div>
 
             {/* 參數輸入 */}
@@ -217,6 +230,36 @@ export function TrendScreenPage() {
                                     placeholder="6"
                                 />
                             </div>
+                        )}
+                        {mode === 'convergence2' && (
+                            <>
+                                <div className="flex flex-col gap-1.5 animate-scale-in">
+                                    <label htmlFor="trend-ma20-pct-c2" className="text-xs font-medium text-muted-foreground">貼近 MA20 (%)</label>
+                                    <input
+                                        id="trend-ma20-pct-c2"
+                                        type="number"
+                                        step="0.5"
+                                        min="0"
+                                        value={ma20Pct}
+                                        onChange={(e) => setMa20Pct(e.target.value)}
+                                        className="h-9 w-28 px-3 rounded-md border border-input bg-background text-sm transition-colors duration-150 focus:border-primary focus:ring-1 focus:ring-primary/30"
+                                        placeholder="6"
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-1.5 animate-scale-in">
+                                    <label htmlFor="trend-convergence-pct-c2" className="text-xs font-medium text-muted-foreground">糾結度上限 (%)</label>
+                                    <input
+                                        id="trend-convergence-pct-c2"
+                                        type="number"
+                                        step="0.5"
+                                        min="0"
+                                        value={convergencePct}
+                                        onChange={(e) => setConvergencePct(e.target.value)}
+                                        className="h-9 w-28 px-3 rounded-md border border-input bg-background text-sm transition-colors duration-150 focus:border-primary focus:ring-1 focus:ring-primary/30"
+                                        placeholder="3"
+                                    />
+                                </div>
+                            </>
                         )}
                         {mode === 'convergence1' && (
                             <>
@@ -311,7 +354,7 @@ export function TrendScreenPage() {
             </Card>
 
             {/* 篩選條件說明（依選擇模式顯示） */}
-            <Card className={`mb-6 border-l-4 transition-colors duration-300 ${mode === 'convergence' ? 'border-emerald-500' : mode === 'convergence1' ? 'border-violet-500' : 'border-sky-500'}`}>
+            <Card className={`mb-6 border-l-4 transition-colors duration-300 ${mode === 'convergence' ? 'border-emerald-500' : mode === 'convergence1' ? 'border-violet-500' : mode === 'convergence2' ? 'border-amber-500' : 'border-sky-500'}`}>
                 <CardContent className="pt-6">
                     <div className="text-sm animate-fade-in" key={mode}>
                         {mode === 'convergence' ? (
@@ -330,6 +373,15 @@ export function TrendScreenPage() {
                                 <ul className="space-y-1 text-muted-foreground">
                                     <li>• MA5 ≥ MA10 ≥ MA20 多頭排列</li>
                                     <li>• 價格貼近 MA60（≤ {ma60Pct || '6'}%）</li>
+                                    <li>• 糾結度：(Max-Min)/Min ≤ {convergencePct || '3'}%</li>
+                                </ul>
+                            </>
+                        ) : mode === 'convergence2' ? (
+                            <>
+                                <p className="text-xs text-amber-400/70 mb-1">▸ 均線糾結2</p>
+                                <ul className="space-y-1 text-muted-foreground">
+                                    <li>• MA5 ≥ MA10 ≥ MA20 多頭排列</li>
+                                    <li>• 價格貼近 MA20（≤ {ma20Pct || '6'}%）</li>
                                     <li>• 糾結度：(Max-Min)/Min ≤ {convergencePct || '3'}%</li>
                                 </ul>
                             </>

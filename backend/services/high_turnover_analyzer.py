@@ -1440,13 +1440,27 @@ class HighTurnoverAnalyzer:
                         # 日線：收盤>=MA20, MA20>=MA60
                         if cl < ma20 or ma20 < ma60:
                             continue
-                    else:
+                    elif mode == "convergence1":
                         # convergence1: 均線糾結1
                         # MA5 >= MA10 >= MA20 多頭排列
                         if not (ma5 >= ma10 >= ma20):
                             continue
                         # 價格貼近 MA60（≤ ma60_pct%）
                         if ma60 <= 0 or abs(cl - ma60) / ma60 > ma60_pct / 100:
+                            continue
+                        # 糾結度：(Max-Min)/Min <= convergence_pct%
+                        ma_max = max(ma5, ma10, ma20)
+                        ma_min = min(ma5, ma10, ma20)
+                        convergence = (ma_max - ma_min) / ma_min if ma_min > 0 else 999
+                        if convergence > convergence_pct / 100:
+                            continue
+                    else:
+                        # convergence2: 均線糾結2
+                        # MA5 >= MA10 >= MA20 多頭排列
+                        if not (ma5 >= ma10 >= ma20):
+                            continue
+                        # 價格貼近 MA20（≤ ma20_pct%）
+                        if ma20 <= 0 or cl > ma20 * (1 + ma20_pct / 100):
                             continue
                         # 糾結度：(Max-Min)/Min <= convergence_pct%
                         ma_max = max(ma5, ma10, ma20)
