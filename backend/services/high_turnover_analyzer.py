@@ -989,7 +989,6 @@ class HighTurnoverAnalyzer:
 
         async def process_stock(stock):
             symbol = stock["symbol"]
-            current_close = stock.get("close_price", 0) or 0
 
             async with semaphore:
                 try:
@@ -1000,6 +999,11 @@ class HighTurnoverAnalyzer:
 
                     closes = history_df["close"].tolist()[:25]
                     if len(closes) < 21:
+                        return None
+
+                    # 使用 Yahoo 最新收盤價（TWSE 可能回傳非當日資料）
+                    current_close = closes[0]
+                    if current_close is None or current_close <= 0:
                         return None
 
                     # 計算今日均線
@@ -1035,6 +1039,7 @@ class HighTurnoverAnalyzer:
 
                     # 符合條件，建立結果（複製 dict 避免並發修改）
                     matched = dict(stock)
+                    matched["close_price"] = round(current_close, 2)
                     matched["ma5"] = round(ma5, 2)
                     matched["ma10"] = round(ma10, 2)
                     matched["ma20"] = round(ma20, 2)

@@ -34,12 +34,25 @@ cd backend && python -m pytest tests/test_operators.py::TestCrossUp::test_basic_
 # Frontend type check
 cd frontend && npx tsc --noEmit
 
+# Frontend lint
+cd frontend && npx eslint . --ext ts,tsx
+
 # Build frontend
 cd frontend && npm run build
 
 # Docker build + run
 docker build -t cat-system . && docker run -p 8000:8000 cat-system
+
+# Docker Compose (PostgreSQL + Redis)
+docker-compose up -d
 ```
+
+## Environment Variables
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `FINMIND_API_TOKEN` | FinMind API Token (optional) | — |
+| `DATABASE_URL` | Database connection string | `sqlite+aiosqlite:///./twse_filter.db` |
+| `CORS_ORIGINS` | Allowed CORS origins | `http://localhost:5173,http://localhost:3000` |
 
 ## Architecture
 
@@ -91,9 +104,10 @@ On startup, two background tasks via `asyncio.create_task`:
 - `data_sync.py` — `_backfill_indicators()` fills missing MA/RSI history by falling back to Legacy `data_fetcher` when v1 DB has < N days
 
 ### Frontend
-- State: Zustand store at `frontend/src/stores/store.ts` (directory is `stores/`, not `store/`)
-- API client: `frontend/src/services/api.ts` (Axios)
-- Pages: `ScreenPage`, `ChartProPage`, `StrategiesPage`, `HighTurnoverPage`, `TurnoverFiltersPage`, etc.
+- State: Zustand stores at `frontend/src/stores/` (directory is `stores/`, not `store/`): `store.ts` (main app state), `chartStore.ts` (chart state), `strategyStore.ts` (strategy state)
+- API clients: `frontend/src/services/api.ts` (Legacy Axios client), `frontend/src/services/v1Api.ts` (v1 API client)
+- Pages: `TrendScreenPage`, `HighTurnoverPage`, `Top20TurnoverLimitUpPage`, `TurnoverFiltersPage`, `MaBreakoutPage`, `StrategiesPage`, `HomePage`
+- Charts: dual implementations — Recharts (`KLineChart`, `RSIChart`, etc.) and lightweight-charts (`LightweightKLineChart`, etc.) in `frontend/src/components/charts/`
 
 ## Deployment
 - **Zeabur**: `zeabur.toml` → root `Dockerfile` (multi-stage: build frontend → copy to static → uvicorn)
