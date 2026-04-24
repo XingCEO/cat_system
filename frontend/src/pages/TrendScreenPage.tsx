@@ -537,7 +537,7 @@ export function TrendScreenPage() {
                                                     <Button
                                                         variant="ghost"
                                                         size="sm"
-                                                        onClick={() => openChartDialog(stock.symbol, stock.name)}
+                                                        onClick={(e) => { e.stopPropagation(); openChartDialog(stock.symbol, stock.name); }}
                                                         className="h-8 w-8 p-0 hover:text-amber-400 transition-colors"
                                                         title="查看K線圖"
                                                     >

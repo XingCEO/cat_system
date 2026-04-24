@@ -64,7 +64,7 @@ const DEFAULT_YEARS = 5;
 export function StockAnalysisDialog({ open, onClose, symbol, name }: StockAnalysisDialogProps) {
     const [period, setPeriod] = useState<Period>('day');
     const [forceRefresh, setForceRefresh] = useState(false);
-    const [chartSize] = useState<ChartSize>('xlarge');
+    const chartSize: ChartSize = 'xlarge';
     const [retryCount, setRetryCount] = useState(0);
     // Crosshair 即時數據
     const [crosshairData, setCrosshairData] = useState<CrosshairData | null>(null);
@@ -109,14 +109,12 @@ export function StockAnalysisDialog({ open, onClose, symbol, name }: StockAnalys
     const { data, isLoading, error, refetch, isFetching } = useQuery<KLineResponse>({
         queryKey: ['kline-5year', symbol, period, forceRefresh, retryCount],
         queryFn: async () => {
-            const result = await getKLineData({
+            return await getKLineData({
                 symbol: symbol!,
                 period,
                 years: DEFAULT_YEARS,
                 forceRefresh,
             });
-            if (forceRefresh) setForceRefresh(false);
-            return result;
         },
         enabled: open && !!symbol,
         staleTime: forceRefresh ? 0 : 10 * 60 * 1000,
@@ -302,7 +300,7 @@ export function StockAnalysisDialog({ open, onClose, symbol, name }: StockAnalys
                                     ${safeIndustry ? `<span class="tag ti">${safeIndustry}</span>` : ''}
                                     <span class="tag tp">${safePeriodLabel}</span>
                                 </div>
-                                <div class="dt">${printData?.date || '-'}</div>
+                                <div class="dt">${escapeHtml(printData?.date || '-')}</div>
                             </div>
                             <div class="info">
                                 <div class="ic">
@@ -344,7 +342,7 @@ export function StockAnalysisDialog({ open, onClose, symbol, name }: StockAnalys
                             </div>
                             <div class="ft">
                                 <span>TWSE / FinMind</span>
-                                <span>${dataRange?.first_date || '-'} ~ ${dataRange?.last_date || '-'} (${dataCount} 筆)</span>
+                                <span>${escapeHtml(dataRange?.first_date || '-')} ~ ${escapeHtml(dataRange?.last_date || '-')} (${dataCount} 筆)</span>
                             </div>
                         </div>
                     </body>
@@ -375,9 +373,14 @@ export function StockAnalysisDialog({ open, onClose, symbol, name }: StockAnalys
         refetch();
     }, [refetch]);
 
+    // isFetching falling edge: clear forceRefresh flag once the query finishes
+    const prevIsFetchingRef = useRef(false);
     useEffect(() => {
-        if (forceRefresh) refetch();
-    }, [forceRefresh, refetch]);
+        if (prevIsFetchingRef.current && !isFetching && forceRefresh) {
+            setForceRefresh(false);
+        }
+        prevIsFetchingRef.current = isFetching;
+    }, [isFetching, forceRefresh]);
 
     const chartHeights = useMemo(() => CHART_SIZES[chartSize], [chartSize]);
 

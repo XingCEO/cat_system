@@ -2,7 +2,7 @@ import axios from 'axios';
 import type {
     Stock, StockDetail, FilterParams, APIResponse, PaginatedResponse,
     TechnicalIndicators, BacktestRequest, BacktestResult, Watchlist, Favorite, BatchCompareItem,
-    StockHistoryRecord
+    StockHistoryRecord, TradingDateInfo
 } from '@/types';
 
 const api = axios.create({
@@ -32,6 +32,19 @@ api.interceptors.response.use(
     }
 );
 
+/**
+ * 從 APIResponse 中取出 data，若 success 為 false 或 data 缺失則 throw。
+ * 若提供 fallback，在資料缺失時回傳 fallback 而非拋出例外。
+ */
+function unwrap<T>(resp: APIResponse<T>, fallback?: T): T {
+    if (resp?.success && resp.data !== undefined && resp.data !== null) {
+        return resp.data;
+    }
+    if (fallback !== undefined) return fallback;
+    const msg = resp?.error || resp?.message || 'API 回應缺少資料';
+    throw new Error(msg);
+}
+
 // Stocks
 export async function filterStocks(params: Partial<FilterParams>): Promise<PaginatedResponse<Stock>> {
     const queryParams = new URLSearchParams();
@@ -45,57 +58,64 @@ export async function filterStocks(params: Partial<FilterParams>): Promise<Pagin
         }
     });
     const { data } = await api.get<APIResponse<PaginatedResponse<Stock>>>(`/stocks/filter?${queryParams}`);
-    return data.data!;
+    return unwrap<PaginatedResponse<Stock>>(data);
 }
 
 export async function getStockDetail(symbol: string): Promise<StockDetail> {
     const { data } = await api.get<APIResponse<StockDetail>>(`/stocks/${symbol}`);
-    return data.data!;
+    return unwrap<StockDetail>(data);
 }
 
 export async function getStockHistory(symbol: string, days = 60): Promise<StockHistoryRecord[]> {
     const { data } = await api.get<APIResponse<StockHistoryRecord[]>>(`/stocks/${symbol}/history?days=${days}`);
-    return data.data!;
+    return unwrap<StockHistoryRecord[]>(data, []);
 }
 
 // Technical indicators
 export async function getIndicators(symbol: string): Promise<TechnicalIndicators> {
     const { data } = await api.get<APIResponse<TechnicalIndicators>>(`/stocks/${symbol}/indicators`);
-    return data.data!;
+    return unwrap<TechnicalIndicators>(data);
 }
 
 // Industries
 export async function getIndustries(): Promise<string[]> {
     const { data } = await api.get<APIResponse<string[]>>('/industries');
-    return data.data!;
+    return unwrap<string[]>(data, []);
 }
 
 // Trading date
-export async function getTradingDate(): Promise<{ today: string; latest_trading_day: string; is_today_trading: boolean }> {
-    const { data } = await api.get<APIResponse<any>>('/trading-date');
-    return data.data!;
+export async function getTradingDate(): Promise<TradingDateInfo> {
+    const { data } = await api.get<APIResponse<TradingDateInfo>>('/trading-date');
+    return unwrap<TradingDateInfo>(data);
 }
 
 // Backtest
 export async function runBacktest(request: BacktestRequest): Promise<BacktestResult> {
     const { data } = await api.post<APIResponse<BacktestResult>>('/backtest/run', request);
-    return data.data!;
+    return unwrap<BacktestResult>(data);
 }
 
 // Watchlist
 export async function getWatchlists(): Promise<Watchlist[]> {
     const { data } = await api.get<APIResponse<Watchlist[]>>('/watchlist');
-    return data.data!;
+    return unwrap<Watchlist[]>(data, []);
 }
 
 export async function createWatchlist(name: string): Promise<Watchlist> {
     const { data } = await api.post<APIResponse<Watchlist>>('/watchlist', { name });
-    return data.data!;
+    return unwrap<Watchlist>(data);
 }
 
-export async function addWatchlistItem(watchlistId: number, symbol: string, conditions?: any): Promise<any> {
-    const { data } = await api.post<APIResponse<any>>(`/watchlist/${watchlistId}/items`, { symbol, conditions });
-    return data.data!;
+export interface WatchlistItemResult {
+    id: number;
+    symbol: string;
+    watchlist_id: number;
+    conditions?: Record<string, unknown>;
+}
+
+export async function addWatchlistItem(watchlistId: number, symbol: string, conditions?: unknown): Promise<WatchlistItemResult> {
+    const { data } = await api.post<APIResponse<WatchlistItemResult>>(`/watchlist/${watchlistId}/items`, { symbol, conditions });
+    return unwrap<WatchlistItemResult>(data);
 }
 
 export async function deleteWatchlistItem(itemId: number): Promise<void> {
@@ -105,12 +125,12 @@ export async function deleteWatchlistItem(itemId: number): Promise<void> {
 // Favorites
 export async function getFavorites(): Promise<Favorite[]> {
     const { data } = await api.get<APIResponse<Favorite[]>>('/favorites');
-    return data.data!;
+    return unwrap<Favorite[]>(data, []);
 }
 
-export async function createFavorite(name: string, conditions: any): Promise<Favorite> {
+export async function createFavorite(name: string, conditions: unknown): Promise<Favorite> {
     const { data } = await api.post<APIResponse<Favorite>>('/favorites', { name, conditions });
-    return data.data!;
+    return unwrap<Favorite>(data);
 }
 
 export async function deleteFavorite(id: number): Promise<void> {
@@ -118,11 +138,11 @@ export async function deleteFavorite(id: number): Promise<void> {
 }
 
 // Batch compare
-export async function batchCompare(dates: string[], filterParams: any, minOccurrence: number): Promise<BatchCompareItem[]> {
+export async function batchCompare(dates: string[], filterParams: unknown, minOccurrence: number): Promise<BatchCompareItem[]> {
     const { data } = await api.post<APIResponse<{ items: BatchCompareItem[] }>>('/stocks/batch-compare', {
         dates, filter_params: filterParams, min_occurrence: minOccurrence
     });
-    return data.data!.items;
+    return unwrap<{ items: BatchCompareItem[] }>(data).items;
 }
 
 // Export
@@ -406,7 +426,7 @@ export async function getKLineData(
     }
 
     const { data } = await api.get<APIResponse<KLineResponse>>(`/stocks/${symbol}/kline?${params}`);
-    return data.data!;
+    return unwrap<KLineResponse>(data);
 }
 
 /**
@@ -414,7 +434,7 @@ export async function getKLineData(
  */
 export async function clearKLineCache(symbol: string): Promise<{ message: string }> {
     const { data } = await api.delete<APIResponse<{ message: string }>>(`/stocks/${symbol}/kline/cache`);
-    return data.data!;
+    return unwrap<{ message: string }>(data);
 }
 
 // ===== Cache API =====

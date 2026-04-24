@@ -34,3 +34,11 @@ yarn-error.log*
 # Database
 *.sqlite3
 *.db
+
+# Test / coverage artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# OMC local state
+.omc/

@@ -2,6 +2,7 @@
 Data Fetcher - FinMind API + TWSE Open Data
 """
 import httpx
+import ssl
 import pandas as pd
 from datetime import datetime, date, timedelta
 from typing import Optional, List, Dict, Any, Union
@@ -13,6 +14,65 @@ from services.cache_manager import cache_manager
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
+
+# TWSE 相關的 host 清單（只對這些 host 套用寬鬆 SSL）
+# 若日後 TWSE 新增子網域，在此補充即可
+TWSE_HOSTS = (
+    "www.twse.com.tw",
+    "mis.twse.com.tw",
+    "openapi.twse.com.tw",
+)
+
+
+def _build_twse_ssl_context() -> Union[bool, str, ssl.SSLContext]:
+    """
+    依 settings.twse_ssl_mode 建立適當的 SSL 驗證設定，
+    回傳值可直接傳給 httpx.AsyncClient(verify=...) 或 client.get(…, verify=…)。
+
+    modes:
+      "default"  → True  (httpx/certifi 預設行為，不做任何改動)
+      "certifi"  → certifi CA bundle 路徑 (str)
+      "relaxed"  → ssl.SSLContext，關閉 X.509 strict 旗標
+                   (允許缺少 Subject Key Identifier 等問題憑證)
+      "insecure" → False (完全停用憑證驗證，由 config 啟用才生效)
+
+    若設了 twse_ssl_ca_bundle，無論 mode 為何都以自訂 CA 路徑覆寫。
+    """
+    mode = settings.twse_ssl_mode
+    ca_bundle = settings.twse_ssl_ca_bundle
+
+    # 自訂 CA bundle 優先（覆寫所有 mode）
+    if ca_bundle:
+        logger.info(f"TWSE SSL: using custom CA bundle at {ca_bundle}")
+        return ca_bundle
+
+    if mode == "insecure":
+        logger.warning("TWSE SSL: verification DISABLED (insecure mode) — not recommended in production")
+        return False
+
+    if mode == "certifi":
+        try:
+            import certifi
+            path = certifi.where()
+            logger.info(f"TWSE SSL: using certifi CA bundle ({path})")
+            return path
+        except ImportError:
+            logger.warning("TWSE SSL: certifi not installed, falling back to default")
+            return True
+
+    if mode == "relaxed":
+        # 建立預設 SSL context，再關閉 X.509 strict 旗標
+        # 解決 Python 3.14 對 TWSE 憑證缺少 Subject Key Identifier 的拒絕
+        ctx = ssl.create_default_context()
+        if hasattr(ssl, "VERIFY_X509_STRICT"):
+            ctx.verify_flags &= ~ssl.VERIFY_X509_STRICT
+            logger.info("TWSE SSL: relaxed mode — VERIFY_X509_STRICT disabled")
+        else:
+            logger.info("TWSE SSL: relaxed mode requested but VERIFY_X509_STRICT not available, using default context")
+        return ctx
+
+    # "default" 或未知 mode → httpx 預設
+    return True
 
 
 def parse_number(val: Any, to_float: bool = False) -> Optional[Union[int, float]]:
@@ -31,9 +91,18 @@ class DataFetcher:
 
     # Class-level flag to skip FinMind when it's unavailable
     _finmind_available = True
-    # Shared HTTP client for connection pooling
-    _http_client: Optional[httpx.AsyncClient] = None
+
+    # 兩個獨立 client：
+    #   _twse_client    — 僅對 TWSE_HOSTS 使用，套用 _build_twse_ssl_context() 的 verify 設定
+    #   _default_client — Yahoo Finance / FinMind 等，維持 httpx 預設嚴格驗證
+    _twse_client: Optional[httpx.AsyncClient] = None
+    _default_client: Optional[httpx.AsyncClient] = None
     _client_lock = asyncio.Lock()
+
+    _COMMON_HEADERS = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+    }
+    _COMMON_LIMITS = httpx.Limits(max_connections=20, max_keepalive_connections=10)
 
     def __init__(self):
         self.finmind_url = settings.finmind_base_url
@@ -43,29 +112,44 @@ class DataFetcher:
         self.retry_delay = settings.api_retry_delay
 
     @classmethod
-    async def get_client(cls) -> httpx.AsyncClient:
-        """取得共享的 HTTP Client（連線池重用）"""
-        if cls._http_client is None or cls._http_client.is_closed:
+    async def get_twse_client(cls) -> httpx.AsyncClient:
+        """取得 TWSE 專用 HTTP Client（套用 twse_ssl_mode 的 SSL 設定）"""
+        if cls._twse_client is None or cls._twse_client.is_closed:
             async with cls._client_lock:
-                if cls._http_client is None or cls._http_client.is_closed:
-                    cls._http_client = httpx.AsyncClient(
+                if cls._twse_client is None or cls._twse_client.is_closed:
+                    ssl_verify = _build_twse_ssl_context()
+                    cls._twse_client = httpx.AsyncClient(
+                        verify=ssl_verify,
                         timeout=30.0,
-                        limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
-                        headers={
-                            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
-                        }
+                        limits=cls._COMMON_LIMITS,
+                        headers=cls._COMMON_HEADERS,
                     )
-        return cls._http_client
+        return cls._twse_client
+
+    @classmethod
+    async def get_client(cls) -> httpx.AsyncClient:
+        """取得預設 HTTP Client（Yahoo / FinMind，維持嚴格 SSL 驗證）"""
+        if cls._default_client is None or cls._default_client.is_closed:
+            async with cls._client_lock:
+                if cls._default_client is None or cls._default_client.is_closed:
+                    cls._default_client = httpx.AsyncClient(
+                        timeout=30.0,
+                        limits=cls._COMMON_LIMITS,
+                        headers=cls._COMMON_HEADERS,
+                    )
+        return cls._default_client
 
     @classmethod
     async def close_client(cls):
-        """關閉共享的 HTTP Client"""
-        if cls._http_client and not cls._http_client.is_closed:
-            await cls._http_client.aclose()
-            cls._http_client = None
-    
+        """關閉所有共享的 HTTP Client"""
+        for attr in ("_twse_client", "_default_client"):
+            client = getattr(cls, attr, None)
+            if client and not client.is_closed:
+                await client.aclose()
+            setattr(cls, attr, None)
+
     async def fetch_with_retry(self, url: str, params: dict) -> Optional[dict]:
-        """Fetch data with retry logic using shared client"""
+        """Fetch data with retry logic using default client (non-TWSE endpoints)"""
         client = await self.get_client()
         for attempt in range(self.retry_count):
             try:
@@ -80,7 +164,7 @@ class DataFetcher:
                     logger.error(f"All retry attempts failed for {url}")
                     return None
         return None
-    
+
     # TWSE industry code mapping
     INDUSTRY_MAP = {
         "01": "水泥工業", "02": "食品工業", "03": "塑膠工業", "04": "紡織纖維",
@@ -93,7 +177,7 @@ class DataFetcher:
         "29": "電子通路業", "30": "資訊服務業", "31": "其他電子業", "32": "文化創意業",
         "33": "農業科技業", "34": "電商及數位化業", "35": "居家生活業", "36": "觀光餐飲業"
     }
-    
+
     async def get_stock_list(self) -> pd.DataFrame:
         """Get list of all listed stocks from TWSE OpenAPI"""
         cache_key = "stock_list_twse"
@@ -101,32 +185,32 @@ class DataFetcher:
         if cached is not None:
             return pd.DataFrame(cached)
 
-        # Use TWSE OpenAPI for stock info
+        # Use TWSE OpenAPI for stock info (uses TWSE SSL client)
         twse_openapi_url = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
 
         try:
-            client = await self.get_client()
+            client = await self.get_twse_client()
             response = await client.get(twse_openapi_url)
             response.raise_for_status()
             data = response.json()
-                
+
             if data:
                 stocks = []
                 for item in data:
                     symbol = item.get("公司代號", "").strip()
                     if not symbol or symbol.startswith("00"):
                         continue
-                    
+
                     # Parse issued shares (流通股數)
                     shares_str = item.get("已發行普通股數或TDR原股發行股數", "0")
                     try:
                         float_shares = int(shares_str.replace(",", "")) // 1000  # Convert to 張(lots)
                     except (ValueError, AttributeError):
                         float_shares = 0
-                    
+
                     industry_code = item.get("產業別", "")
                     industry_name = self.INDUSTRY_MAP.get(industry_code, "其他")
-                    
+
                     stocks.append({
                         "stock_id": symbol,
                         "stock_name": item.get("公司簡稱", symbol),
@@ -134,30 +218,30 @@ class DataFetcher:
                         "float_shares": float_shares,
                         "type": "stock"
                     })
-                
+
                 df = pd.DataFrame(stocks)
                 logger.info(f"Loaded {len(stocks)} stocks from TWSE OpenAPI")
-                
+
                 # Data integrity check - log stocks with missing fields
                 missing_name = [s["stock_id"] for s in stocks if not s.get("stock_name") or s["stock_name"] == s["stock_id"]]
                 missing_industry = [s["stock_id"] for s in stocks if not s.get("industry_category") or s["industry_category"] == "其他"]
                 missing_shares = [s["stock_id"] for s in stocks if not s.get("float_shares") or s["float_shares"] == 0]
-                
+
                 if missing_name:
                     logger.warning(f"Data integrity: {len(missing_name)} stocks missing name")
                 if missing_industry:
                     logger.info(f"Data integrity: {len(missing_industry)} stocks with industry='其他'")
                 if missing_shares:
                     logger.warning(f"Data integrity: {len(missing_shares)} stocks missing float_shares")
-                
+
                 cache_manager.set(cache_key, df.to_dict("records"), "industry")
                 return df
-                
+
         except Exception as e:
             logger.error(f"TWSE OpenAPI failed: {e}")
-        
+
         return pd.DataFrame()
-    
+
     async def get_daily_data(self, trade_date: str) -> pd.DataFrame:
         """
         Get daily trading data for all stocks on a specific date
@@ -241,7 +325,7 @@ class DataFetcher:
             try:
                 url = "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
 
-                client = await self.get_client()
+                client = await self.get_twse_client()
                 response = await client.get(url, timeout=20.0)
                 response.raise_for_status()
                 data = response.json()
@@ -387,37 +471,37 @@ class DataFetcher:
         if not df.empty:
             cache_manager.set(cache_key, df.to_dict("records"), "historical")
         return df
-    
+
     async def get_stock_info(self, symbol: str) -> Optional[Dict]:
         """Get basic info for a specific stock"""
         stock_list = await self.get_stock_list()
         if stock_list.empty:
             return None
-        
+
         stock = stock_list[stock_list["stock_id"] == symbol]
         if stock.empty:
             return None
-        
+
         return stock.iloc[0].to_dict()
-    
+
     async def get_industries(self) -> List[str]:
         """Get list of all industries"""
         cache_key = "industries"
         cached = cache_manager.get(cache_key, "industry")
         if cached is not None:
             return cached
-        
+
         stock_list = await self.get_stock_list()
         if stock_list.empty:
             return []
-        
+
         industries = stock_list["industry_category"].dropna().unique().tolist()
         cache_manager.set(cache_key, industries, "industry")
         return industries
-    
+
     async def get_date_range_data(
-        self, 
-        start_date: str, 
+        self,
+        start_date: str,
         end_date: str
     ) -> pd.DataFrame:
         """Get data for a date range (for batch operations)"""
@@ -425,7 +509,7 @@ class DataFetcher:
         cached = cache_manager.get(cache_key, "historical")
         if cached is not None:
             return pd.DataFrame(cached)
-        
+
         params = {
             "dataset": "TaiwanStockPrice",
             "start_date": start_date,
@@ -433,17 +517,17 @@ class DataFetcher:
         }
         if self.token:
             params["token"] = self.token
-        
+
         data = await self.fetch_with_retry(self.finmind_url, params)
-        
+
         if data and data.get("status") == 200:
             df = pd.DataFrame(data["data"])
             if not df.empty:
                 cache_manager.set(cache_key, df.to_dict("records"), "historical")
             return df
-        
+
         return pd.DataFrame()
-    
+
     async def _fetch_twse_historical(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
         """Fallback: Fetch historical data - try Yahoo first, then TWSE for full range"""
         # 直接先嘗試 Yahoo Finance 抓取完整資料（更穩定）
@@ -492,7 +576,7 @@ class DataFetcher:
                 }
 
                 try:
-                    client = await self.get_client()
+                    client = await self.get_twse_client()
                     response = await client.get(url, params=params, timeout=15.0, follow_redirects=True)
                     if response.status_code == 307:
                         consecutive_failures += 1
@@ -656,12 +740,12 @@ class DataFetcher:
             logger.warning(f"Yahoo Finance fetch failed for {symbol}: {e}")
 
         return pd.DataFrame()
-    
+
     async def is_trading_day(self, check_date: str) -> bool:
         """Check if a date is a trading day by verifying data exists"""
         df = await self.get_daily_data(check_date)
         return not df.empty
-    
+
     async def verify_trading_day_via_api(self, check_date: str) -> bool:
         """
         Verify if a date is a trading day by checking TWSE API
@@ -670,12 +754,12 @@ class DataFetcher:
         try:
             date_obj = datetime.strptime(check_date, "%Y-%m-%d")
             twse_date = date_obj.strftime("%Y%m%d")
-            
+
             # Use TWSE MI_INDEX endpoint (lighter than full stock data)
             url = "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX"
             params = {"date": twse_date, "response": "json"}
-            
-            client = await self.get_client()
+
+            client = await self.get_twse_client()
             response = await client.get(url, params=params, timeout=10.0)
             if response.status_code == 200:
                     data = response.json()
@@ -690,7 +774,7 @@ class DataFetcher:
         except Exception as e:
             logger.warning(f"API verification for {check_date} failed: {e}")
             return False
-    
+
     async def get_latest_trading_date(self) -> str:
         """
         Get the most recent trading date
@@ -712,7 +796,6 @@ class DataFetcher:
         logger.info(f"Latest trading date (calendar): {result}")
         return result
 
-
     async def get_realtime_quotes(self, symbols: List[str]) -> List[Dict]:
         """
         盤中即時報價 — TWSE MIS API (免費、官方、無需註冊)
@@ -728,7 +811,7 @@ class DataFetcher:
         url = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
 
         try:
-            client = await self.get_client()
+            client = await self.get_twse_client()
             resp = await client.get(url, params={"ex_ch": ex_ch}, timeout=10.0)
             resp.raise_for_status()
             data = resp.json()
@@ -773,4 +856,3 @@ class DataFetcher:
 
 # Global instance
 data_fetcher = DataFetcher()
-

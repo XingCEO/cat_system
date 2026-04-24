@@ -262,3 +262,10 @@ export interface StockHistoryRecord {
     volume: number | null;
     change_percent?: number | null;
 }
+
+/** 交易日資訊 */
+export interface TradingDateInfo {
+    today: string;
+    latest_trading_day: string;
+    is_today_trading: boolean;
+}

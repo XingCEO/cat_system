@@ -9,6 +9,8 @@ from app.api.v1.screen import router as screen_router
 from app.api.v1.chart import router as chart_router
 from app.api.v1.strategies import router as strategies_router
 from app.api.v1.tickers import router as tickers_router
+from app.core.auth import require_admin
+from config import get_settings
 from database import get_db
 
 v1_router = APIRouter()
@@ -21,16 +23,16 @@ v1_router.include_router(tickers_router, tags=["股票"])
 
 # Rate limit state for sync endpoint
 _sync_last = 0.0
-_SYNC_COOLDOWN = 300  # 5 minutes
 
 
-@v1_router.post("/sync", tags=["資料同步"])
+@v1_router.post("/sync", tags=["資料同步"], dependencies=[Depends(require_admin)])
 async def sync_data(date: str = None, db: AsyncSession = Depends(get_db)):
     """手動觸發 v1 資料同步（股票基本資料 + 日K線）"""
     global _sync_last
+    cooldown = get_settings().cooldown_sync
     now = time.monotonic()
-    if now - _sync_last < _SYNC_COOLDOWN:
-        remaining = int(_SYNC_COOLDOWN - (now - _sync_last))
+    if now - _sync_last < cooldown:
+        remaining = int(cooldown - (now - _sync_last))
         raise HTTPException(status_code=429, detail=f"同步冷卻中，請等待 {remaining} 秒")
     _sync_last = now
 

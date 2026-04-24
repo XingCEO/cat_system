@@ -120,7 +120,8 @@ export function Top20Charts({ stocks, top20Full = [] }: Top20ChartsProps) {
     const limitUpTypeData = useMemo(() => {
         const counts: Record<string, number> = {};
         stocks.forEach(s => {
-            const type = s.limit_up_type || '未知';
+            // 後端無法取得 first_limit_time 時回傳 'unknown'，統一顯示為「未知」
+            const type = (s.limit_up_type && s.limit_up_type !== 'unknown') ? s.limit_up_type : '未知';
             counts[type] = (counts[type] || 0) + 1;
         });
         return Object.entries(counts).map(([name, value]) => ({ name, value }));

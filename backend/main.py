@@ -6,9 +6,9 @@ import os
 import sys
 import time
 from datetime import datetime
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 import logging
@@ -22,6 +22,7 @@ from routers import (
 
 # 新架構 v1 API
 from app.api.v1.router import v1_router
+from app.core.auth import require_admin
 import app.models  # 確保新的 ORM 模型被載入
 
 # Configure logging
@@ -223,7 +224,7 @@ _cache_clear_last = 0.0
 _CACHE_CLEAR_COOLDOWN = 60  # seconds
 
 
-@app.get("/api/cache/clear")
+@app.post("/api/cache/clear", dependencies=[Depends(require_admin)])
 async def clear_cache(request: Request):
     global _cache_clear_last
     now = time.monotonic()
@@ -242,7 +243,7 @@ _data_refresh_last = 0.0
 _DATA_REFRESH_COOLDOWN = 120  # 2 minutes
 
 
-@app.get("/api/data/refresh")
+@app.post("/api/data/refresh", dependencies=[Depends(require_admin)])
 async def refresh_data(request: Request):
     """強制刷新所有資料快取並重新抓取最新資料"""
     global _data_refresh_last

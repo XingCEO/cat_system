@@ -3,6 +3,7 @@ Data Sync — 從 Legacy data_fetcher 同步資料到 v1 表 (Ticker, DailyPrice
 包含延伸指標計算：avg_volume_20, avg_turnover_20, lower_shadow,
 lowest_lower_shadow_20, 週MA, market_ok
 """
+import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Optional
@@ -15,6 +16,7 @@ from app.models.daily_price import DailyPrice
 from app.models.daily_chip import DailyChip
 from app.models.market_index import MarketIndex
 from services.data_fetcher import data_fetcher
+from config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -379,8 +381,10 @@ async def _backfill_indicators(db: AsyncSession, target_date) -> None:
     if not df.empty:
         db_day_counts = df.groupby("ticker_id").size().to_dict()
 
-    # 找出 DB 歷史不足 5 天的股票（需要 fallback）
-    need_fallback = [t for t in all_missing if db_day_counts.get(t, 0) < 5]
+    # 找出 DB 歷史不足 N 天的股票（需要 fallback） — 由 settings.backfill_min_days 控制
+    settings = get_settings()
+    min_days = settings.backfill_min_days
+    need_fallback = [t for t in all_missing if db_day_counts.get(t, 0) < min_days]
 
     # === Fallback: 用 Legacy data_fetcher 抓歷史資料 ===
     fallback_data: dict[str, pd.DataFrame] = {}
@@ -388,37 +392,52 @@ async def _backfill_indicators(db: AsyncSession, target_date) -> None:
         try:
             start_str = (target_date - timedelta(days=450)).strftime("%Y-%m-%d")
             end_str = target_date.strftime("%Y-%m-%d")
-            batch = need_fallback[:200]
-            for ticker_id in batch:
-                try:
-                    hist_df = await data_fetcher.get_historical_data(ticker_id, start_str, end_str)
-                    if hist_df.empty:
-                        continue
+            batch_size = settings.backfill_batch_size
+            batch = need_fallback[:batch_size]
+            pending = len(need_fallback) - len(batch)
+            if pending > 0:
+                logger.warning(
+                    f"Backfill batch capped at {batch_size}; still {pending} tickers pending for next pass"
+                )
 
-                    # 統一欄位名 (FinMind / Yahoo / TWSE 格式不同)
-                    col_map = {}
-                    for src, dst in [
-                        ("Close", "close"), ("Open", "open"), ("Low", "low"),
-                        ("Volume", "volume"), ("Date", "date"),
-                        ("ClosingPrice", "close"), ("OpeningPrice", "open"),
-                        ("LowestPrice", "low"), ("Trading_Volume", "volume"),
-                        ("stock_id", "ticker_id"),
-                    ]:
-                        if src in hist_df.columns and dst not in hist_df.columns:
-                            col_map[src] = dst
+            # 並行抓取，Semaphore 限流避免打爆 Yahoo/TWSE
+            sem = asyncio.Semaphore(settings.backfill_concurrency)
+            col_map_pairs = [
+                ("Close", "close"), ("Open", "open"), ("Low", "low"),
+                ("Volume", "volume"), ("Date", "date"),
+                ("ClosingPrice", "close"), ("OpeningPrice", "open"),
+                ("LowestPrice", "low"), ("Trading_Volume", "volume"),
+                ("stock_id", "ticker_id"),
+            ]
+
+            async def _one(ticker_id: str):
+                async with sem:
+                    try:
+                        hist_df = await data_fetcher.get_historical_data(ticker_id, start_str, end_str)
+                    except Exception as e:
+                        logger.debug(f"Backfill fetch failed for {ticker_id}: {e}")
+                        return ticker_id, None
+                    if hist_df is None or hist_df.empty:
+                        return ticker_id, None
+                    col_map = {src: dst for src, dst in col_map_pairs
+                               if src in hist_df.columns and dst not in hist_df.columns}
                     if col_map:
                         hist_df = hist_df.rename(columns=col_map)
-
                     if "date" in hist_df.columns:
                         hist_df["date"] = pd.to_datetime(hist_df["date"]).dt.date
+                    if "close" not in hist_df.columns:
+                        return ticker_id, None
+                    return ticker_id, hist_df.sort_values("date").reset_index(drop=True)
 
-                    needed_cols = ["close"]
-                    if all(c in hist_df.columns for c in needed_cols):
-                        fallback_data[ticker_id] = hist_df.sort_values("date").reset_index(drop=True)
-                except Exception:
-                    continue
+            results = await asyncio.gather(*(_one(t) for t in batch), return_exceptions=False)
+            for ticker_id, df_out in results:
+                if df_out is not None:
+                    fallback_data[ticker_id] = df_out
             if fallback_data:
-                logger.info(f"Fallback: got history for {len(fallback_data)}/{len(batch)} tickers from Legacy API")
+                logger.info(
+                    f"Fallback: got history for {len(fallback_data)}/{len(batch)} tickers "
+                    f"(concurrency={settings.backfill_concurrency})"
+                )
         except Exception as e:
             logger.warning(f"Fallback history fetch failed: {e}")
 

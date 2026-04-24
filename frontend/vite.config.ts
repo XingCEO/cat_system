@@ -21,31 +21,30 @@ export default defineConfig({
     build: {
         rollupOptions: {
             output: {
-                manualChunks: {
+                manualChunks(id) {
                     // React 核心
-                    'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+                    if (id.includes('node_modules/react') || id.includes('node_modules/react-dom') || id.includes('node_modules/react-router-dom')) {
+                        return 'vendor-react';
+                    }
                     // 圖表庫
-                    'vendor-charts': ['recharts', 'lightweight-charts'],
-                    // UI 元件
-                    'vendor-radix': [
-                        '@radix-ui/react-alert-dialog',
-                        '@radix-ui/react-checkbox',
-                        '@radix-ui/react-dialog',
-                        '@radix-ui/react-dropdown-menu',
-                        '@radix-ui/react-label',
-                        '@radix-ui/react-popover',
-                        '@radix-ui/react-select',
-                        '@radix-ui/react-slider',
-                        '@radix-ui/react-slot',
-                        '@radix-ui/react-switch',
-                        '@radix-ui/react-tabs',
-                        '@radix-ui/react-toast',
-                        '@radix-ui/react-tooltip',
-                    ],
+                    if (id.includes('node_modules/lightweight-charts')) {
+                        return 'vendor-lwc';
+                    }
+                    if (id.includes('node_modules/recharts')) {
+                        return 'vendor-recharts';
+                    }
+                    // Radix UI
+                    if (id.includes('node_modules/@radix-ui')) {
+                        return 'vendor-radix';
+                    }
                     // 資料處理
-                    'vendor-data': ['@tanstack/react-query', '@tanstack/react-table', 'axios', 'zustand'],
+                    if (id.includes('node_modules/@tanstack') || id.includes('node_modules/axios') || id.includes('node_modules/zustand')) {
+                        return 'vendor-data';
+                    }
                     // 工具庫
-                    'vendor-utils': ['date-fns', 'clsx', 'tailwind-merge', 'class-variance-authority', 'lucide-react'],
+                    if (id.includes('node_modules/date-fns') || id.includes('node_modules/clsx') || id.includes('node_modules/tailwind-merge') || id.includes('node_modules/class-variance-authority') || id.includes('node_modules/lucide-react')) {
+                        return 'vendor-utils';
+                    }
                 },
             },
         },

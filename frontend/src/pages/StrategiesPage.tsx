@@ -8,7 +8,7 @@ import {
     listStrategies, createStrategy, updateStrategy,
     deleteStrategy, toggleAlert,
 } from '@/services/v1Api';
-import type { StrategyCreate } from '@/types/screen';
+import type { Strategy, StrategyCreate } from '@/types/screen';
 import './StrategiesPage.css';
 
 export default function StrategiesPage() {
@@ -89,10 +89,10 @@ export default function StrategiesPage() {
         }
     }, []);
 
-    const openEdit = (s: any) => {
+    const openEdit = (s: Strategy) => {
         setEditingId(s.id);
-        setForm({ name: s.name, rules_json: s.rules_json, alert_enabled: s.alert_enabled });
-        setRawJson(JSON.stringify(s.rules_json, null, 2));
+        setForm({ name: s.name, rules_json: s.rules_json ?? {}, alert_enabled: s.alert_enabled });
+        setRawJson(JSON.stringify(s.rules_json ?? {}, null, 2));
         setJsonError(false);
         setShowModal(true);
     };
@@ -126,10 +126,10 @@ export default function StrategiesPage() {
                         <div className="card-header">
                             <h3 className="card-name">{s.name}</h3>
                             <div className="card-actions">
-                                <button className="btn-icon" onClick={() => openEdit(s)} title="編輯">
+                                <button className="btn-icon" onClick={() => openEdit(s)} title="編輯" aria-label="編輯策略">
                                     ✏️
                                 </button>
-                                <button className="btn-icon remove" onClick={() => handleDelete(s.id)} title="刪除">
+                                <button className="btn-icon remove" onClick={() => handleDelete(s.id)} title="刪除" aria-label="刪除策略">
                                     🗑️
                                 </button>
                             </div>

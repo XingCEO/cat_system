@@ -360,7 +360,7 @@ export function HighTurnoverPage() {
                                             <td className="px-4 py-3 font-mono tabular-nums text-muted-foreground">{formatNumber(stock.volume)}</td>
                                             <td className="px-4 py-3 font-mono text-xs tabular-nums">{stock.float_shares?.toFixed(0)}萬</td>
                                             <td className="px-4 py-3">
-                                                {stock.limit_up_type && (
+                                                {stock.limit_up_type && stock.limit_up_type !== 'unknown' && (
                                                     <span className={`px-2 py-0.5 rounded text-xs font-medium ${stock.limit_up_type === '一字板' ? 'bg-red-500 text-white' : 'bg-muted'}`}>
                                                         {stock.limit_up_type}
                                                     </span>

@@ -308,9 +308,9 @@ class HighTurnoverAnalyzer:
                 if not symbol:
                     continue
                 
-                # 取得成交量 (股數，需要除以 1000 換算成張)
+                # 取得成交量 (股數，需要除以 SHARES_PER_LOT 換算成張)
                 volume_shares = float(row.get(volume_col, 0) or 0)
-                volume_lots = volume_shares / 1000  # 轉換為張
+                volume_lots = volume_shares / SHARES_PER_LOT  # 轉換為張
                 
                 # 取得流通股數 (張)
                 float_shares = float_shares_map.get(symbol, 0)
@@ -1780,8 +1780,9 @@ class HighTurnoverAnalyzer:
                 if len(volumes) >= 2:
                     # volumes[0] 是今天，volumes[1] 是昨天
                     yesterday_volume = volumes[1] if volumes[1] else 0
-                    # Yahoo 返回的是股數，需要轉換為張 (除以 1000)
-                    yesterday_volume_lots = yesterday_volume / 1000
+                    # Yahoo 返回單位為股；today_volume 已在 _calculate_turnover_rates 換算為張，
+                    # 昨日也必須除以 SHARES_PER_LOT 統一單位後才能比倍數。
+                    yesterday_volume_lots = yesterday_volume / SHARES_PER_LOT  # 股 → 張
                     if yesterday_volume_lots > 0 and today_volume >= yesterday_volume_lots * volume_ratio:
                         matched = dict(stock)
                         matched["yesterday_volume"] = int(yesterday_volume_lots)
@@ -2360,7 +2361,7 @@ class HighTurnoverAnalyzer:
                         if "volume" in history_df.columns:
                             volumes = history_df["volume"].tolist()[:5]
                             if len(volumes) >= 2 and volumes[1] is not None:
-                                yesterday_volume = volumes[1] / 1000  # 轉換為張
+                                yesterday_volume = volumes[1] / SHARES_PER_LOT  # 股 → 張
                                 if yesterday_volume > 0:
                                     actual_ratio = today_volume / yesterday_volume
                                     if actual_ratio < volume_ratio:

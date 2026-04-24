@@ -130,6 +130,7 @@ export function MaBreakoutPage() {
                             <div className="flex rounded-lg overflow-hidden border border-border">
                                 <button
                                     onClick={() => setDirection('breakout')}
+                                    aria-pressed={direction === 'breakout'}
                                     className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-1.5 ${direction === 'breakout'
                                         ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500'
                                         : 'bg-muted/30 text-muted-foreground hover:bg-muted/50'
@@ -139,6 +140,7 @@ export function MaBreakoutPage() {
                                 </button>
                                 <button
                                     onClick={() => setDirection('breakdown')}
+                                    aria-pressed={direction === 'breakdown'}
                                     className={`px-4 py-2 text-sm font-medium transition-colors flex items-center gap-1.5 border-l border-border ${direction === 'breakdown'
                                         ? 'bg-rose-500/20 text-rose-400 border-rose-500'
                                         : 'bg-muted/30 text-muted-foreground hover:bg-muted/50'
@@ -362,7 +364,7 @@ export function MaBreakoutPage() {
                                                 <Button
                                                     variant="ghost"
                                                     size="sm"
-                                                    onClick={() => openChartDialog(stock.symbol, stock.name)}
+                                                    onClick={(e) => { e.stopPropagation(); openChartDialog(stock.symbol, stock.name); }}
                                                     className="h-8 w-8 p-0"
                                                     title="查看K線圖"
                                                 >

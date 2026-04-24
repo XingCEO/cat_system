@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from database import get_db
+from app.core.auth import require_admin
 from app.models.user_strategy import UserStrategy
 from app.schemas.strategy import (
     StrategyCreate,
@@ -16,7 +17,7 @@ from app.schemas.strategy import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin)])
 
 
 @router.get("/strategies", response_model=list[StrategyResponse], summary="查詢所有策略")

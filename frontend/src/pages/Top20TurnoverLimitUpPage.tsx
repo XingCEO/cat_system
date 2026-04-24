@@ -280,7 +280,7 @@ export function Top20TurnoverLimitUpPage() {
             header: '類型',
             cell: ({ row }) => {
                 const type = row.original.limit_up_type;
-                return type ? (
+                return type && type !== 'unknown' ? (
                     <span className={`px-2 py-0.5 rounded text-xs font-medium ${type === '一字板' ? 'bg-red-500 text-white' :
                         type === '秒板' ? 'bg-orange-500 text-white' :
                             'bg-muted'
