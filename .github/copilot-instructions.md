@@ -82,8 +82,8 @@ On startup, two background tasks are scheduled via `asyncio.create_task`:
 
 ### Frontend
 - State management: Zustand store at `frontend/src/stores/store.ts` (directory is `stores/`, not `store/`)
-- API client: `frontend/src/services/api.ts` (Axios)
-- Pages: `ScreenPage`, `ChartProPage`, `StrategiesPage`, `HighTurnoverPage`, `TurnoverFiltersPage`, etc.
+- API clients: `frontend/src/services/api.ts` (Legacy Axios client) and `frontend/src/services/v1Api.ts` (v1 client)
+- Pages: `TrendScreenPage`, `HighTurnoverPage`, `Top20TurnoverLimitUpPage`, `TurnoverFiltersPage`, `MaBreakoutPage`, `StrategiesPage`, `HomePage`
 
 ## Key Conventions
 

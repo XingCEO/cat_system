@@ -8,7 +8,7 @@ Dual API architecture: Legacy (`/api/...` in `backend/routers/`) and v1 (`/api/v
 FastAPI serves both API and React SPA from port 8000.
 
 ## Tech Stack
-- **Backend**: Python 3.12 + FastAPI + SQLAlchemy (async) + SQLite (aiosqlite)
+- **Backend**: Python 3.14 + FastAPI + SQLAlchemy (async) + SQLite (aiosqlite)
 - **Frontend**: React 18 + TypeScript + Vite + Tailwind CSS + Zustand + TanStack Query
 - **Data Sources**: FinMind API, Yahoo Finance, TWSE Open Data, TWSE MIS (盤中即時)
 - **UI**: shadcn/ui (Radix) + Recharts + Lightweight Charts
@@ -107,7 +107,7 @@ On startup, two background tasks via `asyncio.create_task`:
 - State: Zustand stores at `frontend/src/stores/` (directory is `stores/`, not `store/`): `store.ts` (main app state), `chartStore.ts` (chart state), `strategyStore.ts` (strategy state)
 - API clients: `frontend/src/services/api.ts` (Legacy Axios client), `frontend/src/services/v1Api.ts` (v1 API client)
 - Pages: `TrendScreenPage`, `HighTurnoverPage`, `Top20TurnoverLimitUpPage`, `TurnoverFiltersPage`, `MaBreakoutPage`, `StrategiesPage`, `HomePage`
-- Charts: dual implementations — Recharts (`KLineChart`, `RSIChart`, etc.) and lightweight-charts (`LightweightKLineChart`, etc.) in `frontend/src/components/charts/`
+- Charts: K-line/technical charts use lightweight-charts (`LightweightKLineChart`, `LightweightRSIChart`, `LightweightMACDChart`, `LightweightKDChart`, `LightweightVolumeChart` in `frontend/src/components/charts/`); Recharts is used only for dashboard summary charts (pie/bar) in `DashboardCharts`/`TurnoverCharts`/`Top20Charts`
 
 ## Deployment
 - **Zeabur**: `zeabur.toml` → root `Dockerfile` (multi-stage: build frontend → copy to static → uvicorn)

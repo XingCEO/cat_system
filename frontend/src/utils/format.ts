@@ -16,32 +16,14 @@ export function formatPrice(value?: number | null): string {
     return value.toFixed(2);
 }
 
-// Format volume in lots (張)
-export function formatVolume(value?: number | null): string {
-    if (value === null || value === undefined) return '-';
-    return `${value.toLocaleString('zh-TW')} 張`;
-}
-
-// Get color class for change percent
+// Get color class for change percent.
+// Taiwan convention: up = red (chartUp token), down = green (chartDown token).
+// Uses Tailwind theme tokens defined in tailwind.config.js via CSS variables.
 export function getChangeColor(value?: number | null): string {
     if (value === null || value === undefined) return 'text-muted-foreground';
-    if (value > 0) return 'text-red-500';
-    if (value < 0) return 'text-green-500';
+    if (value > 0) return 'text-chartUp';
+    if (value < 0) return 'text-chartDown';
     return 'text-muted-foreground';
-}
-
-// Get bg color class for change
-export function getChangeBgColor(value?: number | null): string {
-    if (value === null || value === undefined) return 'bg-muted';
-    if (value > 0) return 'bg-red-500/10';
-    if (value < 0) return 'bg-green-500/10';
-    return 'bg-muted';
-}
-
-// Format date
-export function formatDate(date: string | Date): string {
-    const d = new Date(date);
-    return d.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
 }
 
 /**

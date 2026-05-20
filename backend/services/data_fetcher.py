@@ -89,8 +89,10 @@ def parse_number(val: Any, to_float: bool = False) -> Optional[Union[int, float]
 class DataFetcher:
     """Fetch stock data from FinMind API and TWSE Open Data"""
 
-    # Class-level flag to skip FinMind when it's unavailable
-    _finmind_available = True
+    # Timestamp-based FinMind cooldown: None = available, otherwise the time it was disabled.
+    # FinMind is considered available again after _FINMIND_COOLDOWN_SECS seconds.
+    _finmind_disabled_at: Optional[float] = None
+    _FINMIND_COOLDOWN_SECS: float = 1800.0  # 30 minutes
 
     # 兩個獨立 client：
     #   _twse_client    — 僅對 TWSE_HOSTS 使用，套用 _build_twse_ssl_context() 的 verify 設定
@@ -110,6 +112,25 @@ class DataFetcher:
         self.token = settings.finmind_api_token
         self.retry_count = settings.api_retry_count
         self.retry_delay = settings.api_retry_delay
+
+    @classmethod
+    def _is_finmind_available(cls) -> bool:
+        """Return True if FinMind is available (no cooldown active or cooldown expired)."""
+        import time
+        if cls._finmind_disabled_at is None:
+            return True
+        elapsed = time.monotonic() - cls._finmind_disabled_at
+        if elapsed >= cls._FINMIND_COOLDOWN_SECS:
+            cls._finmind_disabled_at = None  # cooldown expired — reset
+            logger.info("FinMind cooldown expired; re-enabling FinMind")
+            return True
+        return False
+
+    @classmethod
+    def _mark_finmind_unavailable(cls) -> None:
+        """Record the time FinMind was disabled to start the cooldown timer."""
+        import time
+        cls._finmind_disabled_at = time.monotonic()
 
     @classmethod
     async def get_twse_client(cls) -> httpx.AsyncClient:
@@ -268,9 +289,9 @@ class DataFetcher:
                 cache_manager.set(cache_key, cached, "daily")
                 return pd.DataFrame(cached)
 
-        # Skip FinMind if unavailable
-        if not DataFetcher._finmind_available:
-            logger.debug("Skipping FinMind (unavailable), using TWSE for daily data")
+        # Skip FinMind if cooldown is active
+        if not DataFetcher._is_finmind_available():
+            logger.debug("Skipping FinMind (cooldown active), using TWSE for daily data")
             return await self._fetch_twse_daily_openapi(trade_date)
 
         params = {
@@ -286,8 +307,8 @@ class DataFetcher:
             client = await self.get_client()
             response = await client.get(self.finmind_url, params=params, timeout=10.0)
             if response.status_code in (400, 402, 403, 429):
-                DataFetcher._finmind_available = False
-                logger.warning(f"FinMind API error {response.status_code}, switching to TWSE")
+                DataFetcher._mark_finmind_unavailable()
+                logger.warning(f"FinMind API error {response.status_code}, switching to TWSE (cooldown 30 min)")
                 return await self._fetch_twse_daily_openapi(trade_date)
             response.raise_for_status()
             data = response.json()
@@ -375,7 +396,7 @@ class DataFetcher:
                             "max": _parse_num(item.get("HighestPrice"), True),
                             "min": _parse_num(item.get("LowestPrice"), True),
                             "close": close_price,
-                            "spread": _parse_num(item.get("Change"), True) or 0,
+                            "spread": _parse_num(item.get("Change"), True),
                             "date": actual_date
                         })
                     except Exception:
@@ -429,9 +450,9 @@ class DataFetcher:
         if cached is not None:
             return pd.DataFrame(cached)
 
-        # Skip FinMind if it's been marked unavailable (402 error)
-        if not DataFetcher._finmind_available:
-            logger.debug(f"Skipping FinMind (unavailable), using Yahoo/TWSE for {symbol}")
+        # Skip FinMind if cooldown is active
+        if not DataFetcher._is_finmind_available():
+            logger.debug(f"Skipping FinMind (cooldown active), using Yahoo/TWSE for {symbol}")
             df = await self._fetch_twse_historical(symbol, start_date, end_date)
             if not df.empty:
                 cache_manager.set(cache_key, df.to_dict("records"), "historical")
@@ -451,9 +472,8 @@ class DataFetcher:
             client = await self.get_client()
             response = await client.get(self.finmind_url, params=params, timeout=10.0)
             if response.status_code in (400, 402, 403, 429):
-                # Mark FinMind as unavailable for this session
-                DataFetcher._finmind_available = False
-                logger.warning(f"FinMind API error {response.status_code}, switching to TWSE fallback for all requests")
+                DataFetcher._mark_finmind_unavailable()
+                logger.warning(f"FinMind API error {response.status_code}, switching to TWSE fallback (cooldown 30 min)")
                 return await self._fetch_twse_historical(symbol, start_date, end_date)
             response.raise_for_status()
             data = response.json()
@@ -539,8 +559,14 @@ class DataFetcher:
         end_dt = datetime.strptime(end_date, "%Y-%m-%d")
         days_diff = (end_dt - start_dt).days
         expected_records = max(int(days_diff * 0.65), 10)  # 約 65% 是交易日
-        # Yahoo 只需達到預期的 30% 就算成功（避免不必要的 TWSE 爬取）
-        min_acceptable = max(int(expected_records * 0.3), 5)
+        # For long requests (≥300 daily rows needed, e.g. weekly MA60 backfill),
+        # require at least 80% of expected rows so a short Yahoo response
+        # triggers the TWSE fallback instead of silently returning a truncated series.
+        # For short requests keep the lenient 30% bar to avoid unnecessary TWSE hits.
+        if expected_records >= 300:
+            min_acceptable = min(int(expected_records * 0.8), expected_records)
+        else:
+            min_acceptable = max(int(expected_records * 0.3), 5)
 
         if not yahoo_df.empty and len(yahoo_df) >= min_acceptable:
             logger.info(f"Yahoo Finance loaded {len(yahoo_df)} records for {symbol} (min={min_acceptable})")
@@ -806,8 +832,14 @@ class DataFetcher:
         if cached:
             return cached
 
-        # tse=上市, otc=上櫃; 預設用 tse，4碼數字開頭
-        ex_ch = "|".join(f"tse_{s}.tw" for s in symbols[:50])
+        # Query both tse_ (上市) and otc_ (上櫃) channels for every symbol.
+        # TWSE MIS accepts multiple "|"-joined channels in a single request and
+        # returns only the channels that have data, so symbols listed under the
+        # wrong market type are simply absent from the response — no fake zeros.
+        batch = symbols[:50]
+        ex_ch = "|".join(
+            f"tse_{s}.tw|otc_{s}.tw" for s in batch
+        )
         url = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
 
         try:
@@ -820,7 +852,12 @@ class DataFetcher:
             for item in data.get("msgArray", []):
                 z = item.get("z", "-")  # 成交價
                 if z == "-" or z == "":
-                    z = item.get("y", "0")  # 沒成交用昨收
+                    z = item.get("y", "-")  # 沒成交用昨收
+
+                # Skip items where we still have no usable price — do NOT coerce
+                # to 0, which would fabricate a fake quote.
+                if z == "-" or z == "":
+                    continue
 
                 try:
                     close = float(z)
@@ -828,7 +865,7 @@ class DataFetcher:
                     change = round(close - yesterday, 2) if yesterday else 0
                     change_pct = round(change / yesterday * 100, 2) if yesterday else 0
                 except (ValueError, ZeroDivisionError):
-                    close, change, change_pct = 0, 0, 0
+                    continue  # skip rather than emit fake zeros
 
                 results.append({
                     "stock_id": item.get("c", ""),

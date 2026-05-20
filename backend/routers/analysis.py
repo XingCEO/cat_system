@@ -4,7 +4,7 @@ Analysis Router - Technical analysis API endpoints
 """
 from fastapi import APIRouter, Query, HTTPException
 from typing import Optional, Literal
-from datetime import date, timedelta
+from datetime import timedelta
 
 from schemas.common import APIResponse
 from services.technical_analysis import technical_analyzer

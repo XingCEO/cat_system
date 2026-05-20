@@ -11,6 +11,7 @@ import {
     Zap, ChevronLeft, LineChart, TrendingUp, TrendingDown, Search, Calendar
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { LoadingState, EmptyState } from '@/components/ui/states';
 
 interface BreakoutStock {
     turnover_rank?: number;
@@ -301,11 +302,9 @@ export function MaBreakoutPage() {
                 </CardHeader>
                 <CardContent className="p-0">
                     {isLoading ? (
-                        <div className="py-20 text-center text-muted-foreground animate-pulse">載入中...</div>
+                        <LoadingState />
                     ) : stocks.length === 0 ? (
-                        <div className="py-20 text-center text-muted-foreground">
-                            無符合條件的股票，請調整篩選條件後點擊「查詢」
-                        </div>
+                        <EmptyState description="請調整篩選條件後點擊「查詢」" />
                     ) : (
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm">
@@ -366,7 +365,7 @@ export function MaBreakoutPage() {
                                                     size="sm"
                                                     onClick={(e) => { e.stopPropagation(); openChartDialog(stock.symbol, stock.name); }}
                                                     className="h-8 w-8 p-0"
-                                                    title="查看K線圖"
+                                                    aria-label="查看K線圖"
                                                 >
                                                     <LineChart className="h-4 w-4" />
                                                 </Button>

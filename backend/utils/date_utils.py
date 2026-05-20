@@ -116,22 +116,6 @@ def get_trading_days(start_date: date, end_date: date) -> List[date]:
     return trading_days
 
 
-def get_n_trading_days_ago(n: int, from_date: date = None) -> date:
-    """Get the date that is N trading days ago (台灣時區)"""
-    if from_date is None:
-        from_date = taiwan_today()
-    
-    count = 0
-    current = from_date
-    
-    while count < n:
-        current -= timedelta(days=1)
-        if is_trading_day(current):
-            count += 1
-    
-    return current
-
-
 def format_date(d: date) -> str:
     """Format date to YYYY-MM-DD string"""
     if isinstance(d, str):
@@ -145,20 +129,6 @@ def parse_date(date_str: str) -> Optional[date]:
         return datetime.strptime(date_str, "%Y-%m-%d").date()
     except (ValueError, TypeError):
         return None
-
-
-def get_date_range_description(start_date: str, end_date: str) -> str:
-    """Generate human-readable date range description"""
-    start = parse_date(start_date)
-    end = parse_date(end_date)
-    
-    if not start or not end:
-        return ""
-    
-    days = (end - start).days
-    trading_days = len(get_trading_days(start, end))
-    
-    return f"{start_date} ~ {end_date} ({days}天, {trading_days}個交易日)"
 
 
 def get_latest_trading_day() -> str:

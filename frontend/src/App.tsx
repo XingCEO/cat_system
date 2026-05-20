@@ -90,7 +90,13 @@ function NavBar() {
                     })}
                 </nav>
                 <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="icon" onClick={toggleTheme} className="rounded-lg">
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={toggleTheme}
+                        className="rounded-lg"
+                        aria-label={theme === 'dark' ? '切換為亮色模式' : '切換為深色模式'}
+                    >
                         {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
                     </Button>
                     {/* Mobile Menu Button */}

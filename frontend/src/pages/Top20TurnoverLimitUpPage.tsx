@@ -23,6 +23,7 @@ import {
     ChevronLeft, ChevronRight, Flame, Trophy, Search,
     Download, Calendar, ArrowUpDown, AlertCircle, BarChart2, LineChart, Star
 } from 'lucide-react';
+import { LoadingState } from '@/components/ui/states';
 
 interface TurnoverStock {
     turnover_rank: number;
@@ -329,7 +330,7 @@ export function Top20TurnoverLimitUpPage() {
                     size="sm"
                     onClick={() => openChartDialog(row.original.symbol, row.original.name)}
                     className="h-8 w-8 p-0"
-                    title="查看K線圖"
+                    aria-label="查看K線圖"
                 >
                     <LineChart className="h-4 w-4" />
                 </Button>
@@ -511,9 +512,7 @@ export function Top20TurnoverLimitUpPage() {
 
                 <CardContent className="p-0">
                     {isLoading ? (
-                        <div className="py-20 text-center text-muted-foreground animate-pulse">
-                            載入中...
-                        </div>
+                        <LoadingState />
                     ) : stocks.length === 0 ? (
                         /* Empty State */
                         <div className="py-16 px-8 text-center">

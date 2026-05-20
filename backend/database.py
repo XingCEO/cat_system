@@ -34,9 +34,12 @@ def _resolve_database_url() -> str:
                 url = f"postgresql://{user}:{password}@{host}:{port}/{db}"
 
     # 將同步 driver 轉為 async driver
+    # First normalise any postgresql+<other-driver>:// to bare postgresql://
+    if url.startswith("postgresql+") and not url.startswith("postgresql+asyncpg://"):
+        url = "postgresql://" + url.split("://", 1)[1]
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql+asyncpg://", 1)
-    elif url.startswith("postgresql://") and "+asyncpg" not in url:
+    elif url.startswith("postgresql://"):
         url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
     return url

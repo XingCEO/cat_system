@@ -71,6 +71,14 @@ def validate_formula(formula: str) -> tuple[bool, str]:
     if len(formula) > MAX_FORMULA_LENGTH:
         return False, f"公式長度超過上限 ({MAX_FORMULA_LENGTH} 字元)"
 
+    # 比對已識別的 token 與原始輸入（去空白後）是否完全吻合。
+    # 若有 > < = & | % [ ] ' " 等不在 TOKEN_PATTERN 的字元，
+    # findall 會靜默跳過它們，導致重建字串比原始輸入短 → 立即拒絕。
+    raw_tokens = TOKEN_PATTERN.findall(formula)
+    reconstructed = "".join(raw_tokens).replace(" ", "")
+    if reconstructed != formula.replace(" ", ""):
+        return False, "公式包含不允許的字元"
+
     tokens = tokenize(formula)
     if not tokens:
         return False, "公式解析失敗"

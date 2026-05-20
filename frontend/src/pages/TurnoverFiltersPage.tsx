@@ -23,6 +23,7 @@ import {
     BarChart3, Users, Filter
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { LoadingState, EmptyState } from '@/components/ui/states';
 
 type FilterType = 'limit_up' | 'change_range' | '5day_high' | '5day_low' | 'ma_breakout' | 'volume_surge' | 'institutional_buy' | 'combo';
 
@@ -680,15 +681,9 @@ export function TurnoverFiltersPage() {
                 </CardHeader>
                 <CardContent className="p-0">
                     {isLoading ? (
-                        <div className="py-20 text-center text-muted-foreground">
-                            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-3"></div>
-                            <p>載入中...</p>
-                        </div>
+                        <LoadingState />
                     ) : stocks.length === 0 ? (
-                        <div className="py-20 text-center text-muted-foreground">
-                            <Search className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                            <p>無符合條件的股票，請調整篩選條件後點擊「查詢」</p>
-                        </div>
+                        <EmptyState description="請調整篩選條件後點擊「查詢」" />
                     ) : (
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm">
@@ -792,9 +787,9 @@ export function TurnoverFiltersPage() {
                                                 <Button
                                                     variant="ghost"
                                                     size="sm"
-                                                    onClick={() => openChartDialog(stock.symbol, stock.name)}
+                                                    onClick={(e) => { e.stopPropagation(); openChartDialog(stock.symbol, stock.name); }}
                                                     className="h-8 w-8 p-0 hover:bg-primary/10 hover:text-primary transition-colors cursor-pointer"
-                                                    title="查看K線圖"
+                                                    aria-label="查看K線圖"
                                                 >
                                                     <LineChart className="h-4 w-4" />
                                                 </Button>

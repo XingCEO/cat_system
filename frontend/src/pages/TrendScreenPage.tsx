@@ -10,6 +10,7 @@ import {
     Search, CheckCircle2, Activity, CalendarDays
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { LoadingState, EmptyState } from '@/components/ui/states';
 
 interface TrendStock {
     symbol: string;
@@ -456,21 +457,9 @@ export function TrendScreenPage() {
                     </CardHeader>
                     <CardContent className="p-0">
                         {loading ? (
-                            <div className="py-20 text-center text-muted-foreground">
-                                <div className="relative w-16 h-16 mx-auto mb-4">
-                                    <Activity className="w-8 h-8 absolute inset-0 m-auto animate-spin text-amber-400" />
-                                    <div className="absolute inset-0 rounded-full border-2 border-amber-400/20" />
-                                    <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-amber-400 animate-spin" style={{ animationDuration: '1.5s' }} />
-                                </div>
-                                <p className="animate-pulse">掃描全市場中，首次約需 2-3 分鐘...</p>
-                                <div className="mt-4 mx-auto max-w-xs h-1 rounded-full bg-muted overflow-hidden">
-                                    <div className="h-full w-1/3 rounded-full bg-gradient-to-r from-amber-500/0 via-amber-400 to-amber-500/0 animate-scan-line" />
-                                </div>
-                            </div>
+                            <LoadingState label="掃描全市場中，首次約需 2-3 分鐘…" />
                         ) : stocks.length === 0 ? (
-                            <div className="py-20 text-center text-muted-foreground animate-fade-in">
-                                無符合所有條件的股票
-                            </div>
+                            <EmptyState message="無符合所有條件的股票" description="調整篩選參數後點擊「開始掃描」" />
                         ) : (
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm">
@@ -539,7 +528,7 @@ export function TrendScreenPage() {
                                                         size="sm"
                                                         onClick={(e) => { e.stopPropagation(); openChartDialog(stock.symbol, stock.name); }}
                                                         className="h-8 w-8 p-0 hover:text-amber-400 transition-colors"
-                                                        title="查看K線圖"
+                                                        aria-label="查看K線圖"
                                                     >
                                                         <LineChart className="h-4 w-4" />
                                                     </Button>

@@ -107,14 +107,23 @@ async def load_multi_day_data(db: AsyncSession, days: int = 2) -> pd.DataFrame:
     """
     載入多天資料 (供 CROSS_UP/CROSS_DOWN 使用)
     """
+    # 先查詢最近 N 個交易日的日期，再以日期範圍過濾，避免 row-count cap 截斷當日資料
+    dates_result = await db.execute(
+        select(DailyPrice.date)
+        .distinct()
+        .order_by(DailyPrice.date.desc())
+        .limit(days)
+    )
+    recent_dates = [row[0] for row in dates_result.fetchall()]
+    if not recent_dates:
+        return pd.DataFrame()
+    min_date = min(recent_dates)
+
     price_query = (
         select(*_DAILY_PRICE_COLS)
+        .where(DailyPrice.date >= min_date)
         .order_by(DailyPrice.date.desc())
     )
-    # 取得實際 ticker 數量來設定合理上限
-    ticker_count_result = await db.execute(select(func.count(Ticker.ticker_id)))
-    ticker_count = ticker_count_result.scalar() or 2000
-    price_query = price_query.limit(days * ticker_count)
     result = await db.execute(price_query)
     rows = result.fetchall()
 

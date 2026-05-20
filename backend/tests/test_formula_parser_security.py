@@ -220,3 +220,66 @@ class TestSafeEvalFormula:
         df = self._make_df()
         with pytest.raises(ValueError):
             safe_eval_formula(df, "out", "secret_col + close")
+
+
+# ──────────────────────────────────────────────
+# C1: 重建比對（reconstruct-and-compare）修復的回歸測試
+# 確保 TOKEN_PATTERN 之外的字元觸發拒絕，而合法公式仍通過
+# ──────────────────────────────────────────────
+
+class TestDisallowedCharacterRejection:
+    """C1 regression: characters outside TOKEN_PATTERN must be rejected."""
+
+    # ── 應被拒絕的輸入 ──────────────────────────────────────────────────────
+
+    def test_greater_than_operator_rejected(self):
+        """close>5 含 '>' 不在白名單 → 拒絕"""
+        valid, msg = validate_formula("close>5")
+        assert valid is False, f"Expected rejection but got valid=True, msg={msg!r}"
+
+    def test_double_equals_operator_rejected(self):
+        """close==open 含 '==' → 拒絕"""
+        valid, msg = validate_formula("close==open")
+        assert valid is False, f"Expected rejection but got valid=True, msg={msg!r}"
+
+    def test_bitwise_and_rejected(self):
+        """close & 1 含 '&' → 拒絕"""
+        valid, msg = validate_formula("close & 1")
+        assert valid is False, f"Expected rejection but got valid=True, msg={msg!r}"
+
+    def test_bitwise_or_rejected(self):
+        """close|1 含 '|' → 拒絕"""
+        valid, msg = validate_formula("close|1")
+        assert valid is False, f"Expected rejection but got valid=True, msg={msg!r}"
+
+    def test_modulo_operator_rejected(self):
+        """close%2 含 '%' → 拒絕"""
+        valid, msg = validate_formula("close%2")
+        assert valid is False, f"Expected rejection but got valid=True, msg={msg!r}"
+
+    def test_subscript_bracket_rejected(self):
+        """close['x'] 含 '[' ']' '\'' → 拒絕"""
+        valid, msg = validate_formula("close['x']")
+        assert valid is False, f"Expected rejection but got valid=True, msg={msg!r}"
+
+    # ── 應通過的合法公式 ────────────────────────────────────────────────────
+
+    def test_addition_of_close_and_ma20_accepted(self):
+        """close + ma20 是合法公式 → 通過"""
+        valid, msg = validate_formula("close + ma20")
+        assert valid is True, f"Expected acceptance but got msg={msg!r}"
+
+    def test_subtraction_and_multiplication_accepted(self):
+        """(high - low) * 2 是合法公式 → 通過"""
+        valid, msg = validate_formula("(high - low) * 2")
+        assert valid is True, f"Expected acceptance but got msg={msg!r}"
+
+    def test_multiplication_by_float_constant_accepted(self):
+        """close * 1.5 是合法公式 → 通過"""
+        valid, msg = validate_formula("close * 1.5")
+        assert valid is True, f"Expected acceptance but got msg={msg!r}"
+
+    def test_division_of_two_ma_fields_accepted(self):
+        """ma5 / ma20 是合法公式 → 通過"""
+        valid, msg = validate_formula("ma5 / ma20")
+        assert valid is True, f"Expected acceptance but got msg={msg!r}"

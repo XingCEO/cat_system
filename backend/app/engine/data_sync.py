@@ -20,6 +20,10 @@ from config import get_settings
 
 logger = logging.getLogger(__name__)
 
+# Serializes concurrent sync_daily_prices callers (_background_sync + _periodic_refresh)
+# to prevent check-then-insert races that cause duplicate rows / unique violations.
+_sync_daily_lock = asyncio.Lock()
+
 
 async def sync_tickers(db: AsyncSession) -> int:
     """同步股票基本資料到 tickers 表"""
@@ -79,72 +83,74 @@ async def sync_daily_prices(db: AsyncSession, trade_date: Optional[str] = None) 
     else:
         date_obj = datetime.strptime(trade_date, "%Y-%m-%d").date()
 
-    # 批次查詢：取得該日已存在的所有 ticker_ids
-    existing_result = await db.execute(
-        select(DailyPrice.ticker_id).where(DailyPrice.date == date_obj)
-    )
-    existing_tickers = set(existing_result.scalars().all())
+    async with _sync_daily_lock:
+        # 批次查詢：取得該日已存在的所有 ticker_ids
+        existing_result = await db.execute(
+            select(DailyPrice.ticker_id).where(DailyPrice.date == date_obj)
+        )
+        existing_tickers = set(existing_result.scalars().all())
 
-    # 取得所有已知 ticker_ids（只同步有基本資料的股票，避免 orphan records）
-    known_result = await db.execute(select(Ticker.ticker_id))
-    known_tickers = set(known_result.scalars().all())
+        # 取得所有已知 ticker_ids（只同步有基本資料的股票，避免 orphan records）
+        known_result = await db.execute(select(Ticker.ticker_id))
+        known_tickers = set(known_result.scalars().all())
 
-    if existing_tickers:
-        logger.info(f"Already have {len(existing_tickers)} prices for {date_obj}, checking for new...")
+        if existing_tickers:
+            logger.info(f"Already have {len(existing_tickers)} prices for {date_obj}, checking for new...")
 
-    skipped_unknown = 0
-    count = 0
-    for _, row in daily_df.iterrows():
-        ticker_id = str(row.get("stock_id", row.get("Code", "")))
-        if not ticker_id or ticker_id in existing_tickers:
-            continue
-        # 只同步已知 tickers（跳過 REITs、受益憑證等沒有基本資料的）
-        if ticker_id not in known_tickers:
-            skipped_unknown += 1
-            continue
+        skipped_unknown = 0
+        count = 0
+        for _, row in daily_df.iterrows():
+            ticker_id = str(row.get("stock_id", row.get("Code", "")))
+            if not ticker_id or ticker_id in existing_tickers:
+                continue
+            # 只同步已知 tickers（跳過 REITs、受益憑證等沒有基本資料的）
+            if ticker_id not in known_tickers:
+                skipped_unknown += 1
+                continue
 
-        close = _safe_float(row, "close", "ClosingPrice")
-        if close is None:
-            continue
+            close = _safe_float(row, "close", "ClosingPrice")
+            if close is None:
+                continue
 
-        open_p = _safe_float(row, "open", "OpeningPrice")
-        high = _safe_float(row, "max", "HighestPrice")
-        low = _safe_float(row, "min", "LowestPrice")
-        volume = _safe_int(row, "Trading_Volume", "TradeVolume")
-        change = _safe_float(row, "spread", "Change")
-        change_pct = None
-        prev_close = close - change if change is not None and close else None
-        if prev_close and prev_close > 0 and change is not None:
-            change_pct = round(change / prev_close * 100, 2)
+            open_p = _safe_float(row, "open", "OpeningPrice")
+            high = _safe_float(row, "max", "HighestPrice")
+            low = _safe_float(row, "min", "LowestPrice")
+            volume = _safe_int(row, "Trading_Volume", "TradeVolume")
+            change = _safe_float(row, "spread", "Change")
+            change_pct = None
+            if change is not None and close is not None:
+                prev_close = close - change
+                if prev_close > 0:
+                    change_pct = round(change / prev_close * 100, 2)
 
-        # 計算成交值 = 收盤 × 成交量 (股)
-        turnover = round(close * volume, 0) if close and volume else None
+            # 計算成交值 = 收盤 × 成交量 (股)
+            turnover = round(close * volume, 0) if close and volume else None
 
-        # 計算下引價 = body_bottom - low (下影線長度，body_bottom >= low 故為非負)
-        lower_shadow = None
-        if low is not None and open_p is not None and close is not None:
-            body_bottom = min(open_p, close)
-            lower_shadow = round(max(0.0, body_bottom - low), 4)
+            # 計算下引價 = body_bottom - low (下影線長度，body_bottom >= low 故為非負)
+            lower_shadow = None
+            if low is not None and open_p is not None and close is not None:
+                body_bottom = min(open_p, close)
+                lower_shadow = round(max(0.0, body_bottom - low), 4)
 
-        db.add(DailyPrice(
-            date=date_obj,
-            ticker_id=ticker_id,
-            open=open_p,
-            high=high,
-            low=low,
-            close=close,
-            volume=volume,
-            change_percent=change_pct,
-            turnover=turnover,
-            lower_shadow=lower_shadow,
-        ))
-        count += 1
+            db.add(DailyPrice(
+                date=date_obj,
+                ticker_id=ticker_id,
+                open=open_p,
+                high=high,
+                low=low,
+                close=close,
+                volume=volume,
+                change_percent=change_pct,
+                turnover=turnover,
+                lower_shadow=lower_shadow,
+            ))
+            count += 1
 
-    if count > 0:
-        await db.commit()
-    if skipped_unknown > 0:
-        logger.info(f"Skipped {skipped_unknown} unknown ticker_ids (REITs, etc.)")
-    logger.info(f"Synced {count} daily prices for {date_obj}")
+        if count > 0:
+            await db.commit()
+        if skipped_unknown > 0:
+            logger.info(f"Skipped {skipped_unknown} unknown ticker_ids (REITs, etc.)")
+        logger.info(f"Synced {count} daily prices for {date_obj}")
 
     # 補算技術指標 (MA5/10/20/60, RSI14, avg_volume_20, avg_turnover_20,
     #               lowest_lower_shadow_20, 週MA, market_ok)

@@ -221,7 +221,7 @@ async def health_check():
 
 # Rate limit state for cache/clear
 _cache_clear_last = 0.0
-_CACHE_CLEAR_COOLDOWN = 60  # seconds
+_CACHE_CLEAR_COOLDOWN = settings.cooldown_cache_clear  # seconds (source of truth: config.py)
 
 
 @app.post("/api/cache/clear", dependencies=[Depends(require_admin)])
@@ -240,7 +240,7 @@ async def clear_cache(request: Request):
 
 # Rate limit state for data refresh
 _data_refresh_last = 0.0
-_DATA_REFRESH_COOLDOWN = 120  # 2 minutes
+_DATA_REFRESH_COOLDOWN = settings.cooldown_data_refresh  # seconds (source of truth: config.py)
 
 
 @app.post("/api/data/refresh", dependencies=[Depends(require_admin)])

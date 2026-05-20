@@ -48,6 +48,8 @@ export default {
                     DEFAULT: "hsl(var(--card))",
                     foreground: "hsl(var(--card-foreground))",
                 },
+                chartUp: "hsl(var(--chart-up))",
+                chartDown: "hsl(var(--chart-down))",
                 success: {
                     DEFAULT: "hsl(142, 76%, 36%)",
                     foreground: "hsl(0, 0%, 100%)",
