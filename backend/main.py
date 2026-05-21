@@ -105,6 +105,34 @@ async def lifespan(app: FastAPI):
                     logger.info(f"Background synced {price_count} daily prices")
                 else:
                     logger.info("Daily prices already up to date (or no data available)")
+
+            # ===== Phase 3: 補齊全部股票指標 =====
+            # sync_daily_prices 內的 backfill 每次只處理 backfill_batch_size 檔，
+            # 冷啟動時須持續跑完整個股票池，否則大量股票指標為 NULL → 畫面「沒有資料」。
+            # 這裡不依賴盤中 periodic refresh，啟動時就把指標補齊。
+            from app.engine.data_sync import _backfill_indicators
+            from app.models.daily_price import DailyPrice
+            from sqlalchemy import select, func
+
+            async with async_session_maker() as session:
+                latest_date = (
+                    await session.execute(select(func.max(DailyPrice.date)))
+                ).scalar()
+
+            if latest_date is not None:
+                prev_pending = None
+                for i in range(15):  # 上限保護，避免無限迴圈
+                    async with async_session_maker() as session:
+                        pending = await _backfill_indicators(session, latest_date)
+                    if not pending:
+                        logger.info("Backfill complete: all tickers have indicators")
+                        break
+                    # 停滯偵測：本次未取得進展（多為已下市/查無資料的股票）即停止
+                    if prev_pending is not None and pending >= prev_pending:
+                        logger.warning(f"Backfill stalled at {pending} pending; stopping")
+                        break
+                    prev_pending = pending
+                    logger.info(f"Backfill loop pass {i + 1}: {pending} tickers still pending")
         except Exception as e:
             logger.warning(f"Background sync error: {e}")
 
@@ -134,11 +162,30 @@ async def lifespan(app: FastAPI):
 
                 # 同步到 v1 DB
                 from database import async_session_maker
-                from app.engine.data_sync import sync_daily_prices
+                from app.engine.data_sync import sync_daily_prices, _backfill_indicators
+                from app.models.daily_price import DailyPrice
+                from sqlalchemy import select, func
                 async with async_session_maker() as session:
                     count = await sync_daily_prices(session, trade_date)
                     if count > 0:
                         logger.info(f"Periodic refresh: synced {count} daily prices to v1 DB")
+
+                # 把當日指標補齊（同冷啟動邏輯），避免新交易日大量股票指標 NULL
+                async with async_session_maker() as session:
+                    latest_date = (
+                        await session.execute(select(func.max(DailyPrice.date)))
+                    ).scalar()
+                if latest_date is not None:
+                    prev_pending = None
+                    for i in range(15):
+                        async with async_session_maker() as session:
+                            pending = await _backfill_indicators(session, latest_date)
+                        if not pending:
+                            break
+                        if prev_pending is not None and pending >= prev_pending:
+                            logger.warning(f"Periodic backfill stalled at {pending} pending; stopping")
+                            break
+                        prev_pending = pending
             except Exception as e:
                 logger.warning(f"Periodic refresh error: {e}")
 

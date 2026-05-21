@@ -307,7 +307,7 @@ async def sync_market_index(db: AsyncSession, target_date=None) -> bool:
     return bool(ok)
 
 
-async def _backfill_indicators(db: AsyncSession, target_date) -> None:
+async def _backfill_indicators(db: AsyncSession, target_date) -> int:
     """
     對 target_date 那天缺少延伸指標的股票補算並回寫 DB。
 
@@ -322,6 +322,10 @@ async def _backfill_indicators(db: AsyncSession, target_date) -> None:
     - market_ok (大盤條件)
 
     若 v1 DB 歷史不足，fallback 到 Legacy data_fetcher 抓歷史資料。
+
+    Returns:
+        int — 因 batch_size 上限而尚未在本次處理的股票數（pending）。
+        呼叫端可據此持續重跑直到回傳 0（見 main.py 冷啟動 backfill 迴圈）。
     """
     import pandas as pd
     from sqlalchemy import update, and_
@@ -355,7 +359,7 @@ async def _backfill_indicators(db: AsyncSession, target_date) -> None:
             await _apply_market_ok(db, target_date)
         except Exception as e:
             logger.warning(f"Market index sync failed: {e}")
-        return
+        return 0
 
     logger.info(f"Backfilling indicators for {len(all_missing)} tickers on {target_date}...")
 
@@ -391,6 +395,9 @@ async def _backfill_indicators(db: AsyncSession, target_date) -> None:
     settings = get_settings()
     min_days = settings.backfill_min_days
     need_fallback = [t for t in all_missing if db_day_counts.get(t, 0) < min_days]
+
+    # 因 batch_size 上限本次無法處理的股票數，回傳給呼叫端持續重跑
+    pending_count = max(0, len(need_fallback) - settings.backfill_batch_size)
 
     # === Fallback: 用 Legacy data_fetcher 抓歷史資料 ===
     fallback_data: dict[str, pd.DataFrame] = {}
@@ -592,6 +599,8 @@ async def _backfill_indicators(db: AsyncSession, target_date) -> None:
 
     # 套用大盤條件到剩餘已有指標的股票
     await _apply_market_ok(db, target_date)
+
+    return pending_count
 
 
 async def _apply_market_ok(db: AsyncSession, target_date) -> None:
