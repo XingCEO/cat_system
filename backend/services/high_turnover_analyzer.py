@@ -13,6 +13,11 @@ from services.calculator import StockCalculator
 
 logger = logging.getLogger(__name__)
 
+# 台股 1 張 = 1000 股。成交量 (股) ÷ SHARES_PER_LOT = 張數。
+# 過去未定義此常數，導致 _calculate_turnover_rates / volume-surge / 5day-high-low
+# 在執行期拋 NameError 並被 except 吞掉 → 所有周轉/趨勢頁回傳空資料。
+SHARES_PER_LOT = 1000
+
 
 class HighTurnoverAnalyzer:
     """高周轉率漲停股分析服務"""
@@ -1758,6 +1763,10 @@ class HighTurnoverAnalyzer:
 
         import asyncio
 
+        # 官方收盤資料日。盤中 Yahoo index 0 是「今日盤中未完成」列，需用此日對齊，
+        # 否則會拿同一天當「今日 vs 昨日」比較 → 比值恆為 1，永遠篩不到放量股。
+        ref_date = top200_result.get("query_date") or date
+
         surge_stocks = []
         for stock in stocks_to_check:
             symbol = stock["symbol"]
@@ -1771,24 +1780,23 @@ class HighTurnoverAnalyzer:
                 if history_df.empty or len(history_df) < 2:
                     continue
 
-                # 取得昨日成交量（從 Yahoo Finance 資料）
-                if "volume" in history_df.columns:
-                    volumes = history_df["volume"].dropna().tolist()[:5]
-                else:
+                if "volume" not in history_df.columns:
                     continue
-
-                if len(volumes) >= 2:
-                    # volumes[0] 是今天，volumes[1] 是昨天
-                    yesterday_volume = volumes[1] if volumes[1] else 0
-                    # Yahoo 返回單位為股；today_volume 已在 _calculate_turnover_rates 換算為張，
-                    # 昨日也必須除以 SHARES_PER_LOT 統一單位後才能比倍數。
-                    yesterday_volume_lots = yesterday_volume / SHARES_PER_LOT  # 股 → 張
-                    if yesterday_volume_lots > 0 and today_volume >= yesterday_volume_lots * volume_ratio:
-                        matched = dict(stock)
-                        matched["yesterday_volume"] = int(yesterday_volume_lots)
-                        matched["volume_ratio_calc"] = round(today_volume / yesterday_volume_lots, 2)
-                        matched["is_volume_surge"] = True
-                        surge_stocks.append(matched)
+                # Yahoo 依日期降序。以官方收盤日 ref_date 對齊：
+                # 今日 = date <= ref_date 的最近一列；昨日 = 其下一列。
+                # 同源 (皆為股) 相比，避免盤中未完成列與單位混用造成誤判。
+                rows = history_df.dropna(subset=["volume"]).to_dict("records")
+                ti = next((i for i, r in enumerate(rows) if r["date"] <= ref_date), None)
+                if ti is None or ti + 1 >= len(rows):
+                    continue
+                today_vol = rows[ti]["volume"] or 0
+                yesterday_vol = rows[ti + 1]["volume"] or 0
+                if yesterday_vol > 0 and today_vol >= yesterday_vol * volume_ratio:
+                    matched = dict(stock)
+                    matched["yesterday_volume"] = int(yesterday_vol / SHARES_PER_LOT)
+                    matched["volume_ratio_calc"] = round(today_vol / yesterday_vol, 2)
+                    matched["is_volume_surge"] = True
+                    surge_stocks.append(matched)
 
             except Exception as e:
                 logger.debug(f"Error processing volume surge for {symbol}: {e}")
@@ -2359,17 +2367,21 @@ class HighTurnoverAnalyzer:
                             continue
 
                         if "volume" in history_df.columns:
-                            volumes = history_df["volume"].tolist()[:5]
-                            if len(volumes) >= 2 and volumes[1] is not None:
-                                yesterday_volume = volumes[1] / SHARES_PER_LOT  # 股 → 張
-                                if yesterday_volume > 0:
-                                    actual_ratio = today_volume / yesterday_volume
-                                    if actual_ratio < volume_ratio:
-                                        continue
-                                    matched["volume_ratio_calc"] = round(actual_ratio, 2)
-                                    matched["yesterday_volume"] = int(yesterday_volume)
-                                else:
+                            # 以官方收盤日對齊（盤中 Yahoo index 0 為未完成列），
+                            # 同源相比：今日 = date<=ref_date 最近列，昨日 = 其下一列
+                            ref_date = top200_result.get("query_date") or date
+                            vrows = history_df.dropna(subset=["volume"]).to_dict("records")
+                            ti = next((i for i, r in enumerate(vrows) if r["date"] <= ref_date), None)
+                            if ti is None or ti + 1 >= len(vrows):
+                                continue
+                            today_vol = vrows[ti]["volume"] or 0
+                            yesterday_vol = vrows[ti + 1]["volume"] or 0
+                            if yesterday_vol > 0:
+                                actual_ratio = today_vol / yesterday_vol
+                                if actual_ratio < volume_ratio:
                                     continue
+                                matched["volume_ratio_calc"] = round(actual_ratio, 2)
+                                matched["yesterday_volume"] = int(yesterday_vol / SHARES_PER_LOT)
                             else:
                                 continue
                         else:
