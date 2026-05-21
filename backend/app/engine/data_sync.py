@@ -156,6 +156,124 @@ async def sync_daily_prices(db: AsyncSession, trade_date: Optional[str] = None) 
     #               lowest_lower_shadow_20, 週MA, market_ok)
     await _backfill_indicators(db, date_obj)
 
+    # 同步籌碼面 (法人/融資) 與基本面 (PE/EPS)，避免該維度永遠無資料
+    try:
+        await sync_daily_chips(db, date_obj)
+    except Exception as e:
+        logger.warning(f"sync_daily_chips failed: {e}")
+    try:
+        await sync_fundamentals(db, date_obj)
+    except Exception as e:
+        logger.warning(f"sync_fundamentals failed: {e}")
+
+    return count
+
+
+async def sync_daily_chips(db: AsyncSession, target_date) -> int:
+    """
+    同步三大法人買賣超 (T86) + 融資餘額 (MI_MARGN) 到 daily_chips。
+    foreign_buy / trust_buy 單位為股 (可為負)，margin_balance 單位為張。
+    """
+    import pandas as pd
+
+    inst_df = await data_fetcher.get_institutional_net()
+    margin_df = await data_fetcher.get_margin_balance()
+    if inst_df.empty and margin_df.empty:
+        logger.warning("No chip data available (T86 + MI_MARGN both empty)")
+        return 0
+
+    if inst_df.empty:
+        merged = margin_df.copy()
+        merged["foreign_buy"] = None
+        merged["trust_buy"] = None
+    elif margin_df.empty:
+        merged = inst_df.copy()
+        merged["margin_balance"] = None
+    else:
+        merged = inst_df.merge(margin_df, on="stock_id", how="outer")
+
+    known_result = await db.execute(select(Ticker.ticker_id))
+    known = set(known_result.scalars().all())
+
+    existing_result = await db.execute(
+        select(DailyChip).where(DailyChip.date == target_date)
+    )
+    existing = {c.ticker_id: c for c in existing_result.scalars().all()}
+
+    def _to_int(v):
+        try:
+            if v is None or pd.isna(v):
+                return None
+            return int(v)
+        except (ValueError, TypeError):
+            return None
+
+    count = 0
+    for _, row in merged.iterrows():
+        sid = str(row.get("stock_id", "")).strip()
+        if not sid or sid not in known:
+            continue
+        fb = _to_int(row.get("foreign_buy"))
+        tb = _to_int(row.get("trust_buy"))
+        mb = _to_int(row.get("margin_balance"))
+        if fb is None and tb is None and mb is None:
+            continue
+        obj = existing.get(sid)
+        if obj is None:
+            db.add(DailyChip(
+                date=target_date, ticker_id=sid,
+                foreign_buy=fb, trust_buy=tb, margin_balance=mb,
+            ))
+            count += 1
+        else:
+            obj.foreign_buy = fb
+            obj.trust_buy = tb
+            obj.margin_balance = mb
+
+    await db.commit()
+    logger.info(f"Synced {count} new daily chips for {target_date} (updated {len(existing)} existing)")
+    return count
+
+
+async def sync_fundamentals(db: AsyncSession, target_date) -> int:
+    """
+    填入當日 pe_ratio / eps 到 daily_prices。
+    pe_ratio 來自 TWSE BWIBBU_ALL；eps 由 close / pe_ratio 推算 (pe>0)。
+    """
+    import pandas as pd
+    from sqlalchemy import update
+
+    per_df = await data_fetcher.get_per_pbr()
+    if per_df.empty:
+        logger.warning("No fundamental data available (BWIBBU_ALL empty)")
+        return 0
+
+    close_rows = await db.execute(
+        select(DailyPrice.ticker_id, DailyPrice.close).where(DailyPrice.date == target_date)
+    )
+    close_map = {tid: c for tid, c in close_rows.fetchall()}
+
+    count = 0
+    for _, row in per_df.iterrows():
+        sid = str(row.get("stock_id", "")).strip()
+        if sid not in close_map:
+            continue
+        pe = row.get("pe_ratio")
+        if pe is None or pd.isna(pe):
+            continue
+        pe = float(pe)
+        close = close_map.get(sid)
+        eps = round(close / pe, 2) if (pe > 0 and close) else None
+        await db.execute(
+            update(DailyPrice)
+            .where(DailyPrice.ticker_id == sid, DailyPrice.date == target_date)
+            .values(pe_ratio=round(pe, 2), eps=eps)
+        )
+        count += 1
+
+    if count > 0:
+        await db.commit()
+    logger.info(f"Synced fundamentals (pe/eps) for {count} tickers on {target_date}")
     return count
 
 
@@ -416,10 +534,13 @@ async def _backfill_indicators(db: AsyncSession, target_date) -> int:
             # 並行抓取，Semaphore 限流避免打爆 Yahoo/TWSE
             sem = asyncio.Semaphore(settings.backfill_concurrency)
             col_map_pairs = [
-                ("Close", "close"), ("Open", "open"), ("Low", "low"),
+                ("Close", "close"), ("Open", "open"), ("Low", "low"), ("High", "high"),
+                # FinMind / Yahoo / TWSE historical use min/max for low/high
+                ("min", "low"), ("max", "high"),
                 ("Volume", "volume"), ("Date", "date"),
                 ("ClosingPrice", "close"), ("OpeningPrice", "open"),
-                ("LowestPrice", "low"), ("Trading_Volume", "volume"),
+                ("LowestPrice", "low"), ("HighestPrice", "high"),
+                ("Trading_Volume", "volume"),
                 ("stock_id", "ticker_id"),
             ]
 
@@ -450,6 +571,14 @@ async def _backfill_indicators(db: AsyncSession, target_date) -> int:
                 logger.info(
                     f"Fallback: got history for {len(fallback_data)}/{len(batch)} tickers "
                     f"(concurrency={settings.backfill_concurrency})"
+                )
+            # #7 觀測性：明確告警抓不到歷史的股票（下市/查無資料/來源異常）
+            failed = [t for t in batch if t not in fallback_data]
+            if failed:
+                logger.warning(
+                    f"Backfill: {len(failed)}/{len(batch)} tickers had no fetchable history "
+                    f"(will stay NULL — likely delisted/new/no source): {failed[:10]}"
+                    + (" ..." if len(failed) > 10 else "")
                 )
         except Exception as e:
             logger.warning(f"Fallback history fetch failed: {e}")
@@ -597,10 +726,98 @@ async def _backfill_indicators(db: AsyncSession, target_date) -> int:
         await db.commit()
         logger.info(f"Backfilled indicators for {updated} tickers on {target_date}")
 
+    # #4 持久化抓取到的歷史 K 線 → 讓 CROSS/多日篩選可用，並避免每日重抓
+    if fallback_data:
+        await _persist_fetched_history(db, fallback_data, target_date)
+
     # 套用大盤條件到剩餘已有指標的股票
     await _apply_market_ok(db, target_date)
 
     return pending_count
+
+
+async def _persist_fetched_history(db: AsyncSession, fallback_data: dict, target_date) -> None:
+    """
+    將 fallback 抓到的歷史 K 線（target_date 之前的交易日）寫入 daily_prices，
+    並計算每列的 ma5/ma10/ma20/ma60/rsi14，供 CROSS_UP/CROSS_DOWN 與多日篩選使用。
+
+    只插入「尚未存在」的 (ticker_id, date)；target_date 當天列由既有邏輯維護，不在此覆寫。
+    以 _sync_daily_lock 序列化，避免與其他 sync 路徑的 check-then-insert race。
+    """
+    import pandas as pd
+
+    def _f(v):
+        try:
+            return None if (v is None or pd.isna(v)) else round(float(v), 4)
+        except (ValueError, TypeError):
+            return None
+
+    def _i(v):
+        try:
+            return None if (v is None or pd.isna(v)) else int(float(v))
+        except (ValueError, TypeError):
+            return None
+
+    tickers = list(fallback_data.keys())
+    async with _sync_daily_lock:
+        existing_result = await db.execute(
+            select(DailyPrice.ticker_id, DailyPrice.date)
+            .where(DailyPrice.ticker_id.in_(tickers))
+        )
+        existing = {(t, d) for t, d in existing_result.fetchall()}
+
+        mappings = []
+        for tid, hist in fallback_data.items():
+            if hist is None or hist.empty or "date" not in hist.columns or "close" not in hist.columns:
+                continue
+            h = hist.copy()
+            closes = pd.to_numeric(h["close"], errors="coerce")
+            h["_ma5"] = closes.rolling(5).mean()
+            h["_ma10"] = closes.rolling(10).mean()
+            h["_ma20"] = closes.rolling(20).mean()
+            h["_ma60"] = closes.rolling(60).mean()
+            delta = closes.diff()
+            avg_gain = delta.where(delta > 0, 0.0).rolling(14).mean()
+            avg_loss = (-delta.where(delta < 0, 0.0)).rolling(14).mean()
+            rs = avg_gain / avg_loss
+            rsi = 100 - (100 / (1 + rs))
+            rsi[avg_loss == 0] = 100.0
+            h["_rsi14"] = rsi
+
+            for _, r in h.iterrows():
+                d = r["date"]
+                if isinstance(d, str):
+                    try:
+                        d = datetime.strptime(d, "%Y-%m-%d").date()
+                    except ValueError:
+                        continue
+                if d is None or d >= target_date or (tid, d) in existing:
+                    continue
+                close = _f(r.get("close"))
+                if close is None:
+                    continue
+                open_p = _f(r.get("open"))
+                low = _f(r.get("low"))
+                vol = _i(r.get("volume"))
+                turnover = round(close * vol, 0) if (close and vol) else None
+                lower_shadow = None
+                if low is not None and open_p is not None:
+                    lower_shadow = round(max(0.0, min(open_p, close) - low), 4)
+                mappings.append({
+                    "date": d, "ticker_id": tid,
+                    "open": open_p, "high": _f(r.get("high")), "low": low,
+                    "close": close, "volume": vol,
+                    "turnover": turnover, "lower_shadow": lower_shadow,
+                    "ma5": _f(r.get("_ma5")), "ma10": _f(r.get("_ma10")),
+                    "ma20": _f(r.get("_ma20")), "ma60": _f(r.get("_ma60")),
+                    "rsi14": _f(r.get("_rsi14")),
+                })
+                existing.add((tid, d))
+
+        if mappings:
+            await db.execute(DailyPrice.__table__.insert(), mappings)
+            await db.commit()
+            logger.info(f"Persisted {len(mappings)} historical K-line rows (CROSS/multi-day enabled)")
 
 
 async def _apply_market_ok(db: AsyncSession, target_date) -> None:

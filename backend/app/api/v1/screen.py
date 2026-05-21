@@ -35,4 +35,4 @@ async def screen_stocks(
         return result
     except Exception as e:
         logger.error(f"篩選失敗: {e}", exc_info=True)
-        return ScreenResponse(matched_count=0, data=[], logic=request.logic)
+        return ScreenResponse(matched_count=0, data=[], logic=request.logic, error=f"篩選失敗: {e}")

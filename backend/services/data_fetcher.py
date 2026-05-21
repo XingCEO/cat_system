@@ -575,6 +575,23 @@ class DataFetcher:
             cache_manager.set(cache_key, yahoo_df.to_dict("records"), "historical")
             return yahoo_df
 
+        # #8: 新上市股 Yahoo 列數少屬正常（上市未久）。若資料已更新到近端
+        # (最後一筆距 end_date <= 7 天) 且 >= 10 筆，視為完整，直接接受，
+        # 避免對每檔新股執行昂貴的 TWSE 逐月迴圈（每檔約 5 秒 / 16 次請求）。
+        if not yahoo_df.empty and len(yahoo_df) >= 10:
+            try:
+                latest = pd.to_datetime(yahoo_df["date"]).max().date()
+                if (end_dt.date() - latest).days <= 7:
+                    logger.info(
+                        f"Accepting Yahoo {len(yahoo_df)} records for {symbol} "
+                        f"(up-to-date through {latest}; likely newly listed, skipping TWSE loop)"
+                    )
+                    cache_key = f"history_{symbol}_{start_date}_{end_date}"
+                    cache_manager.set(cache_key, yahoo_df.to_dict("records"), "historical")
+                    return yahoo_df
+            except Exception:
+                pass
+
         # 如果 Yahoo 資料不足，嘗試 TWSE（通常會被 307 擋）
         logger.info(f"Yahoo data insufficient ({len(yahoo_df) if not yahoo_df.empty else 0} records), trying TWSE for {symbol}")
 
@@ -889,6 +906,123 @@ class DataFetcher:
         except Exception as e:
             logger.warning(f"TWSE MIS realtime failed: {e}")
             return []
+
+    async def get_institutional_net(self) -> pd.DataFrame:
+        """
+        三大法人買賣超 (個股) — TWSE RWD T86 (最近交易日全市場)。
+        回傳 DataFrame[stock_id, foreign_buy, trust_buy]（單位：股，可為負）。
+        欄位順序固定：0=證券代號, 4=外陸資買賣超股數(不含外資自營商), 10=投信買賣超股數。
+        """
+        cache_key = "inst_net_daily"
+        cached = cache_manager.get(cache_key, "daily")
+        if cached is not None:
+            return pd.DataFrame(cached)
+
+        url = "https://www.twse.com.tw/rwd/zh/fund/T86"
+        try:
+            client = await self.get_twse_client()
+            resp = await client.get(
+                url, params={"response": "json", "selectType": "ALL"},
+                timeout=20.0, follow_redirects=True,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            if not data or data.get("stat") != "OK" or not data.get("data"):
+                logger.warning("T86 institutional data unavailable (stat != OK)")
+                return pd.DataFrame()
+
+            rows = []
+            for r in data["data"]:
+                if len(r) < 11:
+                    continue
+                rows.append({
+                    "stock_id": str(r[0]).strip(),
+                    "foreign_buy": parse_number(r[4]),
+                    "trust_buy": parse_number(r[10]),
+                })
+            df = pd.DataFrame(rows)
+            if not df.empty:
+                cache_manager.set(cache_key, df.to_dict("records"), "daily")
+            logger.info(f"T86 institutional: {len(df)} rows (date={data.get('date')})")
+            return df
+        except Exception as e:
+            logger.warning(f"T86 institutional fetch failed: {e}")
+            return pd.DataFrame()
+
+    async def get_margin_balance(self) -> pd.DataFrame:
+        """
+        融資餘額 (個股) — TWSE OpenAPI MI_MARGN (最近交易日全市場)。
+        回傳 DataFrame[stock_id, margin_balance]（單位：張）。
+        """
+        cache_key = "margin_balance_daily"
+        cached = cache_manager.get(cache_key, "daily")
+        if cached is not None:
+            return pd.DataFrame(cached)
+
+        url = "https://openapi.twse.com.tw/v1/exchangeReport/MI_MARGN"
+        try:
+            client = await self.get_twse_client()
+            resp = await client.get(url, timeout=20.0, follow_redirects=True)
+            resp.raise_for_status()
+            data = resp.json()
+            if not isinstance(data, list) or not data:
+                return pd.DataFrame()
+
+            rows = []
+            for item in data:
+                sid = str(item.get("股票代號", "")).strip()
+                if not sid:
+                    continue
+                rows.append({
+                    "stock_id": sid,
+                    "margin_balance": parse_number(item.get("融資今日餘額")),
+                })
+            df = pd.DataFrame(rows)
+            if not df.empty:
+                cache_manager.set(cache_key, df.to_dict("records"), "daily")
+            logger.info(f"MI_MARGN margin: {len(df)} rows")
+            return df
+        except Exception as e:
+            logger.warning(f"MI_MARGN margin fetch failed: {e}")
+            return pd.DataFrame()
+
+    async def get_per_pbr(self) -> pd.DataFrame:
+        """
+        本益比 / 股價淨值比 (個股) — TWSE OpenAPI BWIBBU_ALL (最近交易日全市場)。
+        回傳 DataFrame[stock_id, pe_ratio, pbr]。PEratio 可能為空字串 → None。
+        """
+        cache_key = "per_pbr_daily"
+        cached = cache_manager.get(cache_key, "daily")
+        if cached is not None:
+            return pd.DataFrame(cached)
+
+        url = "https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL"
+        try:
+            client = await self.get_twse_client()
+            resp = await client.get(url, timeout=20.0, follow_redirects=True)
+            resp.raise_for_status()
+            data = resp.json()
+            if not isinstance(data, list) or not data:
+                return pd.DataFrame()
+
+            rows = []
+            for item in data:
+                sid = str(item.get("Code", "")).strip()
+                if not sid:
+                    continue
+                rows.append({
+                    "stock_id": sid,
+                    "pe_ratio": parse_number(item.get("PEratio"), True),
+                    "pbr": parse_number(item.get("PBratio"), True),
+                })
+            df = pd.DataFrame(rows)
+            if not df.empty:
+                cache_manager.set(cache_key, df.to_dict("records"), "daily")
+            logger.info(f"BWIBBU_ALL per/pbr: {len(df)} rows")
+            return df
+        except Exception as e:
+            logger.warning(f"BWIBBU_ALL per/pbr fetch failed: {e}")
+            return pd.DataFrame()
 
 
 # Global instance

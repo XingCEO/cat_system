@@ -72,6 +72,9 @@ class ScreenResponse(BaseModel):
     matched_count: int
     data: list[TickerResult]
     logic: str = "AND"
+    error: Optional[str] = None
+    # 篩選所依據的資料日期 (官方收盤日)。盤中可能落後即時/K線一天，供前端標示避免混淆。
+    data_date: Optional[str] = None
 
 
 class KlineCandle(BaseModel):

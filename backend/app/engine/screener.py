@@ -238,6 +238,9 @@ async def run_screen(request: ScreenRequest, db: AsyncSession) -> ScreenResponse
     result = await asyncio.to_thread(
         _compute_screen_sync, df, request, needs_multi_day
     )
+    # 標示篩選所依據的資料日期 (官方收盤日)，供前端區分盤中即時與收盤資料
+    if "date" in df.columns and not df["date"].dropna().empty:
+        result.data_date = str(df["date"].max())
     return result
 
 

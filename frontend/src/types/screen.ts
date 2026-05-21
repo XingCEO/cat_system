@@ -58,6 +58,9 @@ export interface ScreenResponse {
     matched_count: number;
     data: TickerResult[];
     logic: string;
+    error?: string;
+    // 篩選所依據的官方收盤資料日期 (盤中可能落後即時/K線一天)
+    data_date?: string;
 }
 
 // K 線
