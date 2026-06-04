@@ -14,7 +14,7 @@ import {
     ChevronLeft, Zap, BarChart2, LineChart
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { LoadingState, EmptyState } from '@/components/ui/states';
+import { LoadingState, EmptyState, ErrorState } from '@/components/ui/states';
 
 interface TurnoverStock {
     turnover_rank: number;
@@ -72,7 +72,7 @@ export function HighTurnoverPage() {
     };
 
     // 取得高周轉漲停股
-    const { data: limitUpData, isLoading: loadingLimitUp, refetch: refetchLimitUp } = useQuery({
+    const { data: limitUpData, isLoading: loadingLimitUp, isError: isErrorLimitUp, error: errorLimitUp, refetch: refetchLimitUp } = useQuery({
         queryKey: ['highTurnoverLimitUp', queryDate],
         queryFn: () => getHighTurnoverLimitUp(queryDate),
         enabled: !!queryDate,
@@ -81,7 +81,7 @@ export function HighTurnoverPage() {
     });
 
     // 取得周轉率前20完整名單
-    const { data: top20Data, isLoading: loadingTop20 } = useQuery({
+    const { data: top20Data, isLoading: loadingTop20, isError: isErrorTop20, error: errorTop20, refetch: refetchTop20 } = useQuery({
         queryKey: ['top20Turnover', queryDate],
         queryFn: () => getTop20Turnover(queryDate),
         enabled: !!queryDate && viewMode === 'top20',
@@ -118,6 +118,9 @@ export function HighTurnoverPage() {
     });
 
     const isLoading = viewMode === 'limit_up' ? loadingLimitUp : loadingTop20;
+    const isError = viewMode === 'limit_up' ? isErrorLimitUp : isErrorTop20;
+    const queryError = viewMode === 'limit_up' ? errorLimitUp : errorTop20;
+    const retry = viewMode === 'limit_up' ? refetchLimitUp : refetchTop20;
 
     // 快速預設
     const handlePreset = (preset: string) => {
@@ -306,10 +309,15 @@ export function HighTurnoverPage() {
                 <CardContent className="p-0">
                     {isLoading ? (
                         <LoadingState />
+                    ) : isError ? (
+                        <ErrorState
+                            message={`資料載入失敗：${(queryError as Error)?.message || '請稍後再試'}`}
+                            onRetry={() => retry()}
+                        />
                     ) : stocks.length === 0 ? (
                         <EmptyState
-                            message={viewMode === 'limit_up' ? '今日周轉率前200名中無漲停股票' : '查無資料'}
-                            description="請確認日期或調整篩選條件"
+                            message={viewMode === 'limit_up' ? '今日周轉率前200名中無漲停股票' : '查無符合條件的股票'}
+                            description="可能為非交易日、資料尚未更新，或無符合篩選條件的股票"
                         />
                     ) : (
                         <div className="overflow-x-auto">

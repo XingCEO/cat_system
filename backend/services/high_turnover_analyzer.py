@@ -210,29 +210,146 @@ class HighTurnoverAnalyzer:
             logger.error(f"Error getting top20 turnover: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
     
-    async def _fetch_daily_data(self, date: str) -> pd.DataFrame:
-        """取得當日所有股票資料"""
+    async def _fetch_from_db(self, target_date: Optional[str]) -> pd.DataFrame:
+        """
+        從 v1 DB (daily_prices) 取「全市場單日」資料，組成 Legacy 形狀 DataFrame
+        (stock_id / Trading_Volume / open / max / min / close / spread / date)。
+
+        target_date=None → 取 DB 最新日；否則取該指定日。
+        用途：(1) 歷史日期查詢（TWSE STOCK_DAY_ALL 無法依日期查詢，只回最新快照），
+              (2) 即時抓取失敗時的優雅降級（顯示最近一次可用資料，而非整頁「查無資料」）。
+        """
         try:
-            # 使用 data_fetcher 取得資料
-            df = await self.data_fetcher.get_daily_data(date)
-            
+            from database import async_session_maker
+            from app.models.daily_price import DailyPrice
+            from sqlalchemy import select, func
+            from datetime import datetime as _dt, timedelta as _td
+
+            async with async_session_maker() as session:
+                d = None
+                if target_date:
+                    try:
+                        d = _dt.strptime(str(target_date)[:10], "%Y-%m-%d").date()
+                    except ValueError:
+                        d = None
+                if d is None:
+                    d = (await session.execute(select(func.max(DailyPrice.date)))).scalar()
+                if d is None:
+                    return pd.DataFrame()
+                # 拉「目標日 + 前 ~12 個日曆日」以推算前一交易日收盤 (prev_close)。
+                # 歷史列的 change_percent 多為 NULL（_persist_fetched_history 未寫入），
+                # 故由 DB 內實際的前一日收盤計算 spread，確保歷史漲跌幅/漲停判定正確。
+                lookback = d - _td(days=12)
+                rows = (await session.execute(
+                    select(
+                        DailyPrice.ticker_id, DailyPrice.date, DailyPrice.open,
+                        DailyPrice.high, DailyPrice.low, DailyPrice.close,
+                        DailyPrice.volume, DailyPrice.change_percent,
+                    )
+                    .where(DailyPrice.date >= lookback, DailyPrice.date <= d)
+                    .order_by(DailyPrice.ticker_id, DailyPrice.date)
+                )).fetchall()
+
+            if not rows:
+                return pd.DataFrame()
+
+            # 升冪排序 → 每檔最後一筆「早於 d」的收盤即為 prev_close
+            prev_close: dict = {}
+            target_rows: dict = {}
+            for r in rows:
+                m = r._mapping
+                tid = str(m["ticker_id"])
+                if m["date"] == d:
+                    target_rows[tid] = m
+                elif m["close"] is not None:
+                    prev_close[tid] = m["close"]
+
+            records = []
+            for tid, m in target_rows.items():
+                close = m["close"]
+                cp = m["change_percent"]
+                spread = None
+                pc = prev_close.get(tid)
+                if close is not None and pc is not None:
+                    # 優先：實際前一交易日收盤
+                    spread = round(close - pc, 4)
+                elif close is not None and cp is not None:
+                    # 次選：由 change_percent 反推 (prev = close / (1 + cp/100))
+                    denom = 1 + cp / 100
+                    if denom != 0:
+                        spread = round(close - close / denom, 4)
+                records.append({
+                    "stock_id": tid,
+                    "Trading_Volume": m["volume"],
+                    "open": m["open"], "max": m["high"], "min": m["low"],
+                    "close": close, "spread": spread,
+                    "date": str(m["date"]),
+                })
+            return pd.DataFrame(records)
+        except Exception as e:
+            logger.warning(f"_fetch_from_db failed for {target_date}: {e}", exc_info=True)
+            return pd.DataFrame()
+
+    async def _fetch_daily_data(self, date: str) -> pd.DataFrame:
+        """
+        取得當日所有股票資料。
+
+        資料來源策略（修復歷史日期 collapse 與即時抓取失敗導致的「查無資料」）：
+        - 歷史日期 (date < 最新可用交易日)：優先讀 v1 DB 的「該日」資料。
+          (TWSE STOCK_DAY_ALL 無法依日期查詢，永遠回最新快照；歷史日期若走即時抓取
+           會全部塌縮成同一天 → 多日/批次分析失真。)
+        - 最新日：即時抓取 (data_fetcher)；若回空則 fallback 到 v1 DB 最新日，
+          避免整頁「查無資料」。
+        """
+        try:
+            from utils.date_utils import get_latest_trading_day
+            latest = get_latest_trading_day()
+
+            df = pd.DataFrame()
+            is_historical = bool(date) and str(date) < latest
+
+            if is_historical:
+                df = await self._fetch_from_db(date)
+                if df.empty:
+                    logger.warning(
+                        f"No v1 DB data for historical {date}; falling back to live "
+                        f"snapshot (which returns latest, not {date})"
+                    )
+
             if df.empty:
-                logger.warning(f"No daily data for {date}")
-                return pd.DataFrame()  # 返回空 DataFrame，讓調用方處理錯誤
-            
+                try:
+                    df = await self.data_fetcher.get_daily_data(date)
+                except Exception as e:
+                    logger.error(f"get_daily_data({date}) failed: {e}", exc_info=True)
+                    df = pd.DataFrame()
+
+            if df.empty:
+                # 即時抓取失敗/落空 → 以 v1 DB 最新日優雅降級
+                df = await self._fetch_from_db(None)
+                if not df.empty:
+                    fallback_date = df["date"].iloc[0] if "date" in df.columns else "?"
+                    logger.warning(
+                        f"Live daily fetch empty for {date}; serving v1 DB latest "
+                        f"({fallback_date}) instead of returning 查無資料"
+                    )
+
+            if df.empty:
+                logger.warning(f"No daily data for {date} (live + v1 DB both empty)")
+                return pd.DataFrame()
+
             # 排除 ETF (代號開頭為 00)
             if "stock_id" in df.columns:
-                df = df[~df["stock_id"].str.startswith("00")]
+                df = df[~df["stock_id"].astype(str).str.startswith("00")]
             elif "symbol" in df.columns:
-                df = df[~df["symbol"].str.startswith("00")]
-            
+                df = df[~df["symbol"].astype(str).str.startswith("00")]
+
             # 排除成交量過低
             # Trading_Volume 單位為「股」，1張=1000股，所以「至少1000張」= >1_000_000股
             if "Trading_Volume" in df.columns:
                 df = df[df["Trading_Volume"] > 1_000_000]
             elif "volume" in df.columns:
                 df = df[df["volume"] > 1_000_000]
-            
+
             # Merge stock info for names and industries
             stock_list = await self.data_fetcher.get_stock_list()
             if not stock_list.empty:
@@ -244,11 +361,11 @@ class HighTurnoverAnalyzer:
                     on="stock_id",
                     how="left"
                 )
-            
+
             return df
-            
+
         except Exception as e:
-            logger.error(f"Error fetching daily data: {e}")
+            logger.error(f"Error fetching daily data for {date}: {e}", exc_info=True)
             return pd.DataFrame()  # 返回空 DataFrame，讓調用方處理錯誤
 
     async def _get_float_shares(self) -> Dict[str, float]:
@@ -301,7 +418,15 @@ class HighTurnoverAnalyzer:
     ) -> List[Dict]:
         """計算所有股票的周轉率"""
         results = []
-        
+
+        # 流通股數全缺 → 周轉率無法計算，所有股票會被跳過 → 整頁「查無資料」。
+        # 明確告警以利診斷（多為 TWSE OpenAPI t187ap03_L 暫時抓不到 stock_list）。
+        if not float_shares_map:
+            logger.error(
+                "_calculate_turnover_rates: float_shares_map is EMPTY — all stocks will "
+                "be skipped (turnover_rate uncomputable). stock_list fetch likely failed."
+            )
+
         # 標準化欄位名稱
         symbol_col = "stock_id" if "stock_id" in df.columns else "symbol"
         volume_col = "Trading_Volume" if "Trading_Volume" in df.columns else "volume"

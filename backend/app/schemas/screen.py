@@ -75,6 +75,12 @@ class ScreenResponse(BaseModel):
     error: Optional[str] = None
     # 篩選所依據的資料日期 (官方收盤日)。盤中可能落後即時/K線一天，供前端標示避免混淆。
     data_date: Optional[str] = None
+    # 最新可用交易日 (日曆推算)。前端比對 data_date 判斷是否落後。
+    latest_trading_day: Optional[str] = None
+    # data_date 落後 latest_trading_day 幾個日曆天 (>1 視為過期)。
+    data_age_days: Optional[int] = None
+    # 資料是否過期 (data_age_days > 1)。前端據此顯示「資料非最新」提示。
+    is_stale: bool = False
 
 
 class KlineCandle(BaseModel):

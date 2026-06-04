@@ -57,3 +57,22 @@ async def sync_data(date: str = None, db: AsyncSession = Depends(get_db)):
         import logging
         logging.getLogger(__name__).error(f"Sync failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="資料同步失敗，請稍後再試")
+
+
+@v1_router.get("/ensure-latest", tags=["資料同步"])
+async def ensure_latest(db: AsyncSession = Depends(get_db)):
+    """
+    確保 v1 DB 已同步到最新可用交易日（任何時段皆可，免 admin token）。
+
+    與 /sync 不同：本端點只在 DB 落後時才補抓最新交易日，且有內建冷卻保護，
+    為純新增操作（不刪除/覆寫），故不需 admin gate——供前端/使用者在
+    看到「資料非最新」時手動觸發自癒。
+    """
+    try:
+        from app.engine.data_sync import ensure_fresh_data
+        info = await ensure_fresh_data(db)
+        return {"success": True, **info}
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"ensure-latest failed: {e}", exc_info=True)
+        return {"success": False, "error": "確保最新資料失敗，請稍後再試"}
