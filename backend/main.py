@@ -110,7 +110,7 @@ async def lifespan(app: FastAPI):
             # sync_daily_prices 內的 backfill 每次只處理 backfill_batch_size 檔，
             # 冷啟動時須持續跑完整個股票池，否則大量股票指標為 NULL → 畫面「沒有資料」。
             # 這裡不依賴盤中 periodic refresh，啟動時就把指標補齊。
-            from app.engine.data_sync import _backfill_indicators
+            from app.engine.data_sync import _backfill_indicators, backfill_all_indicators
             from app.models.daily_price import DailyPrice
             from sqlalchemy import select, func
 
@@ -133,6 +133,12 @@ async def lifespan(app: FastAPI):
                         break
                     prev_pending = pending
                     logger.info(f"Backfill loop pass {i + 1}: {pending} tickers still pending")
+
+            # ===== Phase 4: 補齊「gap 日」指標 =====
+            # 伺服器停機數日後重啟，sync 只補最新日，期間遺漏的舊交易日可能有價格列
+            # 但指標為 NULL → 該日 v1 篩選/圖表空白。掃出所有缺指標日期逐一補算。
+            async with async_session_maker() as session:
+                await backfill_all_indicators(session)
         except Exception as e:
             logger.warning(f"Background sync error: {e}")
 
@@ -144,10 +150,26 @@ async def lifespan(app: FastAPI):
             await asyncio.sleep(1800)  # 30 分鐘
             try:
                 now = taiwan_now()
-                # 只在交易日 8:30-14:30 自動刷新
-                if not is_trading_day(now.date()):
-                    continue
-                if now.hour < 8 or (now.hour == 8 and now.minute < 30) or now.hour > 14 or (now.hour == 14 and now.minute > 30):
+                in_trading_window = (
+                    is_trading_day(now.date())
+                    and not (
+                        now.hour < 8 or (now.hour == 8 and now.minute < 30)
+                        or now.hour > 14 or (now.hour == 14 and now.minute > 30)
+                    )
+                )
+
+                # 交易時段外（含收盤後、假日）仍做輕量補資料：DB 落後最新交易日就同步。
+                # 修復「無最新資料」——長時間運行的伺服器即使未重啟，收盤後也能補上當日資料。
+                if not in_trading_window:
+                    from database import async_session_maker
+                    from app.engine.data_sync import ensure_fresh_data
+                    async with async_session_maker() as session:
+                        info = await ensure_fresh_data(session)
+                    if info.get("synced"):
+                        logger.info(
+                            f"Periodic catch-up: synced {info['synced']} prices "
+                            f"(db now {info.get('db_date')})"
+                        )
                     continue
 
                 logger.info("Periodic refresh: clearing daily cache, re-fetching...")

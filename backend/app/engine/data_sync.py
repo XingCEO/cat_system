@@ -24,6 +24,13 @@ logger = logging.getLogger(__name__)
 # to prevent check-then-insert races that cause duplicate rows / unique violations.
 _sync_daily_lock = asyncio.Lock()
 
+# Auto catch-up guard: serialize + throttle on-demand freshness syncs triggered from
+# read paths (screener / ensure-latest endpoint) so a burst of requests can't stampede
+# the external data source. Reset whenever a catch-up actually runs.
+_catchup_lock = asyncio.Lock()
+_last_catchup_monotonic: float = 0.0
+_CATCHUP_COOLDOWN_SECS: float = 300.0  # 5 min between automatic catch-up attempts
+
 
 async def sync_tickers(db: AsyncSession) -> int:
     """同步股票基本資料到 tickers 表"""
@@ -772,6 +779,8 @@ async def _persist_fetched_history(db: AsyncSession, fallback_data: dict, target
                 continue
             h = hist.copy()
             closes = pd.to_numeric(h["close"], errors="coerce")
+            # 漲跌幅 = 與前一交易日收盤比較 (供歷史漲停/漲跌幅判定，避免該欄位永遠 NULL)
+            h["_cp"] = closes.pct_change() * 100
             h["_ma5"] = closes.rolling(5).mean()
             h["_ma10"] = closes.rolling(10).mean()
             h["_ma20"] = closes.rolling(20).mean()
@@ -808,6 +817,7 @@ async def _persist_fetched_history(db: AsyncSession, fallback_data: dict, target
                     "open": open_p, "high": _f(r.get("high")), "low": low,
                     "close": close, "volume": vol,
                     "turnover": turnover, "lower_shadow": lower_shadow,
+                    "change_percent": _f(r.get("_cp")),
                     "ma5": _f(r.get("_ma5")), "ma10": _f(r.get("_ma10")),
                     "ma20": _f(r.get("_ma20")), "ma60": _f(r.get("_ma60")),
                     "rsi14": _f(r.get("_rsi14")),
@@ -861,3 +871,106 @@ def _safe_int(row, *keys):
             except (ValueError, TypeError):
                 continue
     return None
+
+
+async def backfill_all_indicators(db: AsyncSession, max_dates: int = 30) -> int:
+    """
+    對「有價格列但缺指標」的所有日期補算指標（非只有最新日）。
+
+    冷啟動補資料只跑最新日，導致 gap 日（伺服器停機期間補進的舊交易日）
+    指標永遠為 NULL → 該日的 v1 篩選/圖表「沒有資料」。此函式掃出所有
+    ma5 或 avg_volume_20 為 NULL 的日期，由新到舊逐日 _backfill_indicators。
+
+    Args:
+        max_dates: 單次最多處理的日期數（保護，避免冷啟動跑太久）。
+
+    Returns:
+        實際處理的日期數。
+    """
+    from sqlalchemy import func, or_
+
+    result = await db.execute(
+        select(DailyPrice.date)
+        .where(or_(DailyPrice.ma5.is_(None), DailyPrice.avg_volume_20.is_(None)))
+        .distinct()
+        .order_by(DailyPrice.date.desc())
+        .limit(max_dates)
+    )
+    dates = [r[0] for r in result.fetchall()]
+    if not dates:
+        return 0
+
+    logger.info(f"backfill_all_indicators: {len(dates)} date(s) need indicators: {dates[:5]}...")
+    for d in dates:
+        try:
+            await _backfill_indicators(db, d)
+        except Exception as e:
+            logger.warning(f"backfill_all_indicators failed for {d}: {e}")
+    logger.info(f"backfill_all_indicators: processed {len(dates)} date(s)")
+    return len(dates)
+
+
+async def ensure_fresh_data(db: AsyncSession, *, force: bool = False) -> dict:
+    """
+    確保 v1 DB 已同步到「最新可用交易日」。供讀取路徑（screener / ensure-latest
+    端點）按需呼叫，自動修復「無最新資料」——不依賴交易時段或伺服器是否持續運行。
+
+    流程：
+      1. 比較 DB max(date) 與日曆最新交易日。
+      2. 已是最新 → 直接回傳（不打外部 API）。
+      3. 落後 → 經冷卻保護 + 鎖序列化後，sync_daily_prices(latest) 補上最新交易日。
+         （TWSE STOCK_DAY_ALL 永遠回最近收盤日，sync 內以 API 實際日期寫入。）
+      4. 失敗不拋例外（呼叫端仍可服務既有資料）。
+
+    Returns:
+        dict(synced, db_date, latest_date, fresh, throttled)
+    """
+    import time
+    from sqlalchemy import func
+    from utils.date_utils import get_latest_trading_day
+
+    global _last_catchup_monotonic
+
+    latest_str = get_latest_trading_day()
+    try:
+        latest_date = datetime.strptime(latest_str, "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return {"synced": 0, "db_date": None, "latest_date": latest_str, "fresh": False}
+
+    db_max = (await db.execute(select(func.max(DailyPrice.date)))).scalar()
+
+    # 已是最新（或更新）→ 不動作
+    if db_max is not None and db_max >= latest_date and not force:
+        return {"synced": 0, "db_date": str(db_max), "latest_date": latest_str, "fresh": True}
+
+    # 冷卻保護：避免讀取路徑被打爆時重複觸發外部抓取
+    now = time.monotonic()
+    if not force and (now - _last_catchup_monotonic) < _CATCHUP_COOLDOWN_SECS:
+        return {
+            "synced": 0,
+            "db_date": str(db_max) if db_max else None,
+            "latest_date": latest_str,
+            "fresh": False,
+            "throttled": True,
+        }
+
+    async with _catchup_lock:
+        # 取得鎖後重新檢查（可能另一個請求已補完）
+        db_max = (await db.execute(select(func.max(DailyPrice.date)))).scalar()
+        if db_max is not None and db_max >= latest_date and not force:
+            return {"synced": 0, "db_date": str(db_max), "latest_date": latest_str, "fresh": True}
+
+        _last_catchup_monotonic = time.monotonic()
+        synced = 0
+        try:
+            synced = await sync_daily_prices(db, latest_str)
+        except Exception as e:
+            logger.warning(f"ensure_fresh_data: sync_daily_prices failed: {e}", exc_info=True)
+
+        new_max = (await db.execute(select(func.max(DailyPrice.date)))).scalar()
+        return {
+            "synced": synced,
+            "db_date": str(new_max) if new_max else None,
+            "latest_date": latest_str,
+            "fresh": new_max is not None and new_max >= latest_date,
+        }

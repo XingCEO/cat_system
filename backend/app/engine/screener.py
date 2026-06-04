@@ -221,6 +221,14 @@ async def run_screen(request: ScreenRequest, db: AsyncSession) -> ScreenResponse
     Returns:
         ScreenResponse
     """
+    # 自動補資料：若 v1 DB 落後最新交易日就同步（冷卻保護 + 失敗不影響篩選）。
+    # 修復「無最新資料」——不依賴交易時段或伺服器是否持續運行，使用者一打開就自癒。
+    try:
+        from app.engine.data_sync import ensure_fresh_data
+        await ensure_fresh_data(db)
+    except Exception as e:
+        logger.warning(f"ensure_fresh_data skipped: {e}")
+
     # 判斷是否需要多天資料 (CROSS 運算子)
     needs_multi_day = any(
         r.operator in ("CROSS_UP", "CROSS_DOWN") for r in request.rules
@@ -232,15 +240,39 @@ async def run_screen(request: ScreenRequest, db: AsyncSession) -> ScreenResponse
         df = await load_latest_data(db)
 
     if df.empty:
-        return ScreenResponse(matched_count=0, data=[], logic=request.logic)
+        return _attach_staleness(ScreenResponse(matched_count=0, data=[], logic=request.logic), None)
 
     # 將 CPU-bound 的 DataFrame 運算移至 thread pool，避免阻塞 event loop
     result = await asyncio.to_thread(
         _compute_screen_sync, df, request, needs_multi_day
     )
     # 標示篩選所依據的資料日期 (官方收盤日)，供前端區分盤中即時與收盤資料
+    data_date = None
     if "date" in df.columns and not df["date"].dropna().empty:
-        result.data_date = str(df["date"].max())
+        data_date = str(df["date"].max())
+    return _attach_staleness(result, data_date)
+
+
+def _attach_staleness(result: ScreenResponse, data_date: Optional[str]) -> ScreenResponse:
+    """填入 data_date / latest_trading_day / data_age_days / is_stale，供前端標示資料新鮮度。"""
+    from datetime import datetime
+    from utils.date_utils import get_latest_trading_day
+
+    result.data_date = data_date
+    latest = get_latest_trading_day()
+    result.latest_trading_day = latest
+    if data_date:
+        try:
+            d0 = datetime.strptime(data_date[:10], "%Y-%m-%d").date()
+            d1 = datetime.strptime(latest, "%Y-%m-%d").date()
+            age = (d1 - d0).days
+            result.data_age_days = age
+            result.is_stale = age > 1
+        except (ValueError, TypeError):
+            pass
+    else:
+        # 完全沒有資料也算過期，讓前端顯示「資料尚未就緒」而非單純「查無符合」
+        result.is_stale = True
     return result
 
 

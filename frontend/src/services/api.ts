@@ -169,12 +169,20 @@ export async function getHighTurnoverLimitUp(date?: string, filters?: Record<str
         });
     }
     const { data } = await api.get<any>(`/turnover/limit-up?${params}`);
+    // 後端以 success:false 表達錯誤時，丟出例外讓 react-query 進入 error 狀態，
+    // 避免前端把「載入失敗」誤顯示為「查無資料」。
+    if (data && data.success === false) {
+        throw new Error(data.error || '查詢失敗');
+    }
     return data;
 }
 
 export async function getTop20Turnover(date?: string): Promise<any> {
     const params = date ? `?date=${date}` : '';
     const { data } = await api.get<any>(`/turnover/top20${params}`);
+    if (data && data.success === false) {
+        throw new Error(data.error || '查詢失敗');
+    }
     return data;
 }
 
