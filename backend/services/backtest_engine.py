@@ -15,10 +15,29 @@ from schemas.stock import StockFilterParams
 
 logger = logging.getLogger(__name__)
 
+# 台股交易成本
+FEE_RATE = 0.001425   # 券商手續費 0.1425% (買進、賣出各收一次)
+TAX_RATE = 0.003      # 證券交易稅 0.3% (僅賣出)
+COST_NOTE = "已計入交易成本：手續費 0.1425% × 2 + 證交稅 0.3% (淨報酬)"
+
+
+def net_return_pct(entry_price: float, exit_price: float, include_costs: bool = True) -> float:
+    """
+    計算單筆交易報酬率(%)。
+
+    include_costs=True 時計入台股實際交易成本，避免回測報酬率
+    系統性高估約 0.59%/趟 (舊版完全未計成本)。
+    """
+    if not include_costs:
+        return (exit_price - entry_price) / entry_price * 100
+    entry_cost = entry_price * (1 + FEE_RATE)
+    exit_net = exit_price * (1 - FEE_RATE - TAX_RATE)
+    return (exit_net - entry_cost) / entry_cost * 100
+
 
 class BacktestEngine:
     """Engine for backtesting stock filter strategies"""
-    
+
     def __init__(self):
         self.data_fetcher = data_fetcher
         self.stock_filter = stock_filter
@@ -95,10 +114,11 @@ class BacktestEngine:
         
         # Calculate forward returns for each signal
         signals_with_returns = await self._calculate_forward_returns(
-            signals, 
-            request.holding_days
+            signals,
+            request.holding_days,
+            include_costs=request.include_costs,
         )
-        
+
         # Calculate statistics
         stats = self._calculate_stats(signals_with_returns, request.holding_days)
         
@@ -122,13 +142,15 @@ class BacktestEngine:
             start_date=request.start_date,
             end_date=request.end_date,
             trading_days=len(trading_dates),
-            return_distribution=return_distribution
+            return_distribution=return_distribution,
+            cost_note=COST_NOTE if request.include_costs else None,
         )
-    
+
     async def _calculate_forward_returns(
         self,
         signals: List[Dict],
-        holding_days: List[int]
+        holding_days: List[int],
+        include_costs: bool = True,
     ) -> List[Dict]:
         """Calculate forward returns for each signal"""
         
@@ -171,7 +193,7 @@ class BacktestEngine:
                 if len(stock_data) >= days:
                     exit_price = stock_data.iloc[days - 1]["close"]
                     if exit_price and exit_price > 0:
-                        ret = (exit_price - entry_price) / entry_price * 100
+                        ret = net_return_pct(entry_price, exit_price, include_costs)
                         signal["returns"][days] = round(ret, 2)
             
             results.append(signal)
@@ -217,7 +239,11 @@ class BacktestEngine:
             
             # Median return
             median_return = float(np.median(returns)) if returns else 0
-            
+
+            # Profit factor = 總獲利 / 總虧損絕對值；無虧損時無法定義 → None
+            total_loss = abs(sum(losses))
+            profit_factor = round(sum(wins) / total_loss, 2) if total_loss > 0 else None
+
             stats.append(BacktestStats(
                 holding_days=days,
                 total_trades=len(returns),
@@ -228,7 +254,8 @@ class BacktestEngine:
                 max_gain=round(max_gain, 2),
                 max_loss=round(max_loss, 2),
                 expected_value=round(expected_value, 2),
-                median_return=round(median_return, 2)
+                median_return=round(median_return, 2),
+                profit_factor=profit_factor,
             ))
         
         return stats

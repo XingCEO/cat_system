@@ -355,7 +355,7 @@ export function LightweightKLineChart({
         if (series.bbMiddle) series.bbMiddle.setData(convertLineData(data, 'bb_middle'));
         if (series.bbLower) series.bbLower.setData(convertLineData(data, 'bb_lower'));
 
-    }, [data, chartRef.current]); // Added chartRef.current to dependencies
+    }, [data]); // ref.current 不可作為依賴：其變動不會觸發 re-render，放入只會造成混淆
 
     // 更新均線可見性
     useEffect(() => {

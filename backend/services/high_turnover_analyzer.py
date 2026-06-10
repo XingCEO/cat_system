@@ -52,30 +52,36 @@ class HighTurnoverAnalyzer:
     def _calculate_limit_up_price(self, prev_close: float) -> float:
         """
         計算台股漲停價
-        台股漲停為昨收+10%，依升降單位(tick size)規則取整
+        台股漲停為昨收+10%，依升降單位(tick size)規則「無條件捨去」到檔位。
+
+        以「分」為單位的整數運算。舊版 `(raw_limit // tick) * tick` 的浮點
+        floor 除法在 0.05/0.1 等二進位無法精確表示的 tick 下會少一檔
+        (例：昨收 5.00 → 算出 5.49 而非 5.50；昨收 45.5 → 50.0 而非 50.05)，
+        導致真正漲停的股票不被判定為漲停。
         """
         if prev_close <= 0:
             return 0
 
-        raw_limit = prev_close * 1.10
+        # 昨收 ×1100 = +10% 後的「厘」數 (1/1000 元)。
+        # 台股價格最多兩位小數 → ×1.1 後最多三位小數，以厘為單位可精確表示
+        raw_mils = round(prev_close * 1100)
 
-        # 台股升降單位規則
-        if raw_limit < 10:
-            tick = 0.01
-        elif raw_limit < 50:
-            tick = 0.05
-        elif raw_limit < 100:
-            tick = 0.1
-        elif raw_limit < 500:
-            tick = 0.5
-        elif raw_limit < 1000:
-            tick = 1.0
+        # 台股升降單位規則 (以漲停價所在價位區間決定檔位)
+        if raw_mils < 10_000:         # < 10 元
+            tick_mils = 10            # 0.01
+        elif raw_mils < 50_000:       # < 50 元
+            tick_mils = 50            # 0.05
+        elif raw_mils < 100_000:      # < 100 元
+            tick_mils = 100           # 0.1
+        elif raw_mils < 500_000:      # < 500 元
+            tick_mils = 500           # 0.5
+        elif raw_mils < 1_000_000:    # < 1000 元
+            tick_mils = 1_000         # 1.0
         else:
-            tick = 5.0
+            tick_mils = 5_000         # 5.0
 
-        # 漲停價取整（向下取整到最近的tick）
-        limit_up_price = (raw_limit // tick) * tick
-        return round(limit_up_price, 2)
+        limit_mils = (raw_mils // tick_mils) * tick_mils
+        return limit_mils / 1000.0
 
     def _is_limit_up(self, close_price: float, prev_close: float) -> bool:
         """
@@ -212,83 +218,10 @@ class HighTurnoverAnalyzer:
     
     async def _fetch_from_db(self, target_date: Optional[str]) -> pd.DataFrame:
         """
-        從 v1 DB (daily_prices) 取「全市場單日」資料，組成 Legacy 形狀 DataFrame
-        (stock_id / Trading_Volume / open / max / min / close / spread / date)。
-
-        target_date=None → 取 DB 最新日；否則取該指定日。
-        用途：(1) 歷史日期查詢（TWSE STOCK_DAY_ALL 無法依日期查詢，只回最新快照），
-              (2) 即時抓取失敗時的優雅降級（顯示最近一次可用資料，而非整頁「查無資料」）。
+        從 v1 DB (daily_prices) 取「全市場單日」資料，組成 Legacy 形狀 DataFrame。
+        實作已上移到 data_fetcher.get_daily_from_db 供 stock_filter 等共用。
         """
-        try:
-            from database import async_session_maker
-            from app.models.daily_price import DailyPrice
-            from sqlalchemy import select, func
-            from datetime import datetime as _dt, timedelta as _td
-
-            async with async_session_maker() as session:
-                d = None
-                if target_date:
-                    try:
-                        d = _dt.strptime(str(target_date)[:10], "%Y-%m-%d").date()
-                    except ValueError:
-                        d = None
-                if d is None:
-                    d = (await session.execute(select(func.max(DailyPrice.date)))).scalar()
-                if d is None:
-                    return pd.DataFrame()
-                # 拉「目標日 + 前 ~12 個日曆日」以推算前一交易日收盤 (prev_close)。
-                # 歷史列的 change_percent 多為 NULL（_persist_fetched_history 未寫入），
-                # 故由 DB 內實際的前一日收盤計算 spread，確保歷史漲跌幅/漲停判定正確。
-                lookback = d - _td(days=12)
-                rows = (await session.execute(
-                    select(
-                        DailyPrice.ticker_id, DailyPrice.date, DailyPrice.open,
-                        DailyPrice.high, DailyPrice.low, DailyPrice.close,
-                        DailyPrice.volume, DailyPrice.change_percent,
-                    )
-                    .where(DailyPrice.date >= lookback, DailyPrice.date <= d)
-                    .order_by(DailyPrice.ticker_id, DailyPrice.date)
-                )).fetchall()
-
-            if not rows:
-                return pd.DataFrame()
-
-            # 升冪排序 → 每檔最後一筆「早於 d」的收盤即為 prev_close
-            prev_close: dict = {}
-            target_rows: dict = {}
-            for r in rows:
-                m = r._mapping
-                tid = str(m["ticker_id"])
-                if m["date"] == d:
-                    target_rows[tid] = m
-                elif m["close"] is not None:
-                    prev_close[tid] = m["close"]
-
-            records = []
-            for tid, m in target_rows.items():
-                close = m["close"]
-                cp = m["change_percent"]
-                spread = None
-                pc = prev_close.get(tid)
-                if close is not None and pc is not None:
-                    # 優先：實際前一交易日收盤
-                    spread = round(close - pc, 4)
-                elif close is not None and cp is not None:
-                    # 次選：由 change_percent 反推 (prev = close / (1 + cp/100))
-                    denom = 1 + cp / 100
-                    if denom != 0:
-                        spread = round(close - close / denom, 4)
-                records.append({
-                    "stock_id": tid,
-                    "Trading_Volume": m["volume"],
-                    "open": m["open"], "max": m["high"], "min": m["low"],
-                    "close": close, "spread": spread,
-                    "date": str(m["date"]),
-                })
-            return pd.DataFrame(records)
-        except Exception as e:
-            logger.warning(f"_fetch_from_db failed for {target_date}: {e}", exc_info=True)
-            return pd.DataFrame()
+        return await self.data_fetcher.get_daily_from_db(target_date)
 
     async def _fetch_daily_data(self, date: str) -> pd.DataFrame:
         """
@@ -972,6 +905,10 @@ class HighTurnoverAnalyzer:
 
         import asyncio
 
+        # 以官方收盤日對齊 Yahoo 歷史 (修復：舊版固定取最新 6 筆，
+        # 查詢「歷史日期」時會拿今天往前 5 天比較 → 結果與查詢日完全無關)
+        ref_date = top200_result.get("query_date") or date
+
         new_high_stocks = []
         for stock in top200_result["items"]:
             symbol = stock["symbol"]
@@ -986,9 +923,15 @@ class HighTurnoverAnalyzer:
                 if history_df.empty or len(history_df) < 6:
                     continue
 
-                closes = history_df["close"].tolist()[:6]
-                # closes[0] = 今天, closes[1:6] = 過去5天
-                past_5day_high = max([c for c in closes[1:6] if c is not None], default=0)
+                rows = history_df.dropna(subset=["close"]).to_dict("records")
+                ti = next((i for i, r in enumerate(rows) if r["date"] <= ref_date), None)
+                if ti is None or ti + 5 >= len(rows):
+                    continue
+                # rows[ti] = 查詢日, rows[ti+1:ti+6] = 其前 5 個交易日
+                past_5day_high = max(
+                    [r["close"] for r in rows[ti + 1:ti + 6] if r["close"] is not None],
+                    default=0,
+                )
 
                 if current_close > past_5day_high:
                     matched = dict(stock)
@@ -1024,6 +967,9 @@ class HighTurnoverAnalyzer:
 
         import asyncio
 
+        # 以官方收盤日對齊 Yahoo 歷史 (同 get_top200_5day_high 的修復)
+        ref_date = top200_result.get("query_date") or date
+
         new_low_stocks = []
         for stock in top200_result["items"]:
             symbol = stock["symbol"]
@@ -1038,9 +984,14 @@ class HighTurnoverAnalyzer:
                 if history_df.empty or len(history_df) < 6:
                     continue
 
-                closes = history_df["close"].tolist()[:6]
-                # closes[0] = 今天, closes[1:6] = 過去5天
-                past_5day_low = min([c for c in closes[1:6] if c is not None], default=float('inf'))
+                rows = history_df.dropna(subset=["close"]).to_dict("records")
+                ti = next((i for i, r in enumerate(rows) if r["date"] <= ref_date), None)
+                if ti is None or ti + 5 >= len(rows):
+                    continue
+                past_5day_low = min(
+                    [r["close"] for r in rows[ti + 1:ti + 6] if r["close"] is not None],
+                    default=float('inf'),
+                )
 
                 if current_close < past_5day_low:
                     matched = dict(stock)
@@ -2047,12 +1998,13 @@ class HighTurnoverAnalyzer:
                             for row in data["data"]:
                                 try:
                                     symbol = str(row[0]).strip()
-                                    # 外資買賣超
+                                    # 外資買賣超 (T86 欄位 4 = 外陸資買賣超股數，不含外資自營商)
                                     foreign_buy = int(str(row[4]).replace(",", "")) if row[4] != "--" else 0
-                                    # 投信買賣超
+                                    # 投信買賣超 (T86 欄位 10)
                                     trust_buy = int(str(row[10]).replace(",", "")) if row[10] != "--" else 0
-                                    # 自營商買賣超
-                                    dealer_buy = int(str(row[13]).replace(",", "")) if row[13] != "--" else 0
+                                    # 自營商買賣超 (T86 欄位 11 = 自營商買賣超股數合計；
+                                    # 舊版誤用欄位 13 = 自營商「自行買賣賣出股數」，數值意義完全錯誤)
+                                    dealer_buy = int(str(row[11]).replace(",", "")) if row[11] != "--" else 0
                                     # 外資+投信合計（不含自營商）
                                     institutional_buy = foreign_buy + trust_buy
 
@@ -2515,15 +2467,22 @@ class HighTurnoverAnalyzer:
                         logger.debug(f"Error getting volume for {symbol}: {e}")
                         continue
 
-                # 條件5: 五日創新高
+                # 條件5: 五日創新高（以官方收盤日 ref_date 對齊歷史，支援歷史日期查詢）
                 if is_5day_high is True:
                     try:
                         history_df = await self._fetch_yahoo_history_for_ma(symbol)
                         if history_df.empty or len(history_df) < 6:
                             continue
-                        closes = history_df["close"].tolist()[:6]
-                        today_close = closes[0] if closes[0] is not None else 0
-                        past_5day_high = max([c for c in closes[1:6] if c is not None], default=0)
+                        ref_date = top200_result.get("query_date") or date
+                        hrows = history_df.dropna(subset=["close"]).to_dict("records")
+                        ti = next((i for i, r in enumerate(hrows) if r["date"] <= ref_date), None)
+                        if ti is None or ti + 5 >= len(hrows):
+                            continue
+                        today_close = hrows[ti]["close"] or 0
+                        past_5day_high = max(
+                            [r["close"] for r in hrows[ti + 1:ti + 6] if r["close"] is not None],
+                            default=0,
+                        )
                         if today_close <= past_5day_high:
                             continue
                         matched["is_5day_high"] = True
@@ -2531,15 +2490,22 @@ class HighTurnoverAnalyzer:
                         logger.debug(f"Error checking 5day high for {symbol}: {e}")
                         continue
 
-                # 條件6: 五日創新低
+                # 條件6: 五日創新低（同上，以 ref_date 對齊）
                 if is_5day_low is True:
                     try:
                         history_df = await self._fetch_yahoo_history_for_ma(symbol)
                         if history_df.empty or len(history_df) < 6:
                             continue
-                        closes = history_df["close"].tolist()[:6]
-                        today_close = closes[0] if closes[0] is not None else float('inf')
-                        past_5day_low = min([c for c in closes[1:6] if c is not None], default=float('inf'))
+                        ref_date = top200_result.get("query_date") or date
+                        hrows = history_df.dropna(subset=["close"]).to_dict("records")
+                        ti = next((i for i, r in enumerate(hrows) if r["date"] <= ref_date), None)
+                        if ti is None or ti + 5 >= len(hrows):
+                            continue
+                        today_close = hrows[ti]["close"] if hrows[ti]["close"] is not None else float('inf')
+                        past_5day_low = min(
+                            [r["close"] for r in hrows[ti + 1:ti + 6] if r["close"] is not None],
+                            default=float('inf'),
+                        )
                         if today_close >= past_5day_low:
                             continue
                         matched["is_5day_low"] = True

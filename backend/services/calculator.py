@@ -100,16 +100,19 @@ class StockCalculator:
         """
         if df.empty or len(df) < 2:
             return 0.0
-        
-        # Ensure we have change_percent or calculate it
+
+        # 統一轉為日期升序再處理。舊版只在「需要計算 change_percent」時排序，
+        # 若資料已含 change_percent 且為降序 (本服務慣例)，tail(5) 會取到
+        # 「最舊」5 筆而非最近 5 日
+        df = df.copy()
+        if "date" in df.columns:
+            df = df.sort_values("date")
+
         if "change_percent" not in df.columns:
-            df = df.copy()
-            # 先按日期升序再計算 pct_change，避免降序資料導致正負號錯誤
-            df = df.sort_values("date") if "date" in df.columns else df.iloc[::-1]
             df["change_percent"] = df["close"].pct_change() * 100
-        
+
         # 取最近 5 日（升序後的最後 5 筆）
-        changes = df["change_percent"].tail(5)
+        changes = df["change_percent"].tail(5).dropna()
         return round(changes.mean(), 2) if len(changes) > 0 else 0.0
     
     @staticmethod

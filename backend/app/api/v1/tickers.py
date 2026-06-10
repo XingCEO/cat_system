@@ -28,7 +28,7 @@ class TickerInfo(BaseModel):
 @router.get("/tickers", response_model=list[TickerInfo], summary="股票搜尋")
 async def search_tickers(
     q: str = Query("", description="搜尋關鍵字 (代號或名稱)"),
-    limit: int = Query(20, description="最大筆數"),
+    limit: int = Query(20, ge=1, le=500, description="最大筆數"),
     db: AsyncSession = Depends(get_db),
 ):
     """
