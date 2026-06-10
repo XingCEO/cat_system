@@ -1,7 +1,7 @@
 """
 Screen Schemas — 篩選 API 請求/回應模型
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, Union, Literal
 from datetime import date
 
@@ -34,6 +34,26 @@ class ScreenRequest(BaseModel):
     logic: Literal["AND", "OR"] = "AND"
     rules: list[Rule] = Field(default_factory=list)
     custom_formulas: list[Formula] = Field(default_factory=list)
+
+    # config.py 已定義 max_rules_per_request / max_formulas_per_request，
+    # 但過去未在 API 邊界強制執行 — 海量規則/公式可造成 CPU DoS
+    @field_validator("rules")
+    @classmethod
+    def _cap_rules(cls, v):
+        from config import get_settings
+        cap = get_settings().max_rules_per_request
+        if len(v) > cap:
+            raise ValueError(f"規則數量超過上限 ({cap})")
+        return v
+
+    @field_validator("custom_formulas")
+    @classmethod
+    def _cap_formulas(cls, v):
+        from config import get_settings
+        cap = get_settings().max_formulas_per_request
+        if len(v) > cap:
+            raise ValueError(f"自訂公式數量超過上限 ({cap})")
+        return v
 
 
 class TickerResult(BaseModel):

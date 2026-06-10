@@ -78,26 +78,10 @@ async def filter_stocks(
     )
     
     try:
+        # 進階條件 (連漲/振幅/量比) 已在 filter_stocks 內「分頁前」套用，
+        # 此處不可再對分頁後的單頁結果二次過濾 (會造成 total 與內容不一致)
         result = await stock_filter.filter_stocks(params)
-        
-        # Apply advanced filters if needed
-        items = result.get("items", [])
-        
-        if consecutive_up_min is not None or consecutive_up_max is not None or \
-           amplitude_min is not None or amplitude_max is not None or \
-           volume_ratio_min is not None or volume_ratio_max is not None:
-            items = await stock_filter.apply_advanced_filters(
-                items,
-                consecutive_up_min=consecutive_up_min,
-                consecutive_up_max=consecutive_up_max,
-                amplitude_min=amplitude_min,
-                amplitude_max=amplitude_max,
-                volume_ratio_min=volume_ratio_min,
-                volume_ratio_max=volume_ratio_max
-            )
-            result["items"] = items
-            result["total"] = len(items)
-        
+
         response_data = StockListResponse(
             items=[StockResponse(**item) for item in result["items"]],
             total=result["total"],

@@ -42,6 +42,24 @@ MAX_TOKEN_COUNT = 50
 # Token 正則（移除 . 作為獨立運算子）
 TOKEN_PATTERN = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*|[0-9]+\.?[0-9]*|[+\-*/()\s]")
 
+# 公式名稱限制：合法識別字、長度上限
+NAME_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]{0,31}$")
+
+# 公式名稱不可覆蓋的欄位 — 否則自訂公式可改寫 close/ma5 等基礎欄位，
+# 毒化同一請求中後續規則的計算結果
+PROTECTED_COLUMNS = ALLOWED_FIELDS | {
+    "ticker_id", "name", "date", "market_type", "industry",
+}
+
+
+def validate_formula_name(name: str) -> tuple[bool, str]:
+    """驗證自訂公式名稱：需為合法識別字且不可覆蓋既有欄位"""
+    if not name or not NAME_PATTERN.match(name):
+        return False, "公式名稱須為英文/底線開頭的識別字 (最長 32 字元)"
+    if name in PROTECTED_COLUMNS:
+        return False, f"公式名稱不可覆蓋既有欄位: {name}"
+    return True, ""
+
 
 def tokenize(formula: str) -> list[str]:
     """將公式字串分割為 token 列表"""
@@ -125,6 +143,10 @@ def safe_eval_formula(df: pd.DataFrame, name: str, formula: str) -> pd.DataFrame
     Raises:
         ValueError: 公式驗證失敗
     """
+    name_valid, name_err = validate_formula_name(name)
+    if not name_valid:
+        raise ValueError(f"公式名稱驗證失敗: {name_err}")
+
     is_valid, error_msg = validate_formula(formula)
     if not is_valid:
         raise ValueError(f"公式驗證失敗: {error_msg}")

@@ -27,7 +27,7 @@ _MIN_ROWS_THRESHOLD = 20
 async def get_kline(
     ticker_id: str,
     period: str = Query("daily", description="週期: daily / weekly / monthly"),
-    limit: int = Query(120, description="最大筆數"),
+    limit: int = Query(120, ge=1, le=500, description="最大筆數"),
     db: AsyncSession = Depends(get_db),
 ):
     """取得股票 K 線歷史資料"""
@@ -95,8 +95,9 @@ async def _fallback_legacy_kline(
     ticker_id: str, name: str, period: str, limit: int
 ) -> KlineResponse:
     """v1 DB 資料不足時，使用 Legacy data_fetcher 取得完整歷史 K 線"""
-    from datetime import datetime, timedelta
+    from datetime import timedelta
     from services.data_fetcher import data_fetcher
+    from utils.date_utils import taiwan_today
     import pandas as pd
 
     period_map = {"daily": "day", "weekly": "week", "monthly": "month"}
@@ -109,8 +110,10 @@ async def _fallback_legacy_kline(
     elif legacy_period == "month":
         fetch_days = limit * 30 + 150
 
-    end_date = datetime.now().strftime("%Y-%m-%d")
-    start_date = (datetime.now() - timedelta(days=fetch_days)).strftime("%Y-%m-%d")
+    # 以台灣時區計算日期，避免 UTC 伺服器在台灣凌晨取錯日期
+    today = taiwan_today()
+    end_date = today.strftime("%Y-%m-%d")
+    start_date = (today - timedelta(days=fetch_days)).strftime("%Y-%m-%d")
 
     df = await data_fetcher.get_historical_data(ticker_id, start_date, end_date)
 
@@ -141,14 +144,9 @@ async def _fallback_legacy_kline(
     df["ma20"] = df["close"].rolling(20).mean()
     df["ma60"] = df["close"].rolling(60).mean()
 
-    # RSI
-    delta = df["close"].diff()
-    gain = delta.where(delta > 0, 0)
-    loss = -delta.where(delta < 0, 0)
-    avg_gain = gain.rolling(14).mean()
-    avg_loss = loss.rolling(14).mean()
-    rs = avg_gain / avg_loss
-    df["rsi14"] = 100 - (100 / (1 + rs))
+    # RSI (Wilder，與全系統一致)
+    from utils.indicators import wilder_rsi
+    df["rsi14"] = wilder_rsi(df["close"], 14)
 
     # 取最後 limit 筆
     df = df.tail(limit)

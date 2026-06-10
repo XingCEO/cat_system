@@ -121,8 +121,12 @@ export interface BacktestRequest {
     change_min: number;
     change_max: number;
     volume_min: number;
+    price_min?: number | null;
+    price_max?: number | null;
     exclude_etf: boolean;
     holding_days: number[];
+    /** 計入台股交易成本 (手續費 0.1425%×2 + 證交稅 0.3%)，預設 true */
+    include_costs?: boolean;
 }
 
 export interface BacktestStats {
@@ -135,6 +139,9 @@ export interface BacktestStats {
     max_gain: number;
     max_loss: number;
     expected_value: number;
+    median_return?: number | null;
+    /** 獲利因子 = 總獲利 / 總虧損；無虧損時為 null */
+    profit_factor?: number | null;
 }
 
 export interface BacktestResult {
@@ -148,6 +155,8 @@ export interface BacktestResult {
     end_date: string;
     trading_days: number;
     return_distribution?: Record<string, number>;
+    /** 成本假設說明，計入成本時由後端填入 */
+    cost_note?: string | null;
 }
 
 // Watchlist

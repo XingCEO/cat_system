@@ -25,6 +25,9 @@ class BacktestRequest(BaseModel):
     
     # Backtest specific
     holding_days: List[int] = Field([1, 3, 5, 10], description="持有天數列表")
+    # 交易成本：手續費 0.1425% (買賣各一次) + 證交稅 0.3% (賣出)。
+    # 預設計入，回測報酬為「淨報酬」；設 False 可看毛報酬。
+    include_costs: bool = Field(True, description="是否計入台股交易成本 (手續費+證交稅)")
 
 
 class BacktestStats(BaseModel):
@@ -39,6 +42,7 @@ class BacktestStats(BaseModel):
     max_loss: float = Field(..., description="最大跌幅(%)")
     expected_value: float = Field(..., description="期望值(%)")
     median_return: Optional[float] = Field(None, description="中位數報酬率(%)")
+    profit_factor: Optional[float] = Field(None, description="獲利因子 (總獲利/總虧損)，無虧損時為 None")
 
 
 class BacktestStockDetail(BaseModel):
@@ -75,6 +79,9 @@ class BacktestResponse(BaseModel):
     
     # Distribution data for charts
     return_distribution: Optional[Dict[str, int]] = None  # Histogram buckets
+
+    # 成本假設說明 (include_costs=True 時填入)，供前端標示「淨報酬」
+    cost_note: Optional[str] = None
 
 
 class BacktestSummary(BaseModel):

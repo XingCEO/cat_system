@@ -15,6 +15,7 @@ except ImportError:
     
 from services.data_fetcher import data_fetcher
 from services.cache_manager import cache_manager
+from utils.indicators import wilder_rsi, stoch_kd
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +43,13 @@ class TechnicalAnalyzer:
         if cached is not None:
             return cached
         
-        # Fetch historical data
-        from datetime import datetime, timedelta
-        end_date = datetime.now().strftime("%Y-%m-%d")
-        start_date = (datetime.now() - timedelta(days=days + 100)).strftime("%Y-%m-%d")
+        # Fetch historical data — 以台灣時區計算日期，
+        # 避免 UTC 伺服器在台灣 00:00–08:00 期間取錯結束日
+        from datetime import timedelta
+        from utils.date_utils import taiwan_today
+        today = taiwan_today()
+        end_date = today.strftime("%Y-%m-%d")
+        start_date = (today - timedelta(days=days + 100)).strftime("%Y-%m-%d")
         
         df = await self.data_fetcher.get_historical_data(symbol, start_date, end_date)
         
@@ -79,9 +83,10 @@ class TechnicalAnalyzer:
         result["macd_signal"] = self._safe_get(df, "MACDs_12_26_9", -1)
         result["macd_hist"] = self._safe_get(df, "MACDh_12_26_9", -1)
         
-        # KD (Stochastic)
-        result["k"] = self._safe_get(df, "STOCHk_14_3_3", -1)
-        result["d"] = self._safe_get(df, "STOCHd_14_3_3", -1)
+        # KD (Stochastic) — 台股慣例 KD(9,3,3)，與 K 線圖路徑一致
+        # (舊版此處用 14,3,3、K 線圖用 9,3,3，同一檔股票兩頁 KD 值不同)
+        result["k"] = self._safe_get(df, "STOCHk_9_3_3", -1)
+        result["d"] = self._safe_get(df, "STOCHd_9_3_3", -1)
         
         # Bollinger Bands
         result["bb_upper"] = self._safe_get(df, "BBU_20_2.0", -1)
@@ -143,8 +148,8 @@ class TechnicalAnalyzer:
             if macd is not None:
                 df = pd.concat([df, macd], axis=1)
             
-            # Stochastic (KD)
-            stoch = ta.stoch(df["high"], df["low"], df["close"], k=14, d=3, smooth_k=3)
+            # Stochastic (KD) — 台股慣例 9,3,3
+            stoch = ta.stoch(df["high"], df["low"], df["close"], k=9, d=3, smooth_k=3)
             if stoch is not None:
                 df = pd.concat([df, stoch], axis=1)
             
@@ -160,42 +165,40 @@ class TechnicalAnalyzer:
         return df
     
     def _calculate_indicators_manual(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Fallback: Calculate indicators manually without pandas-ta"""
-        
+        """Fallback: Calculate indicators manually without pandas-ta
+
+        注意：requirements 未含 pandas-ta，此「fallback」即正式環境的實際路徑。
+        - RSI 改用共用 wilder_rsi (舊版用 SMA / Cutler's RSI，與看盤軟體不一致)
+        - KD 改用共用 stoch_kd(9,3,3) 含 smooth_k 平滑
+          (舊版為 14 期「未平滑」fast %K，跟 pandas-ta 路徑與台股慣例都不同)
+        """
         # Simple Moving Averages
         df["SMA_5"] = df["close"].rolling(window=5).mean()
         df["SMA_10"] = df["close"].rolling(window=10).mean()
         df["SMA_20"] = df["close"].rolling(window=20).mean()
         df["SMA_60"] = df["close"].rolling(window=60).mean()
-        
-        # RSI
-        delta = df["close"].diff()
-        gain = delta.where(delta > 0, 0)
-        loss = -delta.where(delta < 0, 0)
-        avg_gain = gain.rolling(window=14).mean()
-        avg_loss = loss.rolling(window=14).mean()
-        rs = avg_gain / avg_loss
-        df["RSI_14"] = 100 - (100 / (1 + rs))
-        
+
+        # RSI (Wilder)
+        df["RSI_14"] = wilder_rsi(df["close"], 14)
+
         # MACD
         ema12 = df["close"].ewm(span=12, adjust=False).mean()
         ema26 = df["close"].ewm(span=26, adjust=False).mean()
         df["MACD_12_26_9"] = ema12 - ema26
         df["MACDs_12_26_9"] = df["MACD_12_26_9"].ewm(span=9, adjust=False).mean()
         df["MACDh_12_26_9"] = df["MACD_12_26_9"] - df["MACDs_12_26_9"]
-        
-        # Stochastic (KD)
-        low14 = df["low"].rolling(window=14).min()
-        high14 = df["high"].rolling(window=14).max()
-        df["STOCHk_14_3_3"] = 100 * (df["close"] - low14) / (high14 - low14)
-        df["STOCHd_14_3_3"] = df["STOCHk_14_3_3"].rolling(window=3).mean()
-        
+
+        # Stochastic (KD 9,3,3)
+        k, d = stoch_kd(df["high"], df["low"], df["close"])
+        df["STOCHk_9_3_3"] = k
+        df["STOCHd_9_3_3"] = d
+
         # Bollinger Bands
         df["BBM_20_2.0"] = df["close"].rolling(window=20).mean()
         std20 = df["close"].rolling(window=20).std()
         df["BBU_20_2.0"] = df["BBM_20_2.0"] + 2 * std20
         df["BBL_20_2.0"] = df["BBM_20_2.0"] - 2 * std20
-        
+
         return df
     
     def _safe_get(self, df: pd.DataFrame, column: str, index: int) -> Optional[float]:
@@ -226,9 +229,9 @@ class TechnicalAnalyzer:
             }
             
             # Add indicators if available
-            for col in ["SMA_5", "SMA_10", "SMA_20", "SMA_60", "SMA_120", "RSI_14", 
+            for col in ["SMA_5", "SMA_10", "SMA_20", "SMA_60", "SMA_120", "RSI_14",
                        "MACD_12_26_9", "MACDs_12_26_9", "MACDh_12_26_9",
-                       "STOCHk_14_3_3", "STOCHd_14_3_3",
+                       "STOCHk_9_3_3", "STOCHd_9_3_3",
                        "BBU_20_2.0", "BBM_20_2.0", "BBL_20_2.0",
                        "Volume_MA5"]:
                 if col in chart_df.columns:
@@ -466,32 +469,25 @@ class TechnicalAnalyzer:
         df["SMA_20"] = df["close"].rolling(window=20).mean()
         df["SMA_60"] = df["close"].rolling(window=60).mean()
         df["SMA_120"] = df["close"].rolling(window=120).mean()
-        
+
         # 成交量均線
         df["Volume_MA5"] = df["volume"].rolling(window=5).mean()
-        
-        # RSI
-        delta = df["close"].diff()
-        gain = delta.where(delta > 0, 0)
-        loss = -delta.where(delta < 0, 0)
-        avg_gain = gain.rolling(window=14).mean()
-        avg_loss = loss.rolling(window=14).mean()
-        rs = avg_gain / avg_loss
-        df["RSI_14"] = 100 - (100 / (1 + rs))
-        
+
+        # RSI (Wilder，與 get_indicators 路徑一致)
+        df["RSI_14"] = wilder_rsi(df["close"], 14)
+
         # MACD (12, 26, 9)
         ema12 = df["close"].ewm(span=12, adjust=False).mean()
         ema26 = df["close"].ewm(span=26, adjust=False).mean()
         df["MACD_12_26_9"] = ema12 - ema26
         df["MACDs_12_26_9"] = df["MACD_12_26_9"].ewm(span=9, adjust=False).mean()
         df["MACDh_12_26_9"] = df["MACD_12_26_9"] - df["MACDs_12_26_9"]
-        
-        # Stochastic KD (9, 3, 3)
-        low9 = df["low"].rolling(window=9).min()
-        high9 = df["high"].rolling(window=9).max()
-        df["STOCHk_9_3_3"] = 100 * (df["close"] - low9) / (high9 - low9)
-        df["STOCHd_9_3_3"] = df["STOCHk_9_3_3"].rolling(window=3).mean()
-        
+
+        # Stochastic KD (9, 3, 3) — 含 smooth_k 平滑 (舊版為未平滑 fast %K)
+        k, d = stoch_kd(df["high"], df["low"], df["close"])
+        df["STOCHk_9_3_3"] = k
+        df["STOCHd_9_3_3"] = d
+
         # 布林通道 (20, 2)
         df["BBM_20_2.0"] = df["close"].rolling(window=20).mean()
         std20 = df["close"].rolling(window=20).std()

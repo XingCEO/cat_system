@@ -622,19 +622,13 @@ async def _backfill_indicators(db: AsyncSession, target_date) -> int:
         ma20 = round(float(closes.tail(20).mean()), 2) if nc >= 20 else None
         ma60 = round(float(closes.tail(60).mean()), 2) if nc >= 60 else None
 
-        # RSI14
+        # RSI14 (Wilder 平滑，與圖表/技術分析路徑一致)
         rsi14 = None
         if nc >= 15:
-            delta = closes.diff()
-            gain = delta.where(delta > 0, 0.0)
-            loss = -delta.where(delta < 0, 0.0)
-            avg_gain = gain.rolling(14).mean().iloc[-1]
-            avg_loss = loss.rolling(14).mean().iloc[-1]
-            if avg_loss == 0:
-                rsi14 = 100.0
-            else:
-                rs = avg_gain / avg_loss
-                rsi14 = round(float(100 - (100 / (1 + rs))), 2)
+            from utils.indicators import wilder_rsi
+            rsi_val = wilder_rsi(closes, 14).iloc[-1]
+            if pd.notna(rsi_val):
+                rsi14 = round(float(rsi_val), 2)
 
         # ---- 成交量序列 ----
         avg_volume_20 = None
@@ -785,13 +779,8 @@ async def _persist_fetched_history(db: AsyncSession, fallback_data: dict, target
             h["_ma10"] = closes.rolling(10).mean()
             h["_ma20"] = closes.rolling(20).mean()
             h["_ma60"] = closes.rolling(60).mean()
-            delta = closes.diff()
-            avg_gain = delta.where(delta > 0, 0.0).rolling(14).mean()
-            avg_loss = (-delta.where(delta < 0, 0.0)).rolling(14).mean()
-            rs = avg_gain / avg_loss
-            rsi = 100 - (100 / (1 + rs))
-            rsi[avg_loss == 0] = 100.0
-            h["_rsi14"] = rsi
+            from utils.indicators import wilder_rsi
+            h["_rsi14"] = wilder_rsi(closes, 14)
 
             for _, r in h.iterrows():
                 d = r["date"]

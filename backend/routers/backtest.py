@@ -9,7 +9,7 @@ import json
 import logging
 
 from database import get_db
-from schemas.backtest import BacktestRequest, BacktestResponse, BacktestSummary
+from schemas.backtest import BacktestRequest, BacktestResponse, BacktestStats, BacktestSummary
 from schemas.common import APIResponse
 from services.backtest_engine import backtest_engine
 from models.backtest import BacktestResult
@@ -58,7 +58,14 @@ async def run_backtest(
             max_gain=next((s.max_gain for s in result.stats if s.holding_days == 1), result.stats[0].max_gain if result.stats else None),
             max_loss=next((s.max_loss for s in result.stats if s.holding_days == 1), result.stats[0].max_loss if result.stats else None),
             expected_value=next((s.expected_value for s in result.stats if s.holding_days == 1), result.stats[0].expected_value if result.stats else None),
-            detailed_results=json.dumps(result.return_distribution) if result.return_distribution else None
+            # 完整保存各持有期統計，讀取時才能還原 (舊版只存 distribution，
+            # GET /results/{id} 的 stats 永遠是空的)
+            detailed_results=json.dumps({
+                "stats": [s.model_dump() for s in result.stats],
+                "return_distribution": result.return_distribution,
+                "trading_days": result.trading_days,
+                "cost_note": result.cost_note,
+            })
         )
         
         db.add(db_result)
@@ -91,17 +98,37 @@ async def get_backtest_result(
             raise HTTPException(status_code=404, detail="回測結果不存在")
         
         # Reconstruct response from saved data
+        # detailed_results 新格式為 {"stats": [...], "return_distribution": {...}, ...}；
+        # 舊資料是純 distribution dict，需向下相容
+        stats = []
+        return_distribution = None
+        trading_days = 0
+        cost_note = None
+        if db_result.detailed_results:
+            try:
+                saved = json.loads(db_result.detailed_results)
+                if isinstance(saved, dict) and "stats" in saved:
+                    stats = [BacktestStats(**s) for s in saved.get("stats") or []]
+                    return_distribution = saved.get("return_distribution")
+                    trading_days = saved.get("trading_days") or 0
+                    cost_note = saved.get("cost_note")
+                elif isinstance(saved, dict):
+                    return_distribution = saved
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Failed to parse detailed_results for backtest {result_id}: {e}")
+
         response = BacktestResponse(
             id=db_result.id,
             total_signals=db_result.total_signals,
             unique_stocks=db_result.unique_stocks,
-            stats=[],  # Would need to regenerate or store
+            stats=stats,
             overall_win_rate=db_result.win_rate or 0,
             overall_avg_return=db_result.avg_return_1d or 0,
             start_date=db_result.start_date,
             end_date=db_result.end_date,
-            trading_days=0,
-            return_distribution=json.loads(db_result.detailed_results) if db_result.detailed_results else None
+            trading_days=trading_days,
+            return_distribution=return_distribution,
+            cost_note=cost_note,
         )
         
         return APIResponse.ok(data=response)
