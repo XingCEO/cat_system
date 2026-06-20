@@ -26,6 +26,7 @@ from database import async_session_maker
 from models.kline_cache import KLineCache, KLineFetchProgress
 from services.data_fetcher import data_fetcher
 from services.cache_manager import cache_manager
+from utils.indicators import wilder_rsi, stoch_kd
 
 logger = logging.getLogger(__name__)
 
@@ -424,15 +425,9 @@ class EnhancedKLineService:
         # 成交量均線
         df["Volume_MA5"] = df["volume"].rolling(window=5).mean()
         
-        # RSI
-        delta = df["close"].diff()
-        gain = delta.where(delta > 0, 0)
-        loss = -delta.where(delta < 0, 0)
-        avg_gain = gain.rolling(window=14).mean()
-        avg_loss = loss.rolling(window=14).mean()
-        rs = avg_gain / avg_loss
-        df["RSI_14"] = 100 - (100 / (1 + rs))
-        
+        # RSI (Wilder) — 共用 utils.indicators，與 technical_analysis / data_sync 算法一致
+        df["RSI_14"] = wilder_rsi(df["close"], 14)
+
         # MACD
         ema12 = df["close"].ewm(span=12, adjust=False).mean()
         ema26 = df["close"].ewm(span=26, adjust=False).mean()
@@ -440,13 +435,10 @@ class EnhancedKLineService:
         df["MACDs_12_26_9"] = df["MACD_12_26_9"].ewm(span=9, adjust=False).mean()
         df["MACDh_12_26_9"] = df["MACD_12_26_9"] - df["MACDs_12_26_9"]
         
-        # KD — smooth_k=3：先平滑 RSV 得慢速 %K，再 SMA(3) 得 %D（標籤 _9_3_3）。
-        # 原本直接用未平滑 RSV 當 %K，與 pandas-ta full-stochastic 不一致、KD 過度敏感。
-        low9 = df["low"].rolling(window=9).min()
-        high9 = df["high"].rolling(window=9).max()
-        rsv9 = 100 * (df["close"] - low9) / (high9 - low9)
-        df["STOCHk_9_3_3"] = rsv9.rolling(window=3).mean()
-        df["STOCHd_9_3_3"] = df["STOCHk_9_3_3"].rolling(window=3).mean()
+        # KD (9,3,3) — 共用 stoch_kd（含 smooth_k 平滑與一字線除零保護）
+        k, d = stoch_kd(df["high"], df["low"], df["close"])
+        df["STOCHk_9_3_3"] = k
+        df["STOCHd_9_3_3"] = d
         
         # 布林通道
         df["BBM_20_2.0"] = df["close"].rolling(window=20).mean()
