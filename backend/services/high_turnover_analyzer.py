@@ -2312,6 +2312,7 @@ class HighTurnoverAnalyzer:
                         "name": stock_info.get("name", ""),
                         "industry": stock_info.get("industry", ""),
                         "close_price": round(current_close, 2),
+                        "prev_close": round(closes[1], 2),  # Yahoo 前一日收盤 (change_pct 基準)
                         "change_percent": round(change_pct, 2),
                         "turnover_rate": stock_info.get("turnover_rate"),
                         "volume": stock_info.get("volume"),
