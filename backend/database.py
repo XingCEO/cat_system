@@ -130,6 +130,42 @@ async def _migrate_existing_schema(conn):
     await _add_missing_columns(conn, "daily_prices", daily_price_cols)
     await _add_missing_columns(conn, "backtest_results", backtest_result_cols)
     await _add_missing_columns(conn, "user_strategies", user_strategy_cols)
+    await _normalize_existing_column_types(conn)
+
+
+async def _normalize_existing_column_types(conn):
+    """
+    Repair known type drift in production databases.
+
+    Older PostgreSQL deployments created daily_prices.market_ok as an integer
+    flag before the ORM model switched to Boolean. PostgreSQL will not accept a
+    boolean bind for that integer column, so freshness syncs and screen queries
+    fail until the column is converted.
+    """
+    if conn.dialect.name != "postgresql":
+        return
+
+    await conn.execute(text("""
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name = 'daily_prices'
+                  AND column_name = 'market_ok'
+                  AND data_type IN ('smallint', 'integer', 'bigint', 'numeric')
+            ) THEN
+                ALTER TABLE daily_prices
+                ALTER COLUMN market_ok TYPE BOOLEAN
+                USING CASE
+                    WHEN market_ok IS NULL THEN NULL
+                    WHEN market_ok = 0 THEN FALSE
+                    ELSE TRUE
+                END;
+            END IF;
+        END $$;
+    """))
 
 
 async def _add_missing_columns(conn, table_name: str, columns: list[tuple[str, str]]):

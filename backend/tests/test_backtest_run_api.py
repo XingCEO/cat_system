@@ -1,10 +1,11 @@
 import pytest
 import pandas as pd
+from types import SimpleNamespace
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from database import _migrate_existing_schema
+from database import _migrate_existing_schema, _normalize_existing_column_types
 from routers import backtest as backtest_router
 from schemas.backtest import BacktestRequest, BacktestResponse, BacktestStats
 
@@ -208,3 +209,34 @@ async def test_migrate_existing_schema_adds_backtest_and_strategy_columns(tmp_pa
 async def _sqlite_columns(conn, table_name: str) -> set[str]:
     rows = (await conn.execute(text(f"PRAGMA table_info({table_name})"))).fetchall()
     return {row[1] for row in rows}
+
+
+@pytest.mark.asyncio
+async def test_normalize_existing_column_types_repairs_postgres_market_ok():
+    class FakeConn:
+        dialect = SimpleNamespace(name="postgresql")
+
+        def __init__(self):
+            self.statements = []
+
+        async def execute(self, statement):
+            self.statements.append(str(statement))
+
+    conn = FakeConn()
+
+    await _normalize_existing_column_types(conn)
+
+    sql = "\n".join(conn.statements)
+    assert "ALTER COLUMN market_ok TYPE BOOLEAN" in sql
+    assert "information_schema.columns" in sql
+
+
+@pytest.mark.asyncio
+async def test_normalize_existing_column_types_skips_sqlite():
+    class FakeConn:
+        dialect = SimpleNamespace(name="sqlite")
+
+        async def execute(self, statement):
+            raise AssertionError("SQLite should not run PostgreSQL type migration")
+
+    await _normalize_existing_column_types(FakeConn())
