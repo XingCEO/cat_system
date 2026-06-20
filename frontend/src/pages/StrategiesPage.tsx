@@ -74,7 +74,7 @@ export default function StrategiesPage() {
         } catch (e: any) {
             setError(e.message);
         }
-    }, [form, editingId, rawJson]);
+    }, [form, editingId, rawJson, updateLocal, addStrategy, setError]);
 
     const handleDelete = useCallback(async (id: number) => {
         if (!confirm('確定要刪除此策略？')) return;
@@ -84,7 +84,7 @@ export default function StrategiesPage() {
         } catch (e: any) {
             setError(e.message);
         }
-    }, []);
+    }, [removeStrategy, setError]);
 
     const handleToggleAlert = useCallback(async (id: number, current: boolean) => {
         try {
@@ -93,7 +93,7 @@ export default function StrategiesPage() {
         } catch (e: any) {
             setError(e.message);
         }
-    }, []);
+    }, [updateLocal, setError]);
 
     const openEdit = (s: Strategy) => {
         setEditingId(s.id);

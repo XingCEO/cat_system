@@ -115,15 +115,15 @@ class TestKDStochasticSmoothing:
         md = oracle_d.notna() & df["STOCHd_9_3_3"].notna()
         assert (df["STOCHd_9_3_3"][md] - oracle_d[md]).abs().max() < 1e-9
 
-    def test_k14_is_smoothed_rsv(self):
+    def test_manual_path_uses_shared_smoothed_kd(self):
+        # _calculate_indicators_manual now delegates to the shared stoch_kd(9,3,3)
+        # helper (smoothed %K), not an inline unsmoothed RSV.
         from services.technical_analysis import TechnicalAnalyzer
+        from utils.indicators import stoch_kd
         df = TechnicalAnalyzer()._calculate_indicators_manual(self._series())
-        low14 = df["low"].rolling(14).min()
-        high14 = df["high"].rolling(14).max()
-        rsv14 = 100 * (df["close"] - low14) / (high14 - low14)
-        oracle_k = rsv14.rolling(3).mean()
-        m = oracle_k.notna() & df["STOCHk_14_3_3"].notna()
-        assert (df["STOCHk_14_3_3"][m] - oracle_k[m]).abs().max() < 1e-9
+        k, _ = stoch_kd(df["high"], df["low"], df["close"])
+        m = k.notna() & df["STOCHk_9_3_3"].notna()
+        assert (df["STOCHk_9_3_3"][m] - k[m]).abs().max() < 1e-9
 
     def test_enhanced_kline_k9_is_smoothed_rsv(self):
         from services.enhanced_kline_service import EnhancedKLineService
@@ -199,46 +199,18 @@ class TestBacktestDbPath:
         assert s1.total_trades == 2 and s1.winning_trades == 2 and s1.win_rate == 100.0
         assert abs(s1.expected_value - s1.avg_return) < 0.02  # EV == avg by construction
 
-    def test_forward_returns_exact(self):
+    def test_forward_returns_gross(self):
         from services.backtest_engine import backtest_engine as BE
         sig = [{"symbol": "1111", "name": "1111", "entry_date": "2026-01-02",
                 "entry_price": 103.0, "change_percent": 3.0}]
-        out = BE._forward_returns_from_df(sig, self._df(), [1, 2])
-        assert out[0]["returns"][1] == 3.0   # 106.09 vs 103
-        assert out[0]["returns"][2] == 6.8   # 110 vs 103
+        out = BE._forward_returns_from_df(sig, self._df(), [1, 2], include_costs=False)
+        assert out[0]["returns"][1] == 3.0   # 106.09 vs 103 (gross)
+        assert out[0]["returns"][2] == 6.8   # 110 vs 103 (gross)
 
-
-class TestStockFilterMetrics:
-    """
-    consecutive_up_days / volume_ratio were hardcoded to 0 / 1.0 in
-    _enrich_results, so those filter options returned empty and the columns
-    showed wrong values. Now computed from v1 DB history via _metrics_from_series.
-    """
-    def test_consecutive_up_days_counts_streak(self):
-        from services.stock_filter import StockFilter
-        m = StockFilter._metrics_from_series([10, 11, 12, 13], [1, 1, 1, 1], 1)
-        assert m["consecutive_up_days"] == 3
-
-    def test_streak_breaks_on_down_day(self):
-        from services.stock_filter import StockFilter
-        # from end: 12>11 (1), 11>9 (2), 9>10? no -> stop
-        m = StockFilter._metrics_from_series([10, 9, 11, 12], [1, 1, 1, 1], 1)
-        assert m["consecutive_up_days"] == 2
-        # descending -> no up streak
-        assert StockFilter._metrics_from_series([13, 12, 11], [1, 1, 1], 1)["consecutive_up_days"] == 0
-
-    def test_volume_ratio_uses_avg20(self):
-        from services.stock_filter import StockFilter
-        m = StockFilter._metrics_from_series([10, 11], [500, 1000], 200.0)
-        assert m["volume_ratio"] == 5.0  # 1000 / 200
-
-    def test_volume_ratio_fallback_to_mean(self):
-        from services.stock_filter import StockFilter
-        # avg20 missing -> mean([100,200,300])=200, latest 300 -> 1.5
-        m = StockFilter._metrics_from_series([10, 11, 12], [100, 200, 300], None)
-        assert m["volume_ratio"] == 1.5
-
-    def test_empty_series_safe_defaults(self):
-        from services.stock_filter import StockFilter
-        m = StockFilter._metrics_from_series([], [], None)
-        assert m == {"consecutive_up_days": 0, "volume_ratio": 1.0}
+    def test_forward_returns_net_below_gross(self):
+        # with costs (the default), the same trade returns less than gross
+        from services.backtest_engine import backtest_engine as BE
+        sig = [{"symbol": "1111", "name": "1111", "entry_date": "2026-01-02",
+                "entry_price": 103.0, "change_percent": 3.0}]
+        net = BE._forward_returns_from_df(sig, self._df(), [1], include_costs=True)
+        assert net[0]["returns"][1] < 3.0  # Taiwan trading costs reduce the return

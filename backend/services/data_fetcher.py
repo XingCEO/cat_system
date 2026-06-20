@@ -263,6 +263,83 @@ class DataFetcher:
 
         return pd.DataFrame()
 
+    async def get_daily_from_db(self, target_date: Optional[str]) -> pd.DataFrame:
+        """
+        從 v1 DB (daily_prices) 取「全市場單日」資料，組成 Legacy 形狀 DataFrame
+        (stock_id / Trading_Volume / open / max / min / close / spread / date)。
+
+        target_date=None → 取 DB 最新日；否則取該指定日。
+        用途：(1) 歷史日期查詢（TWSE STOCK_DAY_ALL 無法依日期查詢，只回最新快照），
+              (2) 即時抓取失敗時的優雅降級。
+        """
+        try:
+            from database import async_session_maker
+            from app.models.daily_price import DailyPrice
+            from sqlalchemy import select, func
+            from datetime import datetime as _dt, timedelta as _td
+
+            async with async_session_maker() as session:
+                d = None
+                if target_date:
+                    try:
+                        d = _dt.strptime(str(target_date)[:10], "%Y-%m-%d").date()
+                    except ValueError:
+                        d = None
+                if d is None:
+                    d = (await session.execute(select(func.max(DailyPrice.date)))).scalar()
+                if d is None:
+                    return pd.DataFrame()
+                # 拉「目標日 + 前 ~12 個日曆日」以推算前一交易日收盤 (prev_close)，
+                # 由實際前一日收盤計算 spread，確保歷史漲跌幅/漲停判定正確。
+                lookback = d - _td(days=12)
+                rows = (await session.execute(
+                    select(
+                        DailyPrice.ticker_id, DailyPrice.date, DailyPrice.open,
+                        DailyPrice.high, DailyPrice.low, DailyPrice.close,
+                        DailyPrice.volume, DailyPrice.change_percent,
+                    )
+                    .where(DailyPrice.date >= lookback, DailyPrice.date <= d)
+                    .order_by(DailyPrice.ticker_id, DailyPrice.date)
+                )).fetchall()
+
+            if not rows:
+                return pd.DataFrame()
+
+            # 升冪排序 → 每檔最後一筆「早於 d」的收盤即為 prev_close
+            prev_close: dict = {}
+            target_rows: dict = {}
+            for r in rows:
+                m = r._mapping
+                tid = str(m["ticker_id"])
+                if m["date"] == d:
+                    target_rows[tid] = m
+                elif m["close"] is not None:
+                    prev_close[tid] = m["close"]
+
+            records = []
+            for tid, m in target_rows.items():
+                close = m["close"]
+                cp = m["change_percent"]
+                spread = None
+                pc = prev_close.get(tid)
+                if close is not None and pc is not None:
+                    spread = round(close - pc, 4)
+                elif close is not None and cp is not None:
+                    denom = 1 + cp / 100
+                    if denom != 0:
+                        spread = round(close - close / denom, 4)
+                records.append({
+                    "stock_id": tid,
+                    "Trading_Volume": m["volume"],
+                    "open": m["open"], "max": m["high"], "min": m["low"],
+                    "close": close, "spread": spread,
+                    "date": str(m["date"]),
+                })
+            return pd.DataFrame(records)
+        except Exception as e:
+            logger.warning(f"get_daily_from_db failed for {target_date}: {e}", exc_info=True)
+            return pd.DataFrame()
+
     async def get_daily_data(self, trade_date: str) -> pd.DataFrame:
         """
         Get daily trading data for all stocks on a specific date
@@ -273,6 +350,8 @@ class DataFetcher:
         Note:
             TWSE STOCK_DAY_ALL 永遠回傳最新交易日資料，
             快取 key 使用「實際資料日期」而非查詢日期，避免重複請求。
+            歷史日期 (早於最新交易日) 優先讀 v1 DB，避免把最新快照
+            誤標成歷史日期 (舊版會把今天的資料當成任何查詢日回傳並快取)。
         """
         # 先嘗試用查詢日期找快取
         cache_key = f"daily_{trade_date}"
@@ -280,14 +359,25 @@ class DataFetcher:
         if cached is not None:
             return pd.DataFrame(cached)
 
-        # 也嘗試用 canonical key（可能已被其他查詢日期快取）
-        canonical_key = cache_manager.get("_daily_canonical_key", "general")
-        if canonical_key and canonical_key != cache_key:
-            cached = cache_manager.get(canonical_key, "daily")
-            if cached is not None:
-                # 同時在查詢日期的 key 下也建快取，避免下次 miss
-                cache_manager.set(cache_key, cached, "daily")
-                return pd.DataFrame(cached)
+        # 歷史日期 → v1 DB 優先 (TWSE 即時來源無法回傳歷史日)
+        from utils.date_utils import get_latest_trading_day
+        is_historical = bool(trade_date) and str(trade_date) < get_latest_trading_day()
+        if is_historical:
+            db_df = await self.get_daily_from_db(trade_date)
+            if not db_df.empty:
+                cache_manager.set(cache_key, db_df.to_dict("records"), "daily")
+                return db_df
+
+        # 也嘗試用 canonical key（可能已被其他查詢日期快取）— 僅限非歷史查詢，
+        # 歷史查詢不可拿「最新快照」充當該日資料
+        if not is_historical:
+            canonical_key = cache_manager.get("_daily_canonical_key", "general")
+            if canonical_key and canonical_key != cache_key:
+                cached = cache_manager.get(canonical_key, "daily")
+                if cached is not None:
+                    # 同時在查詢日期的 key 下也建快取，避免下次 miss
+                    cache_manager.set(cache_key, cached, "daily")
+                    return pd.DataFrame(cached)
 
         # Skip FinMind if cooldown is active
         if not DataFetcher._is_finmind_available():
@@ -410,6 +500,14 @@ class DataFetcher:
                     # 用實際日期作為 canonical key
                     cache_manager.set(actual_cache_key, records, "daily")
                     cache_manager.set("_daily_canonical_key", actual_cache_key, "general")
+                    # 查詢「歷史日期」但 TWSE 只回最新快照 → 不可把最新資料
+                    # 快取在歷史 key 下（會毒化快取 4 小時），也不可回傳誤標資料
+                    if str(trade_date) < str(actual_date):
+                        logger.warning(
+                            f"TWSE STOCK_DAY_ALL cannot serve historical date {trade_date} "
+                            f"(returned {actual_date}); returning empty instead of mislabeled data"
+                        )
+                        return pd.DataFrame()
                     # 也用查詢日期快取（避免重複請求）
                     if query_cache_key != actual_cache_key:
                         cache_manager.set(query_cache_key, records, "daily")

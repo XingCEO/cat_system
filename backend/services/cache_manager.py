@@ -32,6 +32,9 @@ class CacheManager:
         self.industry_cache = TTLCache(maxsize=100, ttl=settings.cache_industries)
         self.general_cache = TTLCache(maxsize=1000, ttl=300)
         self.realtime_cache = TTLCache(maxsize=200, ttl=10)  # 即時報價 10 秒
+        # 股票基本資料 (流通股數等)，一天內變動極低。
+        # 原本未註冊此類型，使用 "stock_info" 的呼叫端被靜默導向 general (300s)。
+        self.stock_info_cache = TTLCache(maxsize=100, ttl=86400)
     
     def get(self, key: str, cache_type: str = "general") -> Optional[Any]:
         """Get value from cache"""
@@ -61,6 +64,7 @@ class CacheManager:
             self.industry_cache.clear()
             self.general_cache.clear()
             self.realtime_cache.clear()
+            self.stock_info_cache.clear()
     
     def _get_cache(self, cache_type: str) -> TTLCache:
         """Get the appropriate cache by type"""
@@ -70,7 +74,8 @@ class CacheManager:
             "indicator": self.indicator_cache,
             "industry": self.industry_cache,
             "general": self.general_cache,
-            "realtime": self.realtime_cache
+            "realtime": self.realtime_cache,
+            "stock_info": self.stock_info_cache,
         }
         return caches.get(cache_type, self.general_cache)
     
@@ -83,6 +88,7 @@ class CacheManager:
             "industry": {"size": len(self.industry_cache), "maxsize": self.industry_cache.maxsize},
             "general": {"size": len(self.general_cache), "maxsize": self.general_cache.maxsize},
             "realtime": {"size": len(self.realtime_cache), "maxsize": self.realtime_cache.maxsize},
+            "stock_info": {"size": len(self.stock_info_cache), "maxsize": self.stock_info_cache.maxsize},
         }
 
 
