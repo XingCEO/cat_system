@@ -33,6 +33,7 @@ interface TurnoverStock {
     name?: string;
     industry?: string;
     close_price?: number;
+    prev_close?: number;
     change_percent?: number;
     turnover_rate: number;
     volume?: number;
@@ -694,6 +695,7 @@ export function TurnoverFiltersPage() {
                                         <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">代號</th>
                                         <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">名稱</th>
                                         <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">產業</th>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">昨收價</th>
                                         <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">收盤價</th>
                                         <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">漲幅</th>
                                         <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">周轉率</th>
@@ -750,6 +752,7 @@ export function TurnoverFiltersPage() {
                                                 {stock.is_breakout && <span className={`ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-xs ${stock.direction === 'breakdown' ? 'bg-rose-500/10 text-rose-500' : 'bg-violet-500/10 text-violet-500'}`}>{stock.direction === 'breakdown' ? '跌破' : '突破'}</span>}
                                             </td>
                                             <td className="px-4 py-3 text-muted-foreground text-xs">{stock.industry || '-'}</td>
+                                            <td className="px-4 py-3 font-mono tabular-nums text-muted-foreground">{formatPrice(stock.prev_close)}</td>
                                             <td className="px-4 py-3 font-mono tabular-nums">{formatPrice(stock.close_price)}</td>
                                             <td className={`px-4 py-3 font-mono font-semibold tabular-nums ${getChangeColor(stock.change_percent)}`}>
                                                 {formatPercent(stock.change_percent)}

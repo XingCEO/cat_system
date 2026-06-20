@@ -31,6 +31,7 @@ interface TurnoverStock {
     name?: string;
     industry?: string;
     close_price?: number;
+    prev_close?: number;
     change_percent?: number;
     turnover_rate: number;
     volume?: number;
@@ -158,6 +159,7 @@ export function Top20TurnoverLimitUpPage() {
             代號: s.symbol,
             名稱: s.name || '',
             產業: s.industry || '',
+            昨收價: s.prev_close ?? '',
             收盤價: s.close_price || 0,
             漲幅: s.change_percent || 0,
             周轉率: s.turnover_rate,
@@ -221,6 +223,13 @@ export function Top20TurnoverLimitUpPage() {
             header: '產業',
             cell: ({ row }) => (
                 <span className="text-xs text-muted-foreground">{row.original.industry || '-'}</span>
+            ),
+        },
+        {
+            accessorKey: 'prev_close',
+            header: () => <span className="text-xs text-muted-foreground">昨收價</span>,
+            cell: ({ row }) => (
+                <span className="font-mono text-muted-foreground">{formatPrice(row.original.prev_close)}</span>
             ),
         },
         {
@@ -621,6 +630,7 @@ export function Top20TurnoverLimitUpPage() {
                                 <th className="px-3 py-2 text-left text-xs">代號</th>
                                 <th className="px-3 py-2 text-left text-xs">名稱</th>
                                 <th className="px-3 py-2 text-left text-xs">產業</th>
+                                <th className="px-3 py-2 text-left text-xs">昨收價</th>
                                 <th className="px-3 py-2 text-left text-xs">收盤價</th>
                                 <th className="px-3 py-2 text-left text-xs">漲幅</th>
                                 <th className="px-3 py-2 text-left text-xs">周轉率</th>
@@ -645,6 +655,7 @@ export function Top20TurnoverLimitUpPage() {
                                     <td className="px-3 py-2 font-mono">{stock.symbol}</td>
                                     <td className="px-3 py-2">{stock.name}</td>
                                     <td className="px-3 py-2 text-xs text-muted-foreground">{stock.industry || '-'}</td>
+                                    <td className="px-3 py-2 font-mono text-muted-foreground">{formatPrice(stock.prev_close)}</td>
                                     <td className="px-3 py-2 font-mono">{formatPrice(stock.close_price)}</td>
                                     <td className={`px-3 py-2 font-mono ${getChangeColor(stock.change_percent)}`}>
                                         {formatPercent(stock.change_percent)}

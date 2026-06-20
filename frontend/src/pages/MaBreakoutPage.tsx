@@ -19,6 +19,7 @@ interface BreakoutStock {
     name?: string;
     industry?: string;
     close_price?: number;
+    prev_close?: number;
     change_percent?: number;
     turnover_rate?: number;
     volume?: number;
@@ -314,6 +315,7 @@ export function MaBreakoutPage() {
                                         <th className="px-3 py-3 text-left text-xs font-medium">代號</th>
                                         <th className="px-3 py-3 text-left text-xs font-medium">名稱</th>
                                         <th className="px-3 py-3 text-left text-xs font-medium">產業</th>
+                                        <th className="px-3 py-3 text-left text-xs font-medium">昨收價</th>
                                         <th className="px-3 py-3 text-left text-xs font-medium">收盤價</th>
                                         <th className="px-3 py-3 text-left text-xs font-medium">漲幅</th>
                                         <th className="px-3 py-3 text-left text-xs font-medium">周轉率</th>
@@ -343,6 +345,7 @@ export function MaBreakoutPage() {
                                                 <span className="ml-1">{direction === 'breakout' ? <Zap className="w-3.5 h-3.5 inline text-amber-400" /> : <TrendingDown className="w-3.5 h-3.5 inline text-red-400" />}</span>
                                             </td>
                                             <td className="px-3 py-3 text-muted-foreground text-xs">{stock.industry || '-'}</td>
+                                            <td className="px-3 py-3 font-mono text-muted-foreground">{formatPrice(stock.prev_close)}</td>
                                             <td className="px-3 py-3 font-mono">{formatPrice(stock.close_price)}</td>
                                             <td className={`px-3 py-3 font-mono font-semibold ${getChangeColor(stock.change_percent)}`}>
                                                 {formatPercent(stock.change_percent)}
