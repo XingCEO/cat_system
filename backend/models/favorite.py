@@ -3,7 +3,7 @@ Favorite Conditions Model
 """
 from sqlalchemy import Column, String, Integer, DateTime, JSON
 from datetime import datetime, timezone
-from database import Base
+from database import Base, utc_now_naive
 
 
 class Favorite(Base):
@@ -35,8 +35,8 @@ class Favorite(Base):
     last_used_at = Column(DateTime, nullable=True)
     
     # Timestamps
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=utc_now_naive)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
     
     def __repr__(self):
         return f"<Favorite {self.id}: {self.name}>"

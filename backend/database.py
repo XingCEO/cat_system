@@ -2,6 +2,7 @@
 TWSE Stock Filter - Database Configuration
 """
 import os
+from datetime import datetime
 from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
@@ -66,6 +67,11 @@ async_session_maker = async_sessionmaker(
 class Base(DeclarativeBase):
     """Base class for all models"""
     pass
+
+
+def utc_now_naive() -> datetime:
+    """Return UTC time without tzinfo for DB TIMESTAMP columns."""
+    return datetime.utcnow()
 
 
 async def get_db() -> AsyncSession:

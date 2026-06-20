@@ -4,7 +4,7 @@ MarketIndex Model — 大盤 (TAIEX) 每日指標
 """
 from sqlalchemy import Column, Float, Boolean, Date, DateTime, Index
 from datetime import datetime, timezone
-from database import Base
+from database import Base, utc_now_naive
 
 
 class MarketIndex(Base):
@@ -28,7 +28,7 @@ class MarketIndex(Base):
     # AND 大盤週收盤 >= 大盤週MA20
     ok = Column(Boolean, nullable=True, default=False, comment="大盤多頭條件全部滿足")
 
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=utc_now_naive)
 
     __table_args__ = (
         Index("idx_market_index_date", "date"),

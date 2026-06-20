@@ -4,7 +4,7 @@ Watchlist Models
 from sqlalchemy import Column, String, Integer, DateTime, Float, ForeignKey, JSON, Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
-from database import Base
+from database import Base, utc_now_naive
 
 
 class Watchlist(Base):
@@ -14,8 +14,8 @@ class Watchlist(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(100), nullable=False, default="我的監控清單")
     description = Column(String(500), nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=utc_now_naive)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
     
     # Relationships
     items = relationship("WatchlistItem", back_populates="watchlist", cascade="all, delete-orphan")
@@ -52,8 +52,8 @@ class WatchlistItem(Base):
     # Notes
     notes = Column(String(500), nullable=True)
     
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=utc_now_naive)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
     
     # Relationships
     watchlist = relationship("Watchlist", back_populates="items")

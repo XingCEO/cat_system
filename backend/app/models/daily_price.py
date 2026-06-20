@@ -3,7 +3,7 @@ DailyPrice Model — 日 K 線 + 技術指標 + 延伸指標
 """
 from sqlalchemy import Column, String, Float, Integer, Boolean, Date, DateTime, UniqueConstraint, Index
 from datetime import datetime, timezone
-from database import Base
+from database import Base, utc_now_naive
 
 
 class DailyPrice(Base):
@@ -60,7 +60,7 @@ class DailyPrice(Base):
     # 大盤條件是否滿足 (當日 TAIEX 是否符合多頭排列 + 週線條件)
     market_ok = Column(Boolean, nullable=True, comment="大盤條件滿足 (多頭排列)")
 
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=utc_now_naive)
 
     __table_args__ = (
         UniqueConstraint("date", "ticker_id", name="uq_date_ticker"),

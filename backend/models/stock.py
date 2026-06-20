@@ -4,7 +4,7 @@ Stock and DailyData Models
 from sqlalchemy import Column, String, Float, Integer, Date, DateTime, Index, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime, date, timezone
-from database import Base
+from database import Base, utc_now_naive
 
 
 class Stock(Base):
@@ -17,8 +17,8 @@ class Stock(Base):
     industry = Column(String(50), nullable=True)
     is_etf = Column(Boolean, default=False)
     listed_date = Column(Date, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=utc_now_naive)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
     
     # Relationships
     daily_data = relationship("DailyData", back_populates="stock", cascade="all, delete-orphan")
@@ -63,7 +63,7 @@ class DailyData(Base):
     # Average change
     avg_change_5d = Column(Float, nullable=True)  # 近5日平均漲幅 %
     
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=utc_now_naive)
     
     # Relationships
     stock = relationship("Stock", back_populates="daily_data")

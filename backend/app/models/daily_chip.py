@@ -3,7 +3,7 @@ DailyChip Model — 每日籌碼資料
 """
 from sqlalchemy import Column, String, Integer, Date, DateTime, UniqueConstraint, Index
 from datetime import datetime, timezone
-from database import Base
+from database import Base, utc_now_naive
 
 
 class DailyChip(Base):
@@ -21,7 +21,7 @@ class DailyChip(Base):
     # 融資
     margin_balance = Column(Integer, nullable=True, comment="融資餘額 (張)")
 
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=utc_now_naive)
 
     __table_args__ = (
         UniqueConstraint("date", "ticker_id", name="uq_chip_date_ticker"),

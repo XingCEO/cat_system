@@ -6,7 +6,7 @@ from typing import Optional
 from sqlalchemy import Column, Integer, String, Float, Date, DateTime, Boolean, Index
 from sqlalchemy.orm import Mapped, mapped_column
 
-from database import Base
+from database import Base, utc_now_naive
 
 
 class TurnoverRanking(Base):
@@ -45,7 +45,7 @@ class TurnoverRanking(Base):
     # 其他指標
     consecutive_up_days: Mapped[Optional[int]] = mapped_column(Integer)  # 連續上漲天數
     
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
     
     __table_args__ = (
         Index('ix_turnover_date_rank', 'date', 'turnover_rank'),
@@ -91,7 +91,7 @@ class FloatShares(Base):
     float_shares: Mapped[Optional[float]] = mapped_column(Float)  # 流通股數
     
     # 更新時間
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
     
     def to_dict(self):
         return {
@@ -122,7 +122,7 @@ class TurnoverTrack(Base):
     
     # 狀態
     is_complete: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
     
     def to_dict(self):
         return {

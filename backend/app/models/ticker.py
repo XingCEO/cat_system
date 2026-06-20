@@ -3,7 +3,7 @@ Ticker Model — 股票基本資料
 """
 from sqlalchemy import Column, String, DateTime
 from datetime import datetime, timezone
-from database import Base
+from database import Base, utc_now_naive
 
 
 class Ticker(Base):
@@ -14,8 +14,8 @@ class Ticker(Base):
     name = Column(String(50), nullable=False, comment="股票名稱 (如 台積電)")
     market_type = Column(String(10), nullable=True, comment="TSE (上市) / OTC (上櫃)")
     industry = Column(String(50), nullable=True, comment="產業分類")
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=utc_now_naive)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
 
     def __repr__(self):
         return f"<Ticker {self.ticker_id} - {self.name}>"
