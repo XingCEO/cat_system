@@ -147,3 +147,62 @@ class TestSafeFloatNaN:
     def test_valid_values_unaffected(self):
         assert ds_safe_float({"x": "1,234.5"}, "x") == 1234.5
         assert ds_safe_float({"x": "--"}, "x") is None
+
+
+class TestBacktestDbPath:
+    """
+    DB-backed backtest: sources real per-date history (fixing the legacy path
+    that filtered every date against the latest TWSE snapshot and 402'd on
+    FinMind). change% is computed on the fly from each stock's close series.
+    """
+    def _df(self):
+        rows = []
+        def add(sid, d, close, vol):
+            rows.append({"stock_id": sid, "name": sid, "date": d, "open": close,
+                         "high": close, "low": close, "close": close,
+                         "volume": vol, "industry": "X"})
+        # 1111: +3% on 01-02 and 01-03 -> two signals
+        for d, c in [("2026-01-01", 100.0), ("2026-01-02", 103.0), ("2026-01-03", 106.09),
+                     ("2026-01-04", 110.0), ("2026-01-05", 120.0)]:
+            add("1111", d, c, 5_000_000)
+        # 0050: ETF, +3% -> must be excluded
+        for d, c in [("2026-01-01", 100.0), ("2026-01-02", 103.0), ("2026-01-03", 106.0)]:
+            add("0050", d, c, 9_000_000)
+        # 2222: only +1% -> excluded by change filter
+        for d, c in [("2026-01-01", 100.0), ("2026-01-02", 101.0), ("2026-01-03", 102.0)]:
+            add("2222", d, c, 5_000_000)
+        # 3333: +3% but volume < 1 lot -> excluded by volume filter
+        add("3333", "2026-01-01", 100.0, 500)
+        add("3333", "2026-01-02", 103.0, 500)
+        return pd.DataFrame(rows)
+
+    def _req(self, **kw):
+        from schemas.backtest import BacktestRequest
+        d = dict(start_date="2026-01-02", end_date="2026-01-03", change_min=2.0,
+                 change_max=4.0, volume_min=1, exclude_etf=True, holding_days=[1, 2])
+        d.update(kw)
+        return BacktestRequest(**d)
+
+    def test_filters_etf_change_and_volume(self):
+        from services.backtest_engine import backtest_engine as BE
+        df = self._df()
+        df["_chg"] = pd.to_numeric(df["close"]).groupby(df["stock_id"]).pct_change() * 100
+        day = BE._filter_day(df[df["date"] == "2026-01-02"], self._req())
+        assert set(day["stock_id"]) == {"1111"}  # 0050=ETF, 2222=chg<2, 3333=vol<1
+
+    def test_compute_counts_and_winrate(self):
+        from services.backtest_engine import backtest_engine as BE
+        resp = BE._compute_from_df(self._df(), self._req())
+        assert resp.total_signals == 2          # only 1111's two days
+        assert resp.unique_stocks == 1
+        s1 = next(s for s in resp.stats if s.holding_days == 1)
+        assert s1.total_trades == 2 and s1.winning_trades == 2 and s1.win_rate == 100.0
+        assert abs(s1.expected_value - s1.avg_return) < 0.02  # EV == avg by construction
+
+    def test_forward_returns_exact(self):
+        from services.backtest_engine import backtest_engine as BE
+        sig = [{"symbol": "1111", "name": "1111", "entry_date": "2026-01-02",
+                "entry_price": 103.0, "change_percent": 3.0}]
+        out = BE._forward_returns_from_df(sig, self._df(), [1, 2])
+        assert out[0]["returns"][1] == 3.0   # 106.09 vs 103
+        assert out[0]["returns"][2] == 6.8   # 110 vs 103
