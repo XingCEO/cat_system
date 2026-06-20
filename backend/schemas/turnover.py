@@ -14,6 +14,7 @@ class TurnoverStockItem(BaseModel):
     industry: Optional[str] = Field(None, description="產業類別")
     
     close_price: Optional[float] = Field(None, description="收盤價")
+    prev_close: Optional[float] = Field(None, description="昨收價")
     change_percent: Optional[float] = Field(None, description="漲幅 %")
     turnover_rate: float = Field(..., description="周轉率 %")
     volume: Optional[int] = Field(None, description="成交量(張)")
