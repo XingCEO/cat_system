@@ -4,7 +4,9 @@ Backtest Router - Backtesting API endpoints
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 from typing import List
+import asyncio
 import json
 import logging
 
@@ -17,6 +19,10 @@ from utils.validators import validate_date_range
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/backtest", tags=["backtest"])
+BACKTEST_SAVE_RETRY_DELAYS = (
+    0.25, 0.5, 1.0, 2.0, 4.0,
+    5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0,
+)
 
 
 @router.post("/run", response_model=APIResponse[BacktestResponse])
@@ -42,7 +48,11 @@ async def run_backtest(
     
     try:
         result = await backtest_engine.run_backtest(request)
-        
+    except Exception as e:
+        logger.error(f"run_backtest error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="執行回測時發生錯誤")
+
+    try:
         # Save to database
         db_result = BacktestResult(
             filter_conditions=request.model_dump(),
@@ -69,16 +79,43 @@ async def run_backtest(
         )
         
         db.add(db_result)
-        await db.commit()
+        await _commit_with_sqlite_lock_retry(db, db_result)
         await db.refresh(db_result)
         
         result.id = db_result.id
-        
-        return APIResponse.ok(data=result)
-        
     except Exception as e:
-        logger.error(f"run_backtest error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="執行回測時發生錯誤")
+        await db.rollback()
+        logger.warning(
+            "Backtest completed but history save failed: %s",
+            e,
+            exc_info=True,
+        )
+
+    return APIResponse.ok(data=result)
+
+
+async def _commit_with_sqlite_lock_retry(
+    db: AsyncSession,
+    db_result: BacktestResult,
+) -> None:
+    delays = BACKTEST_SAVE_RETRY_DELAYS
+    attempt = 0
+    while True:
+        try:
+            await db.commit()
+            return
+        except OperationalError as e:
+            await db.rollback()
+            if "database is locked" not in str(e).lower() or attempt >= len(delays):
+                raise
+            delay = delays[attempt]
+            attempt += 1
+            logger.info(
+                "Backtest history save hit SQLite lock; retrying in %.2fs",
+                delay,
+            )
+            await asyncio.sleep(delay)
+            db.add(db_result)
 
 
 @router.get("/results/{result_id}", response_model=APIResponse[BacktestResponse])

@@ -4,10 +4,18 @@ import type {
     TechnicalIndicators, BacktestRequest, BacktestResult, Watchlist, Favorite, BatchCompareItem,
     StockHistoryRecord, TradingDateInfo
 } from '@/types';
+import { getAdminToken } from './adminToken';
 
 const api = axios.create({
     baseURL: '/api',
     timeout: 120000,  // 增加超時時間至 120 秒（5 年資料需要較長時間）
+});
+
+// 帶上 admin token（若有設定）給受保護端點，如 /api/cache/clear。
+api.interceptors.request.use((config) => {
+    const token = getAdminToken();
+    if (token) config.headers.set('X-Admin-Token', token);
+    return config;
 });
 
 // 統一錯誤處理 interceptor

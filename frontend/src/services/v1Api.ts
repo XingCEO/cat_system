@@ -8,10 +8,19 @@ import type {
     Strategy, StrategyCreate, StrategyUpdate,
     TickerInfo,
 } from '@/types/screen';
+import { getAdminToken } from './adminToken';
 
 const v1 = axios.create({
     baseURL: '/api/v1',
     timeout: 30000,
+});
+
+// 受保護的寫入端點（策略 POST/PUT/DELETE/PATCH、/sync）需帶 admin token；
+// GET 端點不帶也可通過。若 token 未設定則不附加 header。
+v1.interceptors.request.use((config) => {
+    const token = getAdminToken();
+    if (token) config.headers.set('X-Admin-Token', token);
+    return config;
 });
 
 v1.interceptors.response.use(

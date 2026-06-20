@@ -17,7 +17,9 @@ from app.schemas.strategy import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter(dependencies=[Depends(require_admin)])
+# 唯讀 GET /strategies 不需 admin（StrategyResponse 已遮罩 line_notify_token，
+# 僅回傳 has_line_token）。只有寫入操作（POST/PUT/DELETE/PATCH）掛 require_admin。
+router = APIRouter()
 
 
 @router.get("/strategies", response_model=list[StrategyResponse], summary="查詢所有策略")
@@ -30,7 +32,7 @@ async def list_strategies(db: AsyncSession = Depends(get_db)):
     return [StrategyResponse.model_validate(s) for s in strategies]
 
 
-@router.post("/strategies", response_model=StrategyResponse, status_code=201, summary="新增策略")
+@router.post("/strategies", response_model=StrategyResponse, status_code=201, summary="新增策略", dependencies=[Depends(require_admin)])
 async def create_strategy(
     data: StrategyCreate,
     db: AsyncSession = Depends(get_db),
@@ -48,7 +50,7 @@ async def create_strategy(
     return StrategyResponse.model_validate(strategy)
 
 
-@router.put("/strategies/{strategy_id}", response_model=StrategyResponse, summary="更新策略")
+@router.put("/strategies/{strategy_id}", response_model=StrategyResponse, summary="更新策略", dependencies=[Depends(require_admin)])
 async def update_strategy(
     strategy_id: int,
     data: StrategyUpdate,
@@ -76,7 +78,7 @@ async def update_strategy(
     return StrategyResponse.model_validate(strategy)
 
 
-@router.delete("/strategies/{strategy_id}", status_code=204, summary="刪除策略")
+@router.delete("/strategies/{strategy_id}", status_code=204, summary="刪除策略", dependencies=[Depends(require_admin)])
 async def delete_strategy(
     strategy_id: int,
     db: AsyncSession = Depends(get_db),
@@ -97,6 +99,7 @@ async def delete_strategy(
     "/strategies/{strategy_id}/alert",
     response_model=StrategyResponse,
     summary="切換推播開關",
+    dependencies=[Depends(require_admin)],
 )
 async def toggle_alert(
     strategy_id: int,

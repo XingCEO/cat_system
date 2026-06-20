@@ -10,6 +10,7 @@ import {
     deleteStrategy, toggleAlert,
 } from '@/services/v1Api';
 import type { Strategy, StrategyCreate } from '@/types/screen';
+import { getAdminToken, setAdminToken } from '@/services/adminToken';
 import { Button } from '@/components/ui/button';
 import {
     Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -29,6 +30,7 @@ export default function StrategiesPage() {
     const [editingId, setEditingId] = useState<number | null>(null);
     const [jsonError, setJsonError] = useState(false);
     const [rawJson, setRawJson] = useState('');  // 獨立的 JSON 字串狀態（controlled/uncontrolled fix）
+    const [adminToken, setAdminTokenState] = useState(getAdminToken());  // 寫入操作的 admin token（存 localStorage）
     const [form, setForm] = useState<StrategyCreate>({
         name: '', rules_json: { logic: 'AND', rules: [] },
         alert_enabled: false,
@@ -123,6 +125,18 @@ export default function StrategiesPage() {
                 <Button onClick={openNew}>
                     ＋ 新增策略
                 </Button>
+            </div>
+
+            {/* Admin token — 寫入策略（新增/編輯/刪除/推播）需要；gate 關閉時可留空 */}
+            <div className="mb-6 flex items-center gap-2">
+                <label className="text-xs text-muted-foreground whitespace-nowrap">管理 Token</label>
+                <input
+                    type="password"
+                    className="h-8 w-full max-w-xs rounded-md border border-input bg-background px-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                    placeholder="寫入操作需要；gate 關閉可留空"
+                    value={adminToken}
+                    onChange={e => { setAdminTokenState(e.target.value); setAdminToken(e.target.value); }}
+                />
             </div>
 
             {/* Error banner */}

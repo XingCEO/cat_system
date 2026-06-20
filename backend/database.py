@@ -2,6 +2,7 @@
 TWSE Stock Filter - Database Configuration
 """
 import os
+from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from config import get_settings
@@ -77,15 +78,80 @@ async def init_db():
     """Initialize database tables and run column migrations for existing DBs"""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-
-    # SQLite: add new columns to existing tables that may not have them yet
-    if "sqlite" in db_url:
-        await _migrate_sqlite_columns()
+        await _migrate_existing_schema(conn)
 
 
 async def close_db():
     """Close database connection"""
     await engine.dispose()
+
+
+async def _migrate_existing_schema(conn):
+    """
+    Add columns that create_all() cannot add to already-existing tables.
+
+    This is intentionally narrow and additive: it covers production databases
+    that were created by older app versions and would otherwise fail at runtime
+    when newer ORM models select or insert these columns.
+    """
+    daily_price_cols = [
+        ("turnover",                  "REAL"),
+        ("avg_volume_20",             "REAL"),
+        ("avg_turnover_20",           "REAL"),
+        ("lower_shadow",              "REAL"),
+        ("lowest_lower_shadow_20",    "REAL"),
+        ("wma10",                     "REAL"),
+        ("wma20",                     "REAL"),
+        ("wma60",                     "REAL"),
+        ("market_ok",                 "INTEGER"),
+    ]
+    backtest_result_cols = [
+        ("filter_conditions", "JSON"),
+        ("start_date", "VARCHAR(10)"),
+        ("end_date", "VARCHAR(10)"),
+        ("lookback_days", "INTEGER"),
+        ("total_signals", "INTEGER"),
+        ("unique_stocks", "INTEGER"),
+        ("win_rate", "FLOAT"),
+        ("avg_return_1d", "FLOAT"),
+        ("avg_return_3d", "FLOAT"),
+        ("avg_return_5d", "FLOAT"),
+        ("avg_return_10d", "FLOAT"),
+        ("max_gain", "FLOAT"),
+        ("max_loss", "FLOAT"),
+        ("expected_value", "FLOAT"),
+        ("detailed_results", "TEXT"),
+        ("created_at", "DATETIME" if conn.dialect.name == "sqlite" else "TIMESTAMP WITH TIME ZONE"),
+    ]
+    user_strategy_cols = [
+        ("line_notify_token", "TEXT"),
+    ]
+
+    await _add_missing_columns(conn, "daily_prices", daily_price_cols)
+    await _add_missing_columns(conn, "backtest_results", backtest_result_cols)
+    await _add_missing_columns(conn, "user_strategies", user_strategy_cols)
+
+
+async def _add_missing_columns(conn, table_name: str, columns: list[tuple[str, str]]):
+    import logging
+    logger = logging.getLogger(__name__)
+
+    def get_existing_columns(sync_conn):
+        inspector = inspect(sync_conn)
+        if table_name not in inspector.get_table_names():
+            return None
+        return {col["name"] for col in inspector.get_columns(table_name)}
+
+    existing = await conn.run_sync(get_existing_columns)
+    if existing is None:
+        return
+
+    for col_name, col_type in columns:
+        if col_name not in existing:
+            await conn.execute(
+                text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}")
+            )
+            logger.info(f"Migration: added column {table_name}.{col_name}")
 
 
 async def _migrate_sqlite_columns():
@@ -96,33 +162,9 @@ async def _migrate_sqlite_columns():
     import logging
     logger = logging.getLogger(__name__)
 
-    # New columns for daily_prices table
-    new_daily_price_cols = [
-        ("turnover",                  "REAL"),
-        ("avg_volume_20",             "REAL"),
-        ("avg_turnover_20",           "REAL"),
-        ("lower_shadow",              "REAL"),
-        ("lowest_lower_shadow_20",    "REAL"),
-        ("wma10",                     "REAL"),
-        ("wma20",                     "REAL"),
-        ("wma60",                     "REAL"),
-        ("market_ok",                 "INTEGER"),  # Boolean as INTEGER in SQLite
-    ]
-
+    # Compatibility wrapper for older callers/tests; init_db uses the generic
+    # migration path above for both SQLite and PostgreSQL.
     async with engine.begin() as conn:
-        # Get existing columns for daily_prices
-        pragma_result = await conn.execute(
-            __import__("sqlalchemy").text("PRAGMA table_info(daily_prices)")
-        )
-        existing = {row[1] for row in pragma_result.fetchall()}
-
-        for col_name, col_type in new_daily_price_cols:
-            if col_name not in existing:
-                await conn.execute(
-                    __import__("sqlalchemy").text(
-                        f"ALTER TABLE daily_prices ADD COLUMN {col_name} {col_type}"
-                    )
-                )
-                logger.info(f"Migration: added column daily_prices.{col_name}")
+        await _migrate_existing_schema(conn)
 
     logger.info("SQLite column migration complete")

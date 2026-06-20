@@ -230,3 +230,42 @@ class TestRequireAdminUnit:
         """gate 啟用、token 已設定、但完全沒帶 token → 401"""
         code = self._call_require_admin(True, "correct")
         assert code == 401
+
+
+# ──────────────────────────────────────────────
+# 真實 strategies router 接線測試（defect A）：
+#   GET /strategies 為唯讀且回應已遮罩 line_notify_token → 不掛 gate
+#   寫入操作（POST/PUT/DELETE/PATCH）→ 掛 require_admin
+# 直接檢查 route 的 dependant 樹，不需 DB / HTTP server。
+# ──────────────────────────────────────────────
+
+class TestStrategiesRouterWiring:
+
+    def _route_uses_require_admin(self, route) -> bool:
+        from app.core.auth import require_admin
+        stack = list(route.dependant.dependencies)
+        while stack:
+            dep = stack.pop()
+            if dep.call is require_admin:
+                return True
+            stack.extend(dep.dependencies)
+        return False
+
+    def _find(self, method: str, path: str):
+        from app.api.v1.strategies import router
+        for r in router.routes:
+            if getattr(r, "path", None) == path and method in getattr(r, "methods", set()):
+                return r
+        raise AssertionError(f"route not found: {method} {path}")
+
+    def test_get_strategies_is_public(self):
+        """GET /strategies 不應掛 require_admin（唯讀、token 已遮罩）"""
+        route = self._find("GET", "/strategies")
+        assert not self._route_uses_require_admin(route)
+
+    def test_write_routes_are_gated(self):
+        """POST/PUT/DELETE/PATCH 寫入操作必須掛 require_admin"""
+        assert self._route_uses_require_admin(self._find("POST", "/strategies"))
+        assert self._route_uses_require_admin(self._find("PUT", "/strategies/{strategy_id}"))
+        assert self._route_uses_require_admin(self._find("DELETE", "/strategies/{strategy_id}"))
+        assert self._route_uses_require_admin(self._find("PATCH", "/strategies/{strategy_id}/alert"))

@@ -8,6 +8,7 @@ from typing import Optional, List, Dict, Any
 import asyncio
 import logging
 import json
+from sqlalchemy.exc import OperationalError
 
 from services.data_fetcher import data_fetcher
 from services.stock_filter import stock_filter
@@ -20,6 +21,10 @@ logger = logging.getLogger(__name__)
 FEE_RATE = 0.001425   # 券商手續費 0.1425% (買進、賣出各收一次)
 TAX_RATE = 0.003      # 證券交易稅 0.3% (僅賣出)
 COST_NOTE = "已計入交易成本：手續費 0.1425% × 2 + 證交稅 0.3% (淨報酬)"
+DB_LOAD_RETRY_DELAYS = (
+    0.25, 0.5, 1.0, 2.0, 4.0,
+    5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0,
+)
 
 
 def net_return_pct(entry_price: float, exit_price: float, include_costs: bool = True) -> float:
@@ -55,7 +60,11 @@ class BacktestEngine:
         """
         try:
             max_hold = max(request.holding_days) if request.holding_days else 10
-            df = await self._load_range_from_db(request.start_date, request.end_date, max_hold)
+            df = await self._load_range_from_db_with_retry(
+                request.start_date,
+                request.end_date,
+                max_hold,
+            )
         except Exception as e:
             logger.warning(f"Backtest DB load failed ({e}); falling back to legacy path")
             df = pd.DataFrame()
@@ -63,6 +72,28 @@ class BacktestEngine:
         if not df.empty:
             return await asyncio.to_thread(self._compute_from_df, df, request)
         return await self._run_backtest_legacy(request)
+
+    async def _load_range_from_db_with_retry(
+        self,
+        start_date: str,
+        end_date: str,
+        max_holding: int,
+    ) -> pd.DataFrame:
+        delays = DB_LOAD_RETRY_DELAYS
+        attempt = 0
+        while True:
+            try:
+                return await self._load_range_from_db(start_date, end_date, max_holding)
+            except OperationalError as e:
+                if "database is locked" not in str(e).lower() or attempt >= len(delays):
+                    raise
+                delay = delays[attempt]
+                attempt += 1
+                logger.info(
+                    "Backtest DB load hit SQLite lock; retrying in %.2fs",
+                    delay,
+                )
+                await asyncio.sleep(delay)
 
     async def _load_range_from_db(
         self, start_date: str, end_date: str, max_holding: int
