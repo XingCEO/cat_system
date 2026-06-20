@@ -306,7 +306,7 @@ class DataFetcher:
         try:
             client = await self.get_client()
             response = await client.get(self.finmind_url, params=params, timeout=10.0)
-            if response.status_code in (400, 402, 403, 429):
+            if response.status_code in (400, 402, 403, 404, 429):
                 DataFetcher._mark_finmind_unavailable()
                 logger.warning(f"FinMind API error {response.status_code}, switching to TWSE (cooldown 30 min)")
                 return await self._fetch_twse_daily_openapi(trade_date)
@@ -471,7 +471,7 @@ class DataFetcher:
         try:
             client = await self.get_client()
             response = await client.get(self.finmind_url, params=params, timeout=10.0)
-            if response.status_code in (400, 402, 403, 429):
+            if response.status_code in (400, 402, 403, 404, 429):
                 DataFetcher._mark_finmind_unavailable()
                 logger.warning(f"FinMind API error {response.status_code}, switching to TWSE fallback (cooldown 30 min)")
                 return await self._fetch_twse_historical(symbol, start_date, end_date)

@@ -183,13 +183,27 @@ def apply_rule(df: pd.DataFrame, rule_dict: dict) -> pd.Series:
         logger.error(f"篩選規則錯誤：欄位 '{field}' 不存在，此規則將讓所有股票不通過")
         return pd.Series(False, index=df.index)
 
+    # 數值型 target_value 轉 float；非數值字串（誤用 target_type=value）不應讓整個
+    # 篩選 500，改記錄並讓此規則不通過任何股票。
+    def _coerce_target() -> Optional[float]:
+        try:
+            return float(target_value)
+        except (ValueError, TypeError):
+            logger.error(
+                f"篩選規則錯誤：target_value '{target_value}' 非數值（operator={operator}），此規則將讓所有股票不通過"
+            )
+            return None
+
     # 處理 CROSS_UP / CROSS_DOWN
     if operator in CROSS_OPERATORS:
         cross_fn = CROSS_OPERATORS[operator]
         if target_type == "field":
             return cross_fn(df, field, str(target_value))
         else:
-            return cross_fn(df, field, float(target_value))
+            tv = _coerce_target()
+            if tv is None:
+                return pd.Series(False, index=df.index)
+            return cross_fn(df, field, tv)
 
     # 一般比較運算子
     compare_fn = OPERATOR_MAP.get(operator)
@@ -205,7 +219,9 @@ def apply_rule(df: pd.DataFrame, rule_dict: dict) -> pd.Series:
             return pd.Series(False, index=df.index)
         target = df[target_col]
     else:
-        target = float(target_value)
+        target = _coerce_target()
+        if target is None:
+            return pd.Series(False, index=df.index)
 
     return compare_fn(series_a, target).fillna(False)
 

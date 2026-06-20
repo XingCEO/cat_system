@@ -856,9 +856,13 @@ def _safe_float(row, *keys):
         v = row.get(k)
         if v is not None:
             try:
-                return float(str(v).replace(",", ""))
+                fv = float(str(v).replace(",", ""))
             except (ValueError, TypeError):
                 continue
+            # NaN（來源欄位為 pandas NaN）視為缺值，避免 NaN 寫入 DB 汙染指標計算
+            if fv != fv:  # NaN check without importing math
+                continue
+            return fv
     return None
 
 

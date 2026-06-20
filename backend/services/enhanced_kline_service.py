@@ -440,10 +440,12 @@ class EnhancedKLineService:
         df["MACDs_12_26_9"] = df["MACD_12_26_9"].ewm(span=9, adjust=False).mean()
         df["MACDh_12_26_9"] = df["MACD_12_26_9"] - df["MACDs_12_26_9"]
         
-        # KD
+        # KD — smooth_k=3：先平滑 RSV 得慢速 %K，再 SMA(3) 得 %D（標籤 _9_3_3）。
+        # 原本直接用未平滑 RSV 當 %K，與 pandas-ta full-stochastic 不一致、KD 過度敏感。
         low9 = df["low"].rolling(window=9).min()
         high9 = df["high"].rolling(window=9).max()
-        df["STOCHk_9_3_3"] = 100 * (df["close"] - low9) / (high9 - low9)
+        rsv9 = 100 * (df["close"] - low9) / (high9 - low9)
+        df["STOCHk_9_3_3"] = rsv9.rolling(window=3).mean()
         df["STOCHd_9_3_3"] = df["STOCHk_9_3_3"].rolling(window=3).mean()
         
         # 布林通道

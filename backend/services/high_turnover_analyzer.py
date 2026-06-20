@@ -73,8 +73,10 @@ class HighTurnoverAnalyzer:
         else:
             tick = 5.0
 
-        # 漲停價取整（向下取整到最近的tick）
-        limit_up_price = (raw_limit // tick) * tick
+        # 漲停價取整（向下取整到最近的 tick）。
+        # +1e-9 吸收浮點誤差：例 15.0×1.1 = 16.4999999996，直接 floor 會得 16.45 →
+        # 收盤 16.50 的真實漲停股被漏判。加微小 epsilon 後再 floor，確保得 16.50。
+        limit_up_price = int(raw_limit / tick + 1e-9) * tick
         return round(limit_up_price, 2)
 
     def _is_limit_up(self, close_price: float, prev_close: float) -> bool:

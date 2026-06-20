@@ -184,10 +184,13 @@ class TechnicalAnalyzer:
         df["MACDs_12_26_9"] = df["MACD_12_26_9"].ewm(span=9, adjust=False).mean()
         df["MACDh_12_26_9"] = df["MACD_12_26_9"] - df["MACDs_12_26_9"]
         
-        # Stochastic (KD)
+        # Stochastic (KD) — smooth_k=3：先平滑 RSV 得慢速 %K，再 SMA(3) 得 %D。
+        # 標籤 _14_3_3 即 (k=14, d=3, smooth_k=3)；原本直接用未平滑 RSV 當 %K，
+        # 導致 KD 過度敏感、與 pandas-ta full-stochastic 不一致。
         low14 = df["low"].rolling(window=14).min()
         high14 = df["high"].rolling(window=14).max()
-        df["STOCHk_14_3_3"] = 100 * (df["close"] - low14) / (high14 - low14)
+        rsv14 = 100 * (df["close"] - low14) / (high14 - low14)
+        df["STOCHk_14_3_3"] = rsv14.rolling(window=3).mean()
         df["STOCHd_14_3_3"] = df["STOCHk_14_3_3"].rolling(window=3).mean()
         
         # Bollinger Bands
@@ -486,10 +489,12 @@ class TechnicalAnalyzer:
         df["MACDs_12_26_9"] = df["MACD_12_26_9"].ewm(span=9, adjust=False).mean()
         df["MACDh_12_26_9"] = df["MACD_12_26_9"] - df["MACDs_12_26_9"]
         
-        # Stochastic KD (9, 3, 3)
+        # Stochastic KD (9, 3, 3) — smooth_k=3：先平滑 RSV 得慢速 %K，再 SMA(3) 得 %D。
+        # 標籤 _9_3_3 即 (k=9, d=3, smooth_k=3)；原本直接用未平滑 RSV 當 %K。
         low9 = df["low"].rolling(window=9).min()
         high9 = df["high"].rolling(window=9).max()
-        df["STOCHk_9_3_3"] = 100 * (df["close"] - low9) / (high9 - low9)
+        rsv9 = 100 * (df["close"] - low9) / (high9 - low9)
+        df["STOCHk_9_3_3"] = rsv9.rolling(window=3).mean()
         df["STOCHd_9_3_3"] = df["STOCHk_9_3_3"].rolling(window=3).mean()
         
         # 布林通道 (20, 2)
