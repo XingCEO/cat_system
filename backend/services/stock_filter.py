@@ -187,14 +187,13 @@ class StockFilter:
             return []
         
         results = []
-        
-        # Process all filtered stocks (no limit)
-        # Skip historical data fetch for performance - only calculate from daily data
-        
-        # Get date range for historical data
-        end_date = trade_date
-        
-        # Process all stocks efficiently - skip per-stock historical API calls for performance
+
+        # 從 v1 DB 批次補算 consecutive_up_days / volume_ratio（單一查詢，非逐檔 API）。
+        # 過去這兩個指標被硬編為 0 / 1.0，使得 consecutive_up_min / volume_ratio_min
+        # 篩選永遠回空、欄位顯示恆為 0/1.0。失敗則優雅退回預設值。
+        symbols = df["stock_id"].astype(str).tolist() if "stock_id" in df.columns else []
+        metrics = await self._compute_metrics_from_db(symbols, trade_date)
+
         for _, row in df.iterrows():
             symbol = row["stock_id"]
 
@@ -233,13 +232,88 @@ class StockFilter:
                     result["prev_close"]
                 )
             
-            # Set default values for metrics not available without historical data
-            result["consecutive_up_days"] = 0
-            result["volume_ratio"] = 1.0
-            
+            # consecutive_up_days / volume_ratio：優先用 v1 DB 批次補算值，缺則退回預設
+            m = metrics.get(str(symbol), {})
+            result["consecutive_up_days"] = m.get("consecutive_up_days", 0)
+            result["volume_ratio"] = m.get("volume_ratio", result.get("volume_ratio", 1.0))
+
             results.append(result)
-        
+
         return results
+
+    async def _compute_metrics_from_db(self, symbols: List[str], trade_date: str) -> Dict[str, Dict]:
+        """
+        從 v1 DB (daily_prices) 批次計算每檔的 consecutive_up_days 與 volume_ratio。
+        單一查詢取近 ~30 個交易日。任何失敗都回空 dict，呼叫端退回預設值。
+        """
+        out: Dict[str, Dict] = {}
+        if not symbols:
+            return out
+        try:
+            from database import async_session_maker
+            from app.models.daily_price import DailyPrice
+            from sqlalchemy import select
+            from datetime import datetime, timedelta
+
+            try:
+                end = datetime.strptime(str(trade_date)[:10], "%Y-%m-%d").date()
+            except (ValueError, TypeError):
+                return out
+            start = end - timedelta(days=45)  # ~30 交易日
+
+            async with async_session_maker() as session:
+                rows = (await session.execute(
+                    select(
+                        DailyPrice.ticker_id, DailyPrice.date, DailyPrice.close,
+                        DailyPrice.volume, DailyPrice.avg_volume_20,
+                    )
+                    .where(
+                        DailyPrice.ticker_id.in_([str(s) for s in symbols]),
+                        DailyPrice.date >= start,
+                        DailyPrice.date <= end,
+                    )
+                    .order_by(DailyPrice.ticker_id, DailyPrice.date)
+                )).fetchall()
+
+            if not rows:
+                return out
+
+            df = pd.DataFrame([dict(r._mapping) for r in rows])
+            for sym, g in df.groupby("ticker_id"):
+                g = g.sort_values("date")
+                closes = pd.to_numeric(g["close"], errors="coerce").dropna().tolist()
+                volumes = pd.to_numeric(g["volume"], errors="coerce").tolist()
+                avg20 = g.iloc[-1].get("avg_volume_20")
+                out[str(sym)] = self._metrics_from_series(closes, volumes, avg20)
+
+        except Exception as e:
+            logger.warning(f"v1 DB metric enrichment failed: {e}")
+        return out
+
+    @staticmethod
+    def _metrics_from_series(closes: list, volumes: list, avg_volume_20) -> Dict[str, Any]:
+        """
+        純函式：由收盤序列（升序）+ 成交量序列 + 20日均量算 consecutive_up_days 與 volume_ratio。
+        consecutive_up_days：從最近一日往回數，今收 > 昨收 才累加。
+        volume_ratio：最新成交量 / 20日均量（avg_volume_20 缺則用近20日均量）。
+        """
+        cud = 0
+        for i in range(len(closes) - 1, 0, -1):
+            if closes[i] > closes[i - 1]:
+                cud += 1
+            else:
+                break
+
+        vr = 1.0
+        latest_vol = volumes[-1] if volumes else None
+        a20 = avg_volume_20
+        if a20 is None or (isinstance(a20, float) and pd.isna(a20)) or a20 <= 0:
+            valid = [v for v in volumes if v is not None and not pd.isna(v)]
+            a20 = (sum(valid[-20:]) / len(valid[-20:])) if valid else None
+        if latest_vol is not None and not pd.isna(latest_vol) and a20 and a20 > 0:
+            vr = round(float(latest_vol) / float(a20), 2)
+
+        return {"consecutive_up_days": cud, "volume_ratio": vr}
     
     def _apply_sorting(
         self,

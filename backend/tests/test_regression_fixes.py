@@ -206,3 +206,39 @@ class TestBacktestDbPath:
         out = BE._forward_returns_from_df(sig, self._df(), [1, 2])
         assert out[0]["returns"][1] == 3.0   # 106.09 vs 103
         assert out[0]["returns"][2] == 6.8   # 110 vs 103
+
+
+class TestStockFilterMetrics:
+    """
+    consecutive_up_days / volume_ratio were hardcoded to 0 / 1.0 in
+    _enrich_results, so those filter options returned empty and the columns
+    showed wrong values. Now computed from v1 DB history via _metrics_from_series.
+    """
+    def test_consecutive_up_days_counts_streak(self):
+        from services.stock_filter import StockFilter
+        m = StockFilter._metrics_from_series([10, 11, 12, 13], [1, 1, 1, 1], 1)
+        assert m["consecutive_up_days"] == 3
+
+    def test_streak_breaks_on_down_day(self):
+        from services.stock_filter import StockFilter
+        # from end: 12>11 (1), 11>9 (2), 9>10? no -> stop
+        m = StockFilter._metrics_from_series([10, 9, 11, 12], [1, 1, 1, 1], 1)
+        assert m["consecutive_up_days"] == 2
+        # descending -> no up streak
+        assert StockFilter._metrics_from_series([13, 12, 11], [1, 1, 1], 1)["consecutive_up_days"] == 0
+
+    def test_volume_ratio_uses_avg20(self):
+        from services.stock_filter import StockFilter
+        m = StockFilter._metrics_from_series([10, 11], [500, 1000], 200.0)
+        assert m["volume_ratio"] == 5.0  # 1000 / 200
+
+    def test_volume_ratio_fallback_to_mean(self):
+        from services.stock_filter import StockFilter
+        # avg20 missing -> mean([100,200,300])=200, latest 300 -> 1.5
+        m = StockFilter._metrics_from_series([10, 11, 12], [100, 200, 300], None)
+        assert m["volume_ratio"] == 1.5
+
+    def test_empty_series_safe_defaults(self):
+        from services.stock_filter import StockFilter
+        m = StockFilter._metrics_from_series([], [], None)
+        assert m == {"consecutive_up_days": 0, "volume_ratio": 1.0}
