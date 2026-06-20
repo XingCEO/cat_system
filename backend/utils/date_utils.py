@@ -88,14 +88,17 @@ def get_previous_trading_day(from_date: date = None) -> date:
         from_date = datetime.strptime(from_date, "%Y-%m-%d").date()
     
     check_date = from_date
-    max_checks = 10
-    
-    for _ in range(max_checks):
+    # 上限 20 天足以跨過任何連假叢集（農曆年最長約 9 天 + 前後週末），
+    # 原本 10 天在長假邊界會耗盡並回傳非交易日 from_date。
+    for _ in range(20):
         if is_trading_day(check_date):
             return check_date
         check_date -= timedelta(days=1)
-    
-    return from_date
+
+    # 極端情況（理論上不會發生）：確保回傳值仍是交易日，而非可能落在假日的 from_date
+    while not is_trading_day(check_date):
+        check_date -= timedelta(days=1)
+    return check_date
 
 
 def get_trading_days(start_date: date, end_date: date) -> List[date]:
