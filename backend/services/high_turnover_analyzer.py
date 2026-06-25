@@ -2294,6 +2294,8 @@ class HighTurnoverAnalyzer:
         max_change: Optional[float] = None,
         direction: str = "breakout",
         ma_threshold: float = 4.0,
+        price_min: Optional[float] = None,
+        price_max: Optional[float] = None,
     ) -> Dict[str, Any]:
         """
         糾結均線突破/跌破（支援日期區間和漲幅區間）
@@ -2458,6 +2460,12 @@ class HighTurnoverAnalyzer:
                     if current_close is None or current_close <= 0:
                         continue
 
+                    # 收盤價區間篩選
+                    if price_min is not None and current_close < price_min:
+                        continue
+                    if price_max is not None and current_close > price_max:
+                        continue
+
                     # 計算當日漲跌幅（從歷史資料）
                     if len(closes) >= 2 and closes[1] and closes[1] > 0:
                         change_pct = (closes[0] - closes[1]) / closes[1] * 100
@@ -2544,7 +2552,8 @@ class HighTurnoverAnalyzer:
             "start_date": start_date or (dates[0] if dates else None),
             "end_date": end_date or (dates[-1] if dates else None),
             "direction": direction,
-            "filter": {"min_change": min_change, "max_change": max_change},
+            "filter": {"min_change": min_change, "max_change": max_change,
+                       "price_min": price_min, "price_max": price_max},
             "total_days": len(dates),
             "breakout_count": len(all_items),
             "daily_stats": daily_stats,

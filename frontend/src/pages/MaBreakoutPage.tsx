@@ -40,6 +40,10 @@ export function MaBreakoutPage() {
     const [endDate, setEndDate] = useState('');
     const [direction, setDirection] = useState<'breakout' | 'breakdown'>('breakout');
     const [maThreshold, setMaThreshold] = useState('4');
+    const [priceMin, setPriceMin] = useState('');
+    const [priceMax, setPriceMax] = useState('');
+    const [changeMin, setChangeMin] = useState('');
+    const [changeMax, setChangeMax] = useState('');
     const [selectedStock, setSelectedStock] = useState<{ symbol: string; name?: string } | null>(null);
     const [isChartDialogOpen, setIsChartDialogOpen] = useState(false);
     const [queryKey, setQueryKey] = useState(0);
@@ -65,14 +69,16 @@ export function MaBreakoutPage() {
     }, [endDate, startDate, tradingDateData]);
 
     const { data: breakoutData, isLoading } = useQuery({
-        queryKey: ['maBreakoutPage', startDate, endDate, direction, maThreshold, queryKey],
+        queryKey: ['maBreakoutPage', startDate, endDate, direction, maThreshold, priceMin, priceMax, changeMin, changeMax, queryKey],
         queryFn: () => getMaBreakout(
             startDate,
             endDate,
-            undefined,
-            undefined,
+            changeMin ? parseFloat(changeMin) : undefined,
+            changeMax ? parseFloat(changeMax) : undefined,
             direction,
             maThreshold ? parseFloat(maThreshold) : undefined,
+            priceMin ? parseFloat(priceMin) : undefined,
+            priceMax ? parseFloat(priceMax) : undefined,
         ),
         enabled: !!startDate && !!endDate,
     });
@@ -185,6 +191,54 @@ export function MaBreakoutPage() {
                                 className="w-32"
                                 placeholder="4"
                             />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>收盤價 (元)</Label>
+                            <div className="flex items-center gap-1">
+                                <Input
+                                    type="number"
+                                    step="1"
+                                    min="0"
+                                    value={priceMin}
+                                    onChange={(event) => setPriceMin(event.target.value)}
+                                    className="w-24"
+                                    placeholder="最低"
+                                />
+                                <span className="text-muted-foreground">~</span>
+                                <Input
+                                    type="number"
+                                    step="1"
+                                    min="0"
+                                    value={priceMax}
+                                    onChange={(event) => setPriceMax(event.target.value)}
+                                    className="w-24"
+                                    placeholder="最高"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>漲跌幅 (%)</Label>
+                            <div className="flex items-center gap-1">
+                                <Input
+                                    type="number"
+                                    step="0.5"
+                                    value={changeMin}
+                                    onChange={(event) => setChangeMin(event.target.value)}
+                                    className="w-24"
+                                    placeholder="最低"
+                                />
+                                <span className="text-muted-foreground">~</span>
+                                <Input
+                                    type="number"
+                                    step="0.5"
+                                    value={changeMax}
+                                    onChange={(event) => setChangeMax(event.target.value)}
+                                    className="w-24"
+                                    placeholder="最高"
+                                />
+                            </div>
                         </div>
 
                         <Button onClick={() => setQueryKey((prev) => prev + 1)} className="gap-1">

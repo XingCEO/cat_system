@@ -230,3 +230,40 @@ def test_ma_breakout_default_threshold_is_4_percent():
                HighTurnoverAnalyzer.get_ma_breakout):
         default = inspect.signature(fn).parameters["ma_threshold"].default
         assert default == 4.0, f"{fn.__name__} ma_threshold default應為4.0，實為{default}"
+
+
+@pytest.mark.asyncio
+async def test_ma_breakout_price_range_filters(monkeypatch):
+    """老闆需求：可自訂收盤價區間。3049 收盤 13.10 → price_min=20 濾除、price_max=20 保留。"""
+    analyzer = HighTurnoverAnalyzer()
+
+    async def fake_dates(start_date, end_date):
+        return ["2026-06-01"]
+
+    async def fake_daily(date, min_volume_shares=1_000_000):
+        return pd.DataFrame([{
+            "stock_id": "3049", "stock_name": "精金", "industry_category": "電子業",
+            "Trading_Volume": 500_000, "close": 13.10, "spread": 0.60, "date": "2026-06-01",
+        }])
+
+    async def fake_history(symbol):
+        return _history_with_latest_noise()
+
+    async def fake_db_empty(end_date, start_date=None, **kwargs):
+        return {}
+
+    monkeypatch.setattr(analyzer, "_get_date_range", fake_dates)
+    monkeypatch.setattr(analyzer, "_fetch_daily_data", fake_daily)
+    monkeypatch.setattr(analyzer, "_fetch_db_history_bulk", fake_db_empty)
+    monkeypatch.setattr(analyzer, "_fetch_yahoo_history_for_ma", fake_history)
+
+    out_hi = await analyzer.get_ma_breakout_range(
+        start_date="2026-06-01", end_date="2026-06-01",
+        direction="breakout", ma_threshold=3.0, price_min=20.0)
+    assert out_hi["breakout_count"] == 0  # 收盤13.10 < 20 → 濾除
+
+    out_lo = await analyzer.get_ma_breakout_range(
+        start_date="2026-06-01", end_date="2026-06-01",
+        direction="breakout", ma_threshold=3.0, price_max=20.0)
+    assert out_lo["breakout_count"] == 1  # 收盤13.10 <= 20 → 保留
+    assert out_lo["items"][0]["symbol"] == "3049"
