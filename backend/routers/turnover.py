@@ -374,7 +374,7 @@ async def get_ma_breakout(
     min_change: Optional[float] = Query(None, description="最低漲幅(%)"),
     max_change: Optional[float] = Query(None, description="最高漲幅(%)"),
     direction: str = Query("breakout", description="方向: breakout(突破) / breakdown(跌破)"),
-    ma_threshold: float = Query(3.0, description="糾結均線範圍上限(%)，預設3%"),
+    ma_threshold: float = Query(4.0, description="糾結均線範圍上限(%)，預設4%"),
 ):
     """
     糾結均線突破/跌破篩選（全市場，無周轉率限制）

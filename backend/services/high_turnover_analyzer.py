@@ -1091,7 +1091,7 @@ class HighTurnoverAnalyzer:
         min_change: Optional[float] = None,
         max_change: Optional[float] = None,
         direction: str = "breakout",
-        ma_threshold: float = 3.0,
+        ma_threshold: float = 4.0,
     ) -> Dict[str, Any]:
         """
         糾結均線突破/跌破篩選（全市場）
@@ -2293,12 +2293,12 @@ class HighTurnoverAnalyzer:
         min_change: Optional[float] = None,
         max_change: Optional[float] = None,
         direction: str = "breakout",
-        ma_threshold: float = 3.0,
+        ma_threshold: float = 4.0,
     ) -> Dict[str, Any]:
         """
         糾結均線突破/跌破（支援日期區間和漲幅區間）
         direction: "breakout" (突破) 或 "breakdown" (跌破)
-        ma_threshold: 糾結均線範圍上限百分比，預設 3.0
+        ma_threshold: 糾結均線範圍上限百分比，預設 4.0
 
         效能優化：每檔股票只獲取一次 Yahoo 歷史資料，
         然後掃描所有目標日期，避免 O(days × stocks) 的 API 呼叫。

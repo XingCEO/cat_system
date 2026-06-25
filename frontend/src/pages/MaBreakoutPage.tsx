@@ -39,7 +39,7 @@ export function MaBreakoutPage() {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [direction, setDirection] = useState<'breakout' | 'breakdown'>('breakout');
-    const [maThreshold, setMaThreshold] = useState('3');
+    const [maThreshold, setMaThreshold] = useState('4');
     const [selectedStock, setSelectedStock] = useState<{ symbol: string; name?: string } | null>(null);
     const [isChartDialogOpen, setIsChartDialogOpen] = useState(false);
     const [queryKey, setQueryKey] = useState(0);
@@ -82,7 +82,7 @@ export function MaBreakoutPage() {
     const totalDays = breakoutData?.total_days || 0;
     const isDateRange = startDate !== endDate;
     const directionLabel = direction === 'breakout' ? '突破' : '跌破';
-    const thresholdLabel = maThreshold || '3';
+    const thresholdLabel = maThreshold || '4';
 
     const formatDateDisplay = () => {
         if (!startDate) return '-';
@@ -183,7 +183,7 @@ export function MaBreakoutPage() {
                                 value={maThreshold}
                                 onChange={(event) => setMaThreshold(event.target.value)}
                                 className="w-32"
-                                placeholder="3"
+                                placeholder="4"
                             />
                         </div>
 

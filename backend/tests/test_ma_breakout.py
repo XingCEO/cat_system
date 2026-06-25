@@ -221,3 +221,12 @@ async def test_ma_breakout_uses_db_history_without_calling_yahoo(monkeypatch):
     # 診斷欄位：確認走 DB 密集路徑、零 Yahoo 回退
     assert result["diag"]["db_dense"] == 1
     assert result["diag"]["yahoo_fallback"] == 0
+
+
+def test_ma_breakout_default_threshold_is_4_percent():
+    """老闆指定：糾結門檻預設 4%（原 3%）。鎖住預設值避免回退。"""
+    import inspect
+    for fn in (HighTurnoverAnalyzer.get_ma_breakout_range,
+               HighTurnoverAnalyzer.get_ma_breakout):
+        default = inspect.signature(fn).parameters["ma_threshold"].default
+        assert default == 4.0, f"{fn.__name__} ma_threshold default應為4.0，實為{default}"
