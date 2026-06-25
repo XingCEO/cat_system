@@ -2,9 +2,9 @@
 TWSE Stock Filter - Configuration
 """
 from pydantic_settings import BaseSettings
-from pydantic import ConfigDict
+from pydantic import ConfigDict, field_validator
 from functools import lru_cache
-from typing import Optional
+from typing import Any, Optional
 
 
 class Settings(BaseSettings):
@@ -14,6 +14,18 @@ class Settings(BaseSettings):
     app_name: str = "TWSE Stock Filter API"
     app_version: str = "2.0.0"
     debug: bool = False
+
+    @field_validator("debug", mode="before")
+    @classmethod
+    def parse_debug_mode(cls, value: Any) -> Any:
+        """Accept common deployment mode strings from host environments."""
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"release", "prod", "production"}:
+                return False
+            if normalized in {"debug", "dev", "development"}:
+                return True
+        return value
 
     # Database
     database_url: str = "sqlite+aiosqlite:///./twse_filter.db"

@@ -5,6 +5,10 @@ Operators — 運算子定義 (含 CROSS_UP / CROSS_DOWN)
 import pandas as pd
 from typing import Union
 
+# 浮點「等於」絕對容差：MA/RSI 等指標存 2 位小數，精確 == 會因
+# 浮點誤差漏掉應相等的值。對齊 2 位價格，容差 0.005。
+EQ_ABS_TOL = 0.005
+
 
 def compare_gt(series_a: pd.Series, target: Union[pd.Series, float]) -> pd.Series:
     """大於"""
@@ -17,8 +21,8 @@ def compare_lt(series_a: pd.Series, target: Union[pd.Series, float]) -> pd.Serie
 
 
 def compare_eq(series_a: pd.Series, target: Union[pd.Series, float]) -> pd.Series:
-    """等於"""
-    return series_a == target
+    """等於（含絕對容差，避免浮點精度誤判）"""
+    return (series_a - target).abs() <= EQ_ABS_TOL
 
 
 def compare_gte(series_a: pd.Series, target: Union[pd.Series, float]) -> pd.Series:

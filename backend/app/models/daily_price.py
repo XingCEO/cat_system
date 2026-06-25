@@ -52,6 +52,10 @@ class DailyPrice(Base):
     # Ref(Lowest(下引價, 20), 1) — 前一日為基準的近20日下引價最低值
     lowest_lower_shadow_20 = Column(Float, nullable=True, comment="近20日下引價最低值(前日基準)")
 
+    # 月度 MA20 最低點 — 供「MA20 月度墊高(higher monthly low)」條件比較
+    ma20_curr_month_low = Column(Float, nullable=True, comment="當月(月初至最新交易日)MA20最低值")
+    ma20_prev_month_low = Column(Float, nullable=True, comment="上個月整月MA20最低值")
+
     # 週線移動平均 (基於週收盤價)
     wma10 = Column(Float, nullable=True, comment="10週均線")
     wma20 = Column(Float, nullable=True, comment="20週均線")
@@ -59,6 +63,15 @@ class DailyPrice(Base):
 
     # 大盤條件是否滿足 (當日 TAIEX 是否符合多頭排列 + 週線條件)
     market_ok = Column(Boolean, nullable=True, comment="大盤條件滿足 (多頭排列)")
+
+    # MA5 > MA20 > MA60 bullish alignment plus pullback depth presets.
+    # low_high uses the latest 60-row low-to-high wave. breakout uses the first
+    # recent break above a prior 20-row high, then measures from start low to
+    # the post-breakout high.
+    ma_bull_pullback_low_high_1_3 = Column(Boolean, nullable=True, comment="MA5>MA20>MA60 + recent low-high pullback 1/3")
+    ma_bull_pullback_low_high_2_3 = Column(Boolean, nullable=True, comment="MA5>MA20>MA60 + recent low-high pullback 2/3")
+    ma_bull_pullback_breakout_1_3 = Column(Boolean, nullable=True, comment="MA5>MA20>MA60 + breakout wave pullback 1/3")
+    ma_bull_pullback_breakout_2_3 = Column(Boolean, nullable=True, comment="MA5>MA20>MA60 + breakout wave pullback 2/3")
 
     created_at = Column(DateTime, default=utc_now_naive)
 

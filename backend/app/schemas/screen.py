@@ -81,10 +81,16 @@ class TickerResult(BaseModel):
     avg_turnover_20: Optional[float] = None
     lower_shadow: Optional[float] = None
     lowest_lower_shadow_20: Optional[float] = None
+    ma20_curr_month_low: Optional[float] = None
+    ma20_prev_month_low: Optional[float] = None
     wma10: Optional[float] = None
     wma20: Optional[float] = None
     wma60: Optional[float] = None
     market_ok: Optional[bool] = None
+    ma_bull_pullback_low_high_1_3: Optional[bool] = None
+    ma_bull_pullback_low_high_2_3: Optional[bool] = None
+    ma_bull_pullback_breakout_1_3: Optional[bool] = None
+    ma_bull_pullback_breakout_2_3: Optional[bool] = None
 
 
 class ScreenResponse(BaseModel):
@@ -101,6 +107,8 @@ class ScreenResponse(BaseModel):
     data_age_days: Optional[int] = None
     # 資料是否過期 (data_age_days > 1)。前端據此顯示「資料非最新」提示。
     is_stale: bool = False
+    # 篩選過程的非致命警告（自訂公式錯誤、規則欄位缺失/無資料等），供前端提示使用者。
+    warnings: list[str] = Field(default_factory=list)
 
 
 class KlineCandle(BaseModel):

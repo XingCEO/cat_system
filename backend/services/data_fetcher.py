@@ -23,6 +23,8 @@ TWSE_HOSTS = (
     "openapi.twse.com.tw",
 )
 
+HISTORICAL_FULL_MARKET_MIN_ROWS = 500
+
 
 def _build_twse_ssl_context() -> Union[bool, str, ssl.SSLContext]:
     """
@@ -365,8 +367,18 @@ class DataFetcher:
         if is_historical:
             db_df = await self.get_daily_from_db(trade_date)
             if not db_df.empty:
-                cache_manager.set(cache_key, db_df.to_dict("records"), "daily")
-                return db_df
+                if len(db_df) >= HISTORICAL_FULL_MARKET_MIN_ROWS:
+                    cache_manager.set(cache_key, db_df.to_dict("records"), "daily")
+                    return db_df
+                logger.warning(
+                    f"Historical DB data for {trade_date} has only {len(db_df)} rows; "
+                    "trying TWSE MI_INDEX full-market fallback"
+                )
+
+            mi_df = await self._fetch_twse_historical_mi_index(trade_date)
+            if not mi_df.empty:
+                cache_manager.set(cache_key, mi_df.to_dict("records"), "daily")
+                return mi_df
 
         # 也嘗試用 canonical key（可能已被其他查詢日期快取）— 僅限非歷史查詢，
         # 歷史查詢不可拿「最新快照」充當該日資料
@@ -412,6 +424,95 @@ class DataFetcher:
         # Fallback to TWSE OpenAPI
         return await self._fetch_twse_daily_openapi(trade_date)
 
+    async def _fetch_twse_historical_mi_index(self, trade_date: str) -> pd.DataFrame:
+        """Fetch a historical full-market daily snapshot from TWSE MI_INDEX."""
+        try:
+            date_obj = datetime.strptime(str(trade_date)[:10], "%Y-%m-%d")
+        except ValueError:
+            return pd.DataFrame()
+
+        cache_key = f"daily_twse_mi_index_{trade_date}"
+        cached = cache_manager.get(cache_key, "daily")
+        if cached is not None:
+            return pd.DataFrame(cached)
+
+        def _parse_num(val, to_float=False):
+            if val is None:
+                return None
+            val_str = str(val).replace(",", "").strip()
+            if not val_str or val_str in {"--", "X"}:
+                return None
+            try:
+                return float(val_str) if to_float else int(float(val_str))
+            except (ValueError, TypeError):
+                return None
+
+        def _parse_change(sign_cell, value_cell):
+            value = _parse_num(value_cell, True)
+            if value is None:
+                return None
+            sign_text = str(sign_cell or "").lower()
+            if "green" in sign_text or "-" in sign_text:
+                return -abs(value)
+            if "red" in sign_text or "+" in sign_text:
+                return abs(value)
+            return value
+
+        try:
+            url = "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX"
+            params = {
+                "date": date_obj.strftime("%Y%m%d"),
+                "type": "ALLBUT0999",
+                "response": "json",
+            }
+            client = await self.get_twse_client()
+            response = await client.get(url, params=params, timeout=20.0, follow_redirects=True)
+            response.raise_for_status()
+            data = response.json()
+            if data.get("stat") != "OK":
+                logger.warning(f"TWSE MI_INDEX returned {data.get('stat')} for {trade_date}")
+                return pd.DataFrame()
+
+            records = []
+            for table in data.get("tables", []):
+                for row in table.get("data") or []:
+                    try:
+                        if len(row) < 11:
+                            continue
+                        symbol = str(row[0]).strip()
+                        if not symbol or len(symbol) > 6 or not symbol[0].isdigit():
+                            continue
+
+                        volume = _parse_num(row[2])
+                        close_price = _parse_num(row[8], True)
+                        if volume is None or close_price is None:
+                            continue
+
+                        records.append({
+                            "stock_id": symbol,
+                            "stock_name": str(row[1]).strip() or symbol,
+                            "Trading_Volume": volume,
+                            "open": _parse_num(row[5], True),
+                            "max": _parse_num(row[6], True),
+                            "min": _parse_num(row[7], True),
+                            "close": close_price,
+                            "spread": _parse_change(row[9], row[10]),
+                            "date": str(trade_date)[:10],
+                        })
+                    except Exception:
+                        continue
+
+            if not records:
+                return pd.DataFrame()
+
+            df = pd.DataFrame(records)
+            cache_manager.set(cache_key, df.to_dict("records"), "daily")
+            logger.info(f"Loaded {len(records)} stocks from TWSE MI_INDEX for {trade_date}")
+            return df
+        except Exception as e:
+            logger.warning(f"TWSE MI_INDEX historical daily data failed for {trade_date}: {e}")
+            return pd.DataFrame()
+
     async def _fetch_twse_daily_openapi(self, trade_date: str) -> pd.DataFrame:
         """Fetch daily data from TWSE OpenAPI (more reliable)
 
@@ -454,14 +555,15 @@ class DataFetcher:
                         symbol = item.get("Code", "").strip()
                         if not symbol:
                             continue
-                        # Skip ETFs and special securities at data layer
+                        # Skip ETFs and long special securities at data layer.
+                        # Do not drop all 7xxx/9xxx symbols: TWSE has regular
+                        # listed equities in those ranges (for example 9904),
+                        # and skipping them leaves latest-date DB gaps.
                         if symbol.startswith("00") or len(symbol) > 6:
-                            continue
-                        if symbol.startswith("7") or symbol.startswith("9"):
                             continue
 
                         volume = _parse_num(item.get("TradeVolume"))
-                        if volume is None or volume < 1000:
+                        if volume is None:
                             continue
 
                         close_price = _parse_num(item.get("ClosingPrice"), True)

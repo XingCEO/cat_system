@@ -9,6 +9,30 @@ class TestVersionConsistency:
         settings = get_settings()
         assert settings.app_version == "2.0.0"
 
+    def test_debug_release_env_is_false(self, monkeypatch):
+        from config import get_settings
+
+        get_settings.cache_clear()
+        monkeypatch.setenv("DEBUG", "release")
+        try:
+            assert get_settings().debug is False
+        finally:
+            get_settings.cache_clear()
+
+
+class TestDatabaseEngineOptions:
+    def test_sqlite_engine_waits_for_short_write_locks(self):
+        from database import _engine_kwargs
+
+        kwargs = _engine_kwargs("sqlite+aiosqlite:///./twse_filter.db")
+        assert kwargs["connect_args"]["timeout"] >= 30
+
+    def test_postgres_engine_does_not_receive_sqlite_connect_args(self):
+        from database import _engine_kwargs
+
+        kwargs = _engine_kwargs("postgresql+asyncpg://user:pass@example/db")
+        assert "connect_args" not in kwargs
+
 
 class TestTurnoverEndpointSignatures:
     """Verify volume-surge and institutional-buy service methods accept end_date"""

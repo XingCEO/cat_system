@@ -304,10 +304,15 @@ class TestHistoricalDateIntegrity:
         fetcher = DataFetcher()
 
         db_df = pd.DataFrame([{
-            "stock_id": "2330", "Trading_Volume": 1_000_000,
-            "open": 100.0, "max": 101.0, "min": 99.0,
-            "close": 100.5, "spread": 0.5, "date": "2026-05-04",
-        }])
+            "stock_id": f"{2000 + i}",
+            "Trading_Volume": 1_000_000,
+            "open": 100.0,
+            "max": 101.0,
+            "min": 99.0,
+            "close": 100.5,
+            "spread": 0.5,
+            "date": "2026-05-04",
+        } for i in range(501)])
 
         async def fake_db(target_date):
             assert target_date == "2026-05-04"

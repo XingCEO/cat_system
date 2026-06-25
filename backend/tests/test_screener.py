@@ -52,6 +52,22 @@ class TestApplyRule:
         mask = apply_rule(df, rule)
         assert mask.sum() == 2  # 2330: 600>590, 2454: 900>880
 
+    def test_monthly_ma20_higher_low_rule(self):
+        """「MA20 月度墊高」: ma20_curr_month_low > ma20_prev_month_low (欄位對欄位)。
+        歷史不足的股票 (curr 為 NaN) 應被 fillna(False) 排除。"""
+        df = pd.DataFrame({
+            "ticker_id": ["A", "B", "C"],
+            "ma20_curr_month_low": [55.0, 40.0, float("nan")],
+            "ma20_prev_month_low": [50.0, 45.0, 30.0],
+        })
+        rule = {
+            "field": "ma20_curr_month_low", "operator": ">",
+            "target_type": "field", "target_value": "ma20_prev_month_low",
+        }
+        mask = apply_rule(df, rule)
+        # A: 55>50 True; B: 40>45 False; C: NaN>30 → NaN → fillna(False)
+        assert mask.tolist() == [True, False, False]
+
     def test_missing_field_returns_all_false(self):
         df = self._make_df()
         rule = {"field": "nonexistent", "operator": ">", "target_type": "value", "target_value": 0}
@@ -63,6 +79,44 @@ class TestApplyRule:
         rule = {"field": "close", "operator": "???", "target_type": "value", "target_value": 0}
         mask = apply_rule(df, rule)
         assert not mask.any()  # 不支援的運算子應全部拒絕，避免誤放行
+
+    def test_eq_operator_uses_tolerance(self):
+        """"=" 應有絕對容差 (0.005)，避免浮點精度漏掉應相等值。"""
+        df = pd.DataFrame({
+            "ticker_id": ["A", "B"],
+            "ma20": [100.004, 100.02],  # A 在容差內、B 超出
+        })
+        rule = {"field": "ma20", "operator": "=", "target_type": "value", "target_value": 100.0}
+        mask = apply_rule(df, rule)
+        assert mask.tolist() == [True, False]
+
+    def test_string_dtype_compared_numerically(self):
+        """object/字串 dtype 欄位應數值比較，而非字典序（"9" vs "100"）。"""
+        df = pd.DataFrame({
+            "ticker_id": ["A", "B"],
+            "close": ["9", "100"],  # 字串 dtype
+        })
+        rule = {"field": "close", "operator": ">", "target_type": "value", "target_value": 50}
+        mask = apply_rule(df, rule)
+        # 數值比較：100>50 True、9>50 False（字典序則 "9">"50" 會誤判 True）
+        assert mask.tolist() == [False, True]
+
+    def test_warning_collected_on_missing_field(self):
+        """缺欄位時應收集警告供前端提示。"""
+        df = self._make_df()
+        warns: list[str] = []
+        apply_rule(df, {"field": "nope", "operator": ">",
+                        "target_type": "value", "target_value": 0}, warnings=warns)
+        assert any("nope" in w for w in warns)
+
+    def test_warning_collected_when_field_all_nan(self):
+        """欄位整欄無資料時應警告（解釋為何篩不到股票）。"""
+        df = pd.DataFrame({"ticker_id": ["A", "B"], "ma60": [None, None]})
+        warns: list[str] = []
+        mask = apply_rule(df, {"field": "ma60", "operator": ">",
+                               "target_type": "value", "target_value": 10}, warnings=warns)
+        assert not mask.any()
+        assert any("ma60" in w for w in warns)
 
 
 # ──────────────────────────────────────────────

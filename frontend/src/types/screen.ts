@@ -48,10 +48,16 @@ export interface TickerResult {
     avg_turnover_20?: number;
     lower_shadow?: number;
     lowest_lower_shadow_20?: number;
+    ma20_curr_month_low?: number;
+    ma20_prev_month_low?: number;
     wma10?: number;
     wma20?: number;
     wma60?: number;
     market_ok?: boolean;
+    ma_bull_pullback_low_high_1_3?: boolean;
+    ma_bull_pullback_low_high_2_3?: boolean;
+    ma_bull_pullback_breakout_1_3?: boolean;
+    ma_bull_pullback_breakout_2_3?: boolean;
 }
 
 export interface ScreenResponse {
@@ -61,6 +67,8 @@ export interface ScreenResponse {
     error?: string;
     // 篩選所依據的官方收盤資料日期 (盤中可能落後即時/K線一天)
     data_date?: string;
+    // 篩選過程的非致命警告（自訂公式錯誤、規則欄位缺失/無資料等）
+    warnings?: string[];
 }
 
 // K 線
@@ -142,10 +150,16 @@ export const AVAILABLE_FIELDS: FieldOption[] = [
     { label: '20日均成交值', value: 'avg_turnover_20', category: 'indicator' },
     { label: '下引價', value: 'lower_shadow', category: 'indicator' },
     { label: '近20日下引價最低(前日基準)', value: 'lowest_lower_shadow_20', category: 'indicator' },
+    { label: '當月MA20最低', value: 'ma20_curr_month_low', category: 'indicator' },
+    { label: '上月MA20最低', value: 'ma20_prev_month_low', category: 'indicator' },
     { label: '週MA10', value: 'wma10', category: 'indicator' },
     { label: '週MA20', value: 'wma20', category: 'indicator' },
     { label: '週MA60', value: 'wma60', category: 'indicator' },
     { label: '大盤多頭OK', value: 'market_ok', category: 'indicator' },
+    { label: '多頭回檔1/3(近60低高)', value: 'ma_bull_pullback_low_high_1_3', category: 'indicator' },
+    { label: '多頭回檔2/3(近60低高)', value: 'ma_bull_pullback_low_high_2_3', category: 'indicator' },
+    { label: '多頭回檔1/3(突破起漲)', value: 'ma_bull_pullback_breakout_1_3', category: 'indicator' },
+    { label: '多頭回檔2/3(突破起漲)', value: 'ma_bull_pullback_breakout_2_3', category: 'indicator' },
     // 基本面
     { label: '本益比', value: 'pe_ratio', category: 'fundamental' },
     { label: 'EPS', value: 'eps', category: 'fundamental' },

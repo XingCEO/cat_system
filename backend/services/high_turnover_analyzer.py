@@ -7,7 +7,7 @@ from typing import Optional, Dict, List, Any, Tuple
 from datetime import datetime, timedelta
 import logging
 
-from services.data_fetcher import data_fetcher
+from services.data_fetcher import HISTORICAL_FULL_MARKET_MIN_ROWS, data_fetcher
 from services.cache_manager import cache_manager
 from services.calculator import StockCalculator
 
@@ -223,7 +223,11 @@ class HighTurnoverAnalyzer:
         """
         return await self.data_fetcher.get_daily_from_db(target_date)
 
-    async def _fetch_daily_data(self, date: str) -> pd.DataFrame:
+    async def _fetch_daily_data(
+        self,
+        date: str,
+        min_volume_shares: Optional[int] = 1_000_000,
+    ) -> pd.DataFrame:
         """
         取得當日所有股票資料。
 
@@ -243,10 +247,16 @@ class HighTurnoverAnalyzer:
 
             if is_historical:
                 df = await self._fetch_from_db(date)
+                if not df.empty and min_volume_shares is None and len(df) < HISTORICAL_FULL_MARKET_MIN_ROWS:
+                    logger.warning(
+                        f"Historical DB data for {date} has only {len(df)} rows; "
+                        "falling back to full-market daily fetch"
+                    )
+                    df = pd.DataFrame()
                 if df.empty:
                     logger.warning(
-                        f"No v1 DB data for historical {date}; falling back to live "
-                        f"snapshot (which returns latest, not {date})"
+                        f"No complete v1 DB data for historical {date}; falling back "
+                        "to daily data fetcher"
                     )
 
             if df.empty:
@@ -278,10 +288,11 @@ class HighTurnoverAnalyzer:
 
             # 排除成交量過低
             # Trading_Volume 單位為「股」，1張=1000股，所以「至少1000張」= >1_000_000股
-            if "Trading_Volume" in df.columns:
-                df = df[df["Trading_Volume"] > 1_000_000]
-            elif "volume" in df.columns:
-                df = df[df["volume"] > 1_000_000]
+            if min_volume_shares is not None:
+                if "Trading_Volume" in df.columns:
+                    df = df[df["Trading_Volume"] > min_volume_shares]
+                elif "volume" in df.columns:
+                    df = df[df["volume"] > min_volume_shares]
 
             # Merge stock info for names and industries
             stock_list = await self.data_fetcher.get_stock_list()
@@ -427,6 +438,68 @@ class HighTurnoverAnalyzer:
                 logger.debug(f"Error processing stock: {e}")
                 continue
         
+        return results
+
+    def _build_market_stock_records(self, df: pd.DataFrame) -> List[Dict]:
+        """Build full-market stock records without requiring turnover metadata."""
+        results = []
+        symbol_col = "stock_id" if "stock_id" in df.columns else "symbol"
+        volume_col = "Trading_Volume" if "Trading_Volume" in df.columns else "volume"
+        close_col = "close"
+
+        for _, row in df.iterrows():
+            try:
+                symbol = str(row.get(symbol_col, "")).strip()
+                close = float(row.get(close_col, 0) or 0)
+                if not symbol or close <= 0:
+                    continue
+
+                spread_value = row.get("spread", None)
+                spread = None
+                if spread_value is not None and not pd.isna(spread_value):
+                    spread = float(spread_value)
+
+                prev_close = None
+                change_pct = row.get("change_percent", None)
+                if spread is not None:
+                    prev_close = close - spread
+                    if prev_close > 0:
+                        change_pct = (spread / prev_close) * 100
+                elif change_pct is not None and not pd.isna(change_pct):
+                    denom = 1 + float(change_pct) / 100
+                    if denom != 0:
+                        prev_close = close / denom
+
+                if change_pct is None or pd.isna(change_pct):
+                    change_pct = 0
+                change_pct = float(change_pct)
+
+                stock_name = row.get("stock_name", row.get("name", ""))
+                if pd.isna(stock_name):
+                    stock_name = symbol
+                industry = row.get("industry_category", row.get("industry", ""))
+                if pd.isna(industry):
+                    industry = ""
+
+                volume_shares = float(row.get(volume_col, 0) or 0)
+                results.append({
+                    "symbol": symbol,
+                    "name": stock_name,
+                    "industry": industry,
+                    "close_price": close,
+                    "prev_close": prev_close if prev_close and prev_close > 0 else None,
+                    "change_percent": round(change_pct, 2),
+                    "turnover_rate": None,
+                    "volume": int(volume_shares / SHARES_PER_LOT),
+                    "float_shares": None,
+                    "volume_ratio": float(row.get("volume_ratio", 0) or 0),
+                    "amplitude": float(row.get("amplitude", 0) or 0),
+                    "consecutive_up_days": int(row.get("consecutive_up_days", 0) or 0),
+                })
+            except Exception as e:
+                logger.debug(f"Error building full-market stock record: {e}")
+                continue
+
         return results
     
     def _determine_limit_up_type(self, stock: Dict) -> str:
@@ -1088,9 +1161,9 @@ class HighTurnoverAnalyzer:
                         return None
 
                     # 計算今日均線
-                    ma5 = sum(closes[:5]) / 5
-                    ma10 = sum(closes[:10]) / 10
-                    ma20 = sum(closes[:20]) / 20
+                    ma5 = sum(closes[1:6]) / 5
+                    ma10 = sum(closes[1:11]) / 10
+                    ma20 = sum(closes[1:21]) / 20
 
                     # 計算昨日均線（用於判斷糾結）
                     yesterday_closes = closes[1:21]
@@ -1099,12 +1172,12 @@ class HighTurnoverAnalyzer:
                     yesterday_ma20 = sum(yesterday_closes[:20]) / 20
 
                     # 判斷昨日均線糾結（範圍 ≤ ma_threshold%）
-                    ma_values = [yesterday_ma5, yesterday_ma10, yesterday_ma20]
-                    ma_avg = sum(ma_values) / 3
-                    if ma_avg <= 0:
+                    ma_values = [round(ma5, 2), round(ma10, 2), round(ma20, 2)]
+                    ma_min = min(ma_values)
+                    if ma_min <= 0:
                         return None
 
-                    ma_range = (max(ma_values) - min(ma_values)) / ma_avg * 100
+                    ma_range = (max(ma_values) - ma_min) / ma_min * 100
                     if ma_range > ma_threshold:
                         return None
 
@@ -1258,6 +1331,91 @@ class HighTurnoverAnalyzer:
                     await asyncio.sleep(1)
 
         return pd.DataFrame()
+
+    async def _fetch_db_history_bulk(
+        self,
+        end_date: str,
+        start_date: Optional[str] = None,
+        lookback_days: int = 60,
+    ) -> Dict[str, pd.DataFrame]:
+        """
+        從 v1 DB (daily_prices) 一次批量讀取「全市場」的近期日收盤序列。
+
+        回傳 {symbol: DataFrame[date(str, YYYY-MM-DD), close(float)]}，日期降序。
+
+        取代 MA 糾結掃描中「每檔一次 live Yahoo」的 fan-out：原作法在每次開頁
+        對全市場 ~1100 檔各打一次 Yahoo，部署於資料中心 IP(Zeabur/Render)時 Yahoo
+        會限流(429)，整體耗時遠超前端 120 秒逾時 → 整頁「查無資料」。改為單一 DB
+        查詢(毫秒級、與部署 IP 無關)；DB 缺漏的少數標的才回退 Yahoo。
+        """
+        from database import async_session_maker
+        from app.models.daily_price import DailyPrice
+        from sqlalchemy import select
+        from datetime import datetime as _dt, timedelta as _td
+
+        out: Dict[str, pd.DataFrame] = {}
+        try:
+            end_d = _dt.strptime(str(end_date)[:10], "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            return out
+        try:
+            low_base = (
+                _dt.strptime(str(start_date)[:10], "%Y-%m-%d").date()
+                if start_date else end_d
+            )
+        except (ValueError, TypeError):
+            low_base = end_d
+        # 需在最早查詢日之前再保留 ~25 個交易日(MA20 + 緩衝)，60 個日曆日足以
+        # 跨過長假叢集而仍取得 >=21 個交易列。
+        low_d = low_base - _td(days=max(lookback_days, 40))
+
+        try:
+            async with async_session_maker() as session:
+                rows = (await session.execute(
+                    select(DailyPrice.ticker_id, DailyPrice.date, DailyPrice.close)
+                    .where(DailyPrice.date >= low_d)
+                    .where(DailyPrice.date <= end_d)
+                    .order_by(DailyPrice.ticker_id, DailyPrice.date.desc())
+                )).all()
+        except Exception as e:
+            logger.warning(f"_fetch_db_history_bulk failed ({end_date}): {e}")
+            return out
+
+        by_sym: Dict[str, List[Dict[str, Any]]] = {}
+        for tid, d, close in rows:
+            if close is None or d is None:
+                continue
+            by_sym.setdefault(str(tid), []).append(
+                {"date": d.strftime("%Y-%m-%d"), "close": float(close)}
+            )
+
+        # SQL 已 ticker, date DESC 排序 → 每組已是日期降序
+        for sym, recs in by_sym.items():
+            out[sym] = pd.DataFrame(recs)
+        return out
+
+    @staticmethod
+    def _is_dense_recent(df: pd.DataFrame, rows: int = 21) -> bool:
+        """
+        判斷 df 最近 `rows` 列是否為「連續交易日」(期間內每個交易日都有資料、零缺漏)。
+
+        v1 DB 在本機/未連續運行的部署上是稀疏的(跨月缺漏)，用稀疏列算 MA 會嚴重失真。
+        以交易日曆精確檢查：最近 `rows` 列的日期區間內，應有的交易日數須恰等於 `rows`
+        (代表無任何缺漏)。僅在此條件下採用 DB 收盤，否則回退 Yahoo —
+        確保 MA/糾結數值正確；DB 不密集時行為與原本(純 Yahoo)完全一致，不會更糟。
+        """
+        if df is None or len(df) < rows:
+            return False
+        try:
+            from utils.date_utils import get_trading_days
+            newest = datetime.strptime(str(df["date"].iloc[0]), "%Y-%m-%d").date()
+            oldest = datetime.strptime(str(df["date"].iloc[rows - 1]), "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            return False
+        if oldest > newest:
+            return False
+        # 區間內「應有的交易日數」需恰等於我們實際擁有的列數 → 無缺漏即為連續
+        return len(get_trading_days(oldest, newest)) == rows
 
     # ===== 趨勢選股 =====
 
@@ -2161,39 +2319,20 @@ class HighTurnoverAnalyzer:
             }
 
         # 單日查詢保持原有邏輯
-        if len(dates) == 1:
-            result = await self.get_ma_breakout(dates[0], min_change, max_change, direction, ma_threshold)
-            items = []
-            if result.get("success"):
-                for item in result.get("items", []):
-                    copied = dict(item)
-                    copied["query_date"] = dates[0]
-                    items.append(copied)
-            return {
-                "success": True,
-                "start_date": dates[0],
-                "end_date": dates[0],
-                "direction": direction,
-                "filter": {"min_change": min_change, "max_change": max_change},
-                "total_days": 1,
-                "breakout_count": len(items),
-                "daily_stats": [{"date": dates[0], "count": len(items)}],
-                "items": items,
-            }
-
         # === 多日查詢：一次獲取歷史資料，掃描所有日期 ===
         import asyncio
+        import time as _time
+        _t_start = _time.time()
 
         is_breakout = direction != "breakdown"
         direction_label = "突破" if is_breakout else "跌破"
 
         # 1. 取得全市場股票列表（用於取得 symbol/name/industry）
-        all_stocks_df = await self._fetch_daily_data(dates[-1])
+        all_stocks_df = await self._fetch_daily_data(dates[-1], min_volume_shares=None)
         if all_stocks_df.empty:
             return {"success": False, "error": "無法取得股票列表"}
 
-        float_shares_map = await self._get_float_shares()
-        all_stocks = self._calculate_turnover_rates(all_stocks_df, float_shares_map)
+        all_stocks = self._build_market_stock_records(all_stocks_df)
 
         if not all_stocks:
             return {"success": False, "error": "無有效資料"}
@@ -2208,50 +2347,105 @@ class HighTurnoverAnalyzer:
         total_symbols = len(stock_info_map)
         logger.info(f"MA {direction_label} range: scanning {len(dates)} days × {total_symbols} stocks")
 
-        # 3. 並行獲取所有股票的 Yahoo 歷史資料（每檔只呼叫一次）
-        semaphore = asyncio.Semaphore(10)
+        # 3. 取得各股票歷史收盤序列：優先讀 v1 DB（單一查詢、毫秒級、不受部署 IP
+        #    限流影響），僅對 DB 缺漏/不足的標的回退 Yahoo。修復線上(資料中心 IP)
+        #    對全市場 ~1100 檔 Yahoo fan-out 被限流 → 超過前端 120 秒逾時 → 整頁查無資料。
         symbol_history: Dict[str, pd.DataFrame] = {}
-        processed = [0]
 
-        async def fetch_history(symbol):
-            async with semaphore:
-                try:
-                    df = await self._fetch_yahoo_history_for_ma(symbol)
-                    if not df.empty and len(df) >= 21:
-                        symbol_history[symbol] = df
-                except Exception as e:
-                    logger.debug(f"Error fetching history for {symbol}: {e}")
-                finally:
-                    processed[0] += 1
-                    if processed[0] % 200 == 0:
-                        logger.info(f"MA {direction_label} history fetch: {processed[0]}/{total_symbols}")
+        # 3a. 今日(快照)收盤：DB 可能尚未同步最新交易日，將快照接到序列最前，
+        #     使最新日查詢仍能取得 current_close 與漲跌幅。
+        snapshot_date = None
+        if "date" in all_stocks_df.columns and not all_stocks_df.empty:
+            try:
+                snapshot_date = str(all_stocks_df["date"].iloc[0])[:10]
+            except Exception:
+                snapshot_date = None
+        snapshot_close = {
+            s["symbol"]: s.get("close_price")
+            for s in all_stocks
+            if s.get("symbol") and (s.get("close_price") or 0) > 0
+        }
 
-        symbols = list(stock_info_map.keys())
-        batch_size = 50
-        for i in range(0, len(symbols), batch_size):
-            batch = symbols[i:i + batch_size]
-            tasks = [fetch_history(s) for s in batch]
-            await asyncio.gather(*tasks, return_exceptions=True)
-            if i + batch_size < len(symbols):
-                await asyncio.sleep(0.3)
+        # 3b. 一次性 DB 批量讀取全市場歷史收盤
+        db_hist = await self._fetch_db_history_bulk(dates[-1], start_date=dates[0])
 
-        logger.info(f"MA {direction_label} range: fetched history for {len(symbol_history)} stocks")
+        missing: List[str] = []
+        db_dense_count = 0
+        for symbol in stock_info_map:
+            df = db_hist.get(symbol)
+            if df is not None and not df.empty:
+                # 將今日快照收盤接到最前（僅當其比 DB 最新列更新時）
+                if (snapshot_date and symbol in snapshot_close
+                        and str(df["date"].iloc[0]) < snapshot_date):
+                    head = pd.DataFrame([{
+                        "date": snapshot_date,
+                        "close": float(snapshot_close[symbol]),
+                    }])
+                    df = pd.concat([head, df], ignore_index=True)
+                # 去重(保留最前=最新)、日期降序、重設索引(掃描需 RangeIndex)
+                df = df.drop_duplicates(subset="date", keep="first")
+                df = df.sort_values("date", ascending=False).reset_index(drop=True)
+                # 僅在 DB 近期資料「密集(連續交易日)」時採用，否則回退 Yahoo
+                if self._is_dense_recent(df):
+                    symbol_history[symbol] = df
+                    db_dense_count += 1
+                    continue
+            missing.append(symbol)
+
+        # 3c. DB 缺漏/不足才回退 Yahoo（健康 DB 下通常為 0 次外部呼叫）
+        if missing:
+            logger.info(
+                f"MA {direction_label} range: {len(missing)}/{total_symbols} symbols "
+                "absent in DB, falling back to Yahoo for those only"
+            )
+            semaphore = asyncio.Semaphore(10)
+
+            async def fetch_history(symbol):
+                async with semaphore:
+                    try:
+                        df = await self._fetch_yahoo_history_for_ma(symbol)
+                        if not df.empty and len(df) >= 21:
+                            symbol_history[symbol] = df
+                    except Exception as e:
+                        logger.debug(f"Error fetching history for {symbol}: {e}")
+
+            batch_size = 50
+            for i in range(0, len(missing), batch_size):
+                batch = missing[i:i + batch_size]
+                await asyncio.gather(*(fetch_history(s) for s in batch), return_exceptions=True)
+                if i + batch_size < len(missing):
+                    await asyncio.sleep(0.3)
+
+        logger.info(
+            f"MA {direction_label} range: history ready for {len(symbol_history)} "
+            f"stocks (DB primary, {len(missing)} symbols routed to Yahoo fallback)"
+        )
 
         # 4. 對每個日期，掃描所有股票的歷史資料
         all_items = []
         daily_stats = []
 
+        single_day = len(dates) == 1
         for date in dates:
             day_items = []
 
             for symbol, history_df in symbol_history.items():
                 try:
-                    # 在 Yahoo 歷史中找到目標日期的位置
-                    date_mask = history_df["date"] == date
-                    if not date_mask.any():
-                        continue
+                    if single_day:
+                        # 單日查詢：取「該日(含)以前最近一列」，容忍最新交易日資料尚未
+                        # 到位(盤中/收盤後 TWSE 與 DB 仍停在前一交易日)。避免 strict ==
+                        # 在邊界日把整批資料漏掉 → 整頁查無資料。
+                        le_idx = history_df.index[history_df["date"] <= date]
+                        if len(le_idx) == 0:
+                            continue
+                        idx = le_idx[0]  # 已日期降序 → 第一個 <= date 即最近一列
+                    else:
+                        # 區間查詢：每個交易日嚴格對應，避免跨日重複借用同一列
+                        date_mask = history_df["date"] == date
+                        if not date_mask.any():
+                            continue
+                        idx = history_df.index[date_mask][0]
 
-                    idx = history_df.index[date_mask][0]
                     remaining = len(history_df) - idx
                     if remaining < 21:
                         continue
@@ -2277,9 +2471,9 @@ class HighTurnoverAnalyzer:
                         continue
 
                     # 計算今日均線
-                    ma5 = sum(closes[:5]) / 5
-                    ma10 = sum(closes[:10]) / 10
-                    ma20 = sum(closes[:20]) / 20
+                    ma5 = sum(closes[1:6]) / 5
+                    ma10 = sum(closes[1:11]) / 10
+                    ma20 = sum(closes[1:21]) / 20
 
                     # 計算昨日均線（用於判斷糾結）
                     yesterday_closes = closes[1:21]
@@ -2288,12 +2482,12 @@ class HighTurnoverAnalyzer:
                     yesterday_ma20 = sum(yesterday_closes[:20]) / 20
 
                     # 昨日均線糾結（範圍 ≤ ma_threshold%）
-                    ma_values = [yesterday_ma5, yesterday_ma10, yesterday_ma20]
-                    ma_avg = sum(ma_values) / 3
-                    if ma_avg <= 0:
+                    ma_values = [round(ma5, 2), round(ma10, 2), round(ma20, 2)]
+                    ma_min = min(ma_values)
+                    if ma_min <= 0:
                         continue
 
-                    ma_range = (max(ma_values) - min(ma_values)) / ma_avg * 100
+                    ma_range = (max(ma_values) - ma_min) / ma_min * 100
                     if ma_range > ma_threshold:
                         continue
 
@@ -2322,7 +2516,8 @@ class HighTurnoverAnalyzer:
                         "ma_range": round(ma_range, 2),
                         "is_breakout": is_breakout,
                         "direction": direction,
-                        "query_date": date,
+                        # 實際使用的資料日(單日查詢遇邊界日時可能 < 請求日)
+                        "query_date": str(history_df["date"].iloc[idx]),
                     }
                     day_items.append(matched)
 
@@ -2354,6 +2549,18 @@ class HighTurnoverAnalyzer:
             "breakout_count": len(all_items),
             "daily_stats": daily_stats,
             "items": all_items,
+            # 自我診斷：部署站若仍空白，可由回應直接看出原因(無需翻 server log)。
+            # daily_rows=0 → 抓不到當日全市場；history_ready=0 → DB+Yahoo 都無歷史；
+            # yahoo_fallback 高且 elapsed 大 → 線上 Yahoo 限流逾時(資料中心 IP)。
+            "diag": {
+                "elapsed_sec": round(_time.time() - _t_start, 2),
+                "total_symbols": total_symbols,
+                "daily_rows": int(len(all_stocks_df)),
+                "snapshot_date": snapshot_date,
+                "history_ready": len(symbol_history),
+                "db_dense": db_dense_count,
+                "yahoo_fallback": len(missing),
+            },
         }
 
     async def get_combo_filter(

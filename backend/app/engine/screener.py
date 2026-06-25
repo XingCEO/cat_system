@@ -41,10 +41,16 @@ _DAILY_PRICE_COLS = [
     DailyPrice.avg_turnover_20,
     DailyPrice.lower_shadow,
     DailyPrice.lowest_lower_shadow_20,
+    DailyPrice.ma20_curr_month_low,
+    DailyPrice.ma20_prev_month_low,
     DailyPrice.wma10,
     DailyPrice.wma20,
     DailyPrice.wma60,
     DailyPrice.market_ok,
+    DailyPrice.ma_bull_pullback_low_high_1_3,
+    DailyPrice.ma_bull_pullback_low_high_2_3,
+    DailyPrice.ma_bull_pullback_breakout_1_3,
+    DailyPrice.ma_bull_pullback_breakout_2_3,
 ]
 
 
@@ -163,13 +169,14 @@ async def load_multi_day_data(db: AsyncSession, days: int = 2) -> pd.DataFrame:
     return df
 
 
-def apply_rule(df: pd.DataFrame, rule_dict: dict) -> pd.Series:
+def apply_rule(df: pd.DataFrame, rule_dict: dict, warnings: Optional[list] = None) -> pd.Series:
     """
     套用單條規則，回傳 boolean mask
 
     Args:
         df: 資料 DataFrame
         rule_dict: Rule 字典 {field, operator, target_type, target_value}
+        warnings: 選填，收集非致命警告（欄位缺失/無資料/target 非數值）供回傳前端
 
     Returns:
         pd.Series[bool]
@@ -179,17 +186,22 @@ def apply_rule(df: pd.DataFrame, rule_dict: dict) -> pd.Series:
     target_type = rule_dict.get("target_type", "value")
     target_value = rule_dict["target_value"]
 
+    def _warn(msg: str) -> None:
+        logger.error(msg)
+        if warnings is not None:
+            warnings.append(msg)
+
     if field not in df.columns:
-        logger.error(f"篩選規則錯誤：欄位 '{field}' 不存在，此規則將讓所有股票不通過")
+        _warn(f"篩選規則錯誤：欄位 '{field}' 不存在，此規則將讓所有股票不通過")
         return pd.Series(False, index=df.index)
 
     # 數值型 target_value 轉 float；非數值字串（誤用 target_type=value）不應讓整個
-    # 篩選 500，改記錄並讓此規則不通過任何股票。
+    # 篩選失效，改記錄並讓此規則不通過任何股票。
     def _coerce_target() -> Optional[float]:
         try:
             return float(target_value)
         except (ValueError, TypeError):
-            logger.error(
+            _warn(
                 f"篩選規則錯誤：target_value '{target_value}' 非數值（operator={operator}），此規則將讓所有股票不通過"
             )
             return None
@@ -208,16 +220,21 @@ def apply_rule(df: pd.DataFrame, rule_dict: dict) -> pd.Series:
     # 一般比較運算子
     compare_fn = OPERATOR_MAP.get(operator)
     if compare_fn is None:
-        logger.error(f"篩選規則錯誤：不支援的運算子 '{operator}'，此規則將讓所有股票不通過")
+        _warn(f"篩選規則錯誤：不支援的運算子 '{operator}'，此規則將讓所有股票不通過")
         return pd.Series(False, index=df.index)
 
-    series_a = df[field]
+    # 數值欄位強制轉型，避免 object/字串 dtype 造成字典序比較（"9" > "100"）。
+    # 非數值值 → NaN → fillna(False) 排除，符合「無法評估即不通過」語意。
+    series_a = pd.to_numeric(df[field], errors="coerce")
+    if series_a.notna().sum() == 0:
+        _warn(f"篩選提示：欄位 '{field}' 全部無資料（可能尚未同步），此規則排除所有股票")
+
     if target_type == "field":
         target_col = str(target_value)
         if target_col not in df.columns:
-            logger.error(f"篩選規則錯誤：目標欄位 '{target_col}' 不存在，此規則將讓所有股票不通過")
+            _warn(f"篩選規則錯誤：目標欄位 '{target_col}' 不存在，此規則將讓所有股票不通過")
             return pd.Series(False, index=df.index)
-        target = df[target_col]
+        target = pd.to_numeric(df[target_col], errors="coerce")
     else:
         target = _coerce_target()
         if target is None:
@@ -296,18 +313,20 @@ def _compute_screen_sync(
     df: pd.DataFrame, request: ScreenRequest, needs_multi_day: bool
 ) -> ScreenResponse:
     """純 CPU 運算的同步函式（在 thread pool 中執行）"""
+    warnings: list[str] = []
     # 套用自訂公式
     for formula in request.custom_formulas:
         try:
             df = safe_eval_formula(df, formula.name, formula.formula)
         except ValueError as e:
             logger.error(f"自訂公式錯誤: {e}")
+            warnings.append(f"自訂公式 '{formula.name}' 錯誤：{e}")
             continue
 
     # 套用所有規則
     masks = []
     for rule in request.rules:
-        mask = apply_rule(df, rule.model_dump())
+        mask = apply_rule(df, rule.model_dump(), warnings=warnings)
         masks.append(mask)
 
     # 合併 masks
@@ -370,16 +389,23 @@ def _compute_screen_sync(
             avg_turnover_20=_safe_float(row.get("avg_turnover_20")),
             lower_shadow=_safe_float(row.get("lower_shadow")),
             lowest_lower_shadow_20=_safe_float(row.get("lowest_lower_shadow_20")),
+            ma20_curr_month_low=_safe_float(row.get("ma20_curr_month_low")),
+            ma20_prev_month_low=_safe_float(row.get("ma20_prev_month_low")),
             wma10=_safe_float(row.get("wma10")),
             wma20=_safe_float(row.get("wma20")),
             wma60=_safe_float(row.get("wma60")),
             market_ok=_safe_bool(row.get("market_ok")),
+            ma_bull_pullback_low_high_1_3=_safe_bool(row.get("ma_bull_pullback_low_high_1_3")),
+            ma_bull_pullback_low_high_2_3=_safe_bool(row.get("ma_bull_pullback_low_high_2_3")),
+            ma_bull_pullback_breakout_1_3=_safe_bool(row.get("ma_bull_pullback_breakout_1_3")),
+            ma_bull_pullback_breakout_2_3=_safe_bool(row.get("ma_bull_pullback_breakout_2_3")),
         ))
 
     return ScreenResponse(
         matched_count=len(results),
         data=results,
         logic=request.logic,
+        warnings=list(dict.fromkeys(warnings)),
     )
 
 

@@ -24,12 +24,28 @@ logger = logging.getLogger(__name__)
 # to prevent check-then-insert races that cause duplicate rows / unique violations.
 _sync_daily_lock = asyncio.Lock()
 
+# Serializes write-heavy maintenance jobs on SQLite. Startup gap backfills and
+# on-demand freshness syncs can otherwise overlap and surface transient
+# "database is locked" errors even with a busy timeout.
+_maintenance_write_lock = asyncio.Lock()
+
 # Auto catch-up guard: serialize + throttle on-demand freshness syncs triggered from
 # read paths (screener / ensure-latest endpoint) so a burst of requests can't stampede
 # the external data source. Reset whenever a catch-up actually runs.
 _catchup_lock = asyncio.Lock()
 _last_catchup_monotonic: float = 0.0
 _CATCHUP_COOLDOWN_SECS: float = 300.0  # 5 min between automatic catch-up attempts
+
+PULLBACK_WINDOW_DAYS = 60
+BREAKOUT_LOOKBACK_DAYS = 20
+PULLBACK_ONE_THIRD = 1.0 / 3.0
+PULLBACK_TWO_THIRDS = 2.0 / 3.0
+PULLBACK_FLAG_FIELDS = (
+    "ma_bull_pullback_low_high_1_3",
+    "ma_bull_pullback_low_high_2_3",
+    "ma_bull_pullback_breakout_1_3",
+    "ma_bull_pullback_breakout_2_3",
+)
 
 
 async def sync_tickers(db: AsyncSession) -> int:
@@ -131,7 +147,7 @@ async def sync_daily_prices(db: AsyncSession, trade_date: Optional[str] = None) 
                     change_pct = round(change / prev_close * 100, 2)
 
             # 計算成交值 = 收盤 × 成交量 (股)
-            turnover = round(close * volume, 0) if close and volume else None
+            turnover = round(close * volume, 0) if close is not None and volume is not None else None
 
             # 計算下引價 = body_bottom - low (下影線長度，body_bottom >= low 故為非負)
             lower_shadow = None
@@ -159,19 +175,18 @@ async def sync_daily_prices(db: AsyncSession, trade_date: Optional[str] = None) 
             logger.info(f"Skipped {skipped_unknown} unknown ticker_ids (REITs, etc.)")
         logger.info(f"Synced {count} daily prices for {date_obj}")
 
-    # 補算技術指標 (MA5/10/20/60, RSI14, avg_volume_20, avg_turnover_20,
-    #               lowest_lower_shadow_20, 週MA, market_ok)
-    await _backfill_indicators(db, date_obj)
-
-    # 同步籌碼面 (法人/融資) 與基本面 (PE/EPS)，避免該維度永遠無資料
-    try:
-        await sync_daily_chips(db, date_obj)
-    except Exception as e:
-        logger.warning(f"sync_daily_chips failed: {e}")
-    try:
-        await sync_fundamentals(db, date_obj)
-    except Exception as e:
-        logger.warning(f"sync_fundamentals failed: {e}")
+    # Keep latest-date maintenance together so startup gap backfills do not
+    # interleave between indicator, chip, and fundamental writes.
+    async with _maintenance_write_lock:
+        await _backfill_indicators_unlocked(db, date_obj)
+        try:
+            await sync_daily_chips(db, date_obj)
+        except Exception as e:
+            logger.warning(f"sync_daily_chips failed: {e}")
+        try:
+            await sync_fundamentals(db, date_obj)
+        except Exception as e:
+            logger.warning(f"sync_fundamentals failed: {e}")
 
     return count
 
@@ -432,7 +447,131 @@ async def sync_market_index(db: AsyncSession, target_date=None) -> bool:
     return bool(ok)
 
 
+def _empty_pullback_flags() -> dict[str, bool]:
+    return {field: False for field in PULLBACK_FLAG_FIELDS}
+
+
+def _pullback_depth_flags(wave_low, wave_high, latest_close) -> tuple[bool, bool]:
+    try:
+        low = float(wave_low)
+        high = float(wave_high)
+        close = float(latest_close)
+    except (TypeError, ValueError):
+        return False, False
+
+    if low != low or high != high or close != close or high <= low:
+        return False, False
+
+    ratio = (high - close) / (high - low)
+    if ratio < 0 or ratio > 1:
+        return False, False
+
+    return (
+        PULLBACK_ONE_THIRD <= ratio < PULLBACK_TWO_THIRDS,
+        ratio >= PULLBACK_TWO_THIRDS,
+    )
+
+
+def _latest_ma_from_close(closes, window: int) -> float | None:
+    valid = closes.dropna()
+    if len(valid) < window:
+        return None
+    return round(float(valid.tail(window).mean()), 2)
+
+
+def _compute_ma_bull_pullback_flags(
+    hist,
+    *,
+    window_days: int = PULLBACK_WINDOW_DAYS,
+    breakout_lookback_days: int = BREAKOUT_LOOKBACK_DAYS,
+) -> dict[str, bool]:
+    """
+    Compute four MA-bull pullback presets for the latest row in a price history.
+
+    low_high: latest close pullback depth from the recent low-to-high wave.
+    breakout: latest close pullback depth from start low to post-breakout high.
+    """
+    import pandas as pd
+
+    flags = _empty_pullback_flags()
+    if hist is None or getattr(hist, "empty", True):
+        return flags
+    if not {"close", "high", "low"}.issubset(hist.columns):
+        return flags
+
+    work = hist.copy()
+    if "date" in work.columns:
+        work = work.sort_values("date")
+    work = work.reset_index(drop=True)
+    closes = pd.to_numeric(work["close"], errors="coerce")
+    highs = pd.to_numeric(work["high"], errors="coerce")
+    lows = pd.to_numeric(work["low"], errors="coerce")
+
+    if closes.empty or pd.isna(closes.iloc[-1]):
+        return flags
+
+    ma5 = _latest_ma_from_close(closes, 5)
+    ma20 = _latest_ma_from_close(closes, 20)
+    ma60 = _latest_ma_from_close(closes, 60)
+    if ma5 is None or ma20 is None or ma60 is None or not (ma5 > ma20 > ma60):
+        return flags
+
+    latest_close = float(closes.iloc[-1])
+    wave = pd.DataFrame({"high": highs, "low": lows}).dropna().reset_index(drop=True)
+    if len(wave) < 2:
+        return flags
+
+    recent = wave.tail(window_days).reset_index(drop=True)
+    if len(recent) >= 2:
+        low_pos = int(recent["low"].idxmin())
+        high_after_low = recent.loc[low_pos:]
+        high_pos = int(high_after_low["high"].idxmax())
+        if high_pos > low_pos:
+            one_third, two_thirds = _pullback_depth_flags(
+                recent.loc[low_pos, "low"],
+                recent.loc[high_pos, "high"],
+                latest_close,
+            )
+            flags["ma_bull_pullback_low_high_1_3"] = one_third
+            flags["ma_bull_pullback_low_high_2_3"] = two_thirds
+
+    if breakout_lookback_days > 0 and len(wave) > breakout_lookback_days:
+        breakout_wave = wave.copy()
+        breakout_wave["prior_high"] = (
+            breakout_wave["high"]
+            .shift(1)
+            .rolling(breakout_lookback_days, min_periods=breakout_lookback_days)
+            .max()
+        )
+        recent_start = max(0, len(breakout_wave) - window_days)
+        recent_breakouts = breakout_wave.iloc[recent_start:]
+        candidates = recent_breakouts[
+            recent_breakouts["prior_high"].notna()
+            & (recent_breakouts["high"] > recent_breakouts["prior_high"])
+        ]
+        if not candidates.empty:
+            breakout_pos = int(candidates.index[0])
+            base_slice = breakout_wave.loc[recent_start:breakout_pos]
+            post_breakout_slice = breakout_wave.loc[breakout_pos:]
+            start_low = base_slice["low"].min()
+            post_breakout_high = post_breakout_slice["high"].max()
+            one_third, two_thirds = _pullback_depth_flags(
+                start_low,
+                post_breakout_high,
+                latest_close,
+            )
+            flags["ma_bull_pullback_breakout_1_3"] = one_third
+            flags["ma_bull_pullback_breakout_2_3"] = two_thirds
+
+    return flags
+
+
 async def _backfill_indicators(db: AsyncSession, target_date) -> int:
+    async with _maintenance_write_lock:
+        return await _backfill_indicators_unlocked(db, target_date)
+
+
+async def _backfill_indicators_unlocked(db: AsyncSession, target_date) -> int:
     """
     對 target_date 那天缺少延伸指標的股票補算並回寫 DB。
 
@@ -453,7 +592,7 @@ async def _backfill_indicators(db: AsyncSession, target_date) -> int:
         呼叫端可據此持續重跑直到回傳 0（見 main.py 冷啟動 backfill 迴圈）。
     """
     import pandas as pd
-    from sqlalchemy import update, and_
+    from sqlalchemy import update, and_, or_
 
     # 找出當天缺少 MA 或延伸指標的所有 ticker_ids
     missing_result = await db.execute(
@@ -464,12 +603,29 @@ async def _backfill_indicators(db: AsyncSession, target_date) -> int:
     )
     missing_tickers = [r[0] for r in missing_result.fetchall()]
 
-    # 另外找出 ma5 已存在但延伸指標缺失的股票
+    # 另外找出 ma5 已存在但延伸指標缺失的股票。
+    # Additive schema migrations create new nullable columns on old DBs; every
+    # derived screening field must be included here so startup backfill can
+    # repair existing latest rows without waiting for a new trading day.
     extended_missing_result = await db.execute(
         select(DailyPrice.ticker_id).where(
             DailyPrice.date == target_date,
             DailyPrice.ma5.is_not(None),
-            DailyPrice.avg_volume_20.is_(None),
+            or_(
+                DailyPrice.avg_volume_20.is_(None),
+                DailyPrice.avg_turnover_20.is_(None),
+                DailyPrice.lower_shadow.is_(None),
+                DailyPrice.lowest_lower_shadow_20.is_(None),
+                DailyPrice.ma20_curr_month_low.is_(None),
+                DailyPrice.ma20_prev_month_low.is_(None),
+                DailyPrice.wma10.is_(None),
+                DailyPrice.wma20.is_(None),
+                DailyPrice.wma60.is_(None),
+                DailyPrice.ma_bull_pullback_low_high_1_3.is_(None),
+                DailyPrice.ma_bull_pullback_low_high_2_3.is_(None),
+                DailyPrice.ma_bull_pullback_breakout_1_3.is_(None),
+                DailyPrice.ma_bull_pullback_breakout_2_3.is_(None),
+            ),
         )
     )
     extended_missing = [r[0] for r in extended_missing_result.fetchall()]
@@ -496,6 +652,7 @@ async def _backfill_indicators(db: AsyncSession, target_date) -> int:
             DailyPrice.ticker_id,
             DailyPrice.date,
             DailyPrice.open,
+            DailyPrice.high,
             DailyPrice.close,
             DailyPrice.low,
             DailyPrice.volume,
@@ -698,6 +855,28 @@ async def _backfill_indicators(db: AsyncSession, target_date) -> int:
             wma20 = round(float(weekly_closes.tail(20).mean()), 2) if nw >= 20 else None
             wma60 = round(float(weekly_closes.tail(60).mean()), 2) if nw >= 60 else None
 
+        # ---- 月度 MA20 最低點 (當月至今 vs 上個月整月) ----
+        # 「MA20 月度墊高」：當月(月初~target_date) MA20 最低值 高於 上個月整月 MA20 最低值。
+        # 以「欄位對欄位」規則 ma20_curr_month_low > ma20_prev_month_low 比較，引擎邏輯不用改。
+        ma20_curr_month_low = None
+        ma20_prev_month_low = None
+        if "date" in hist.columns and nc >= 20:
+            ma20_series = pd.to_numeric(hist["close"], errors="coerce").rolling(20).mean()
+            ma_dates = pd.to_datetime(hist["date"], errors="coerce")
+            mdf = pd.DataFrame({"d": ma_dates, "ma20": ma20_series}).dropna(subset=["d", "ma20"])
+            if not mdf.empty:
+                mdf["ym"] = mdf["d"].dt.to_period("M")
+                cur_p = pd.Period(target_date, freq="M")
+                prev_p = cur_p - 1
+                cur_low = mdf.loc[(mdf["ym"] == cur_p) & (mdf["d"].dt.date <= target_date), "ma20"].min()
+                prev_low = mdf.loc[mdf["ym"] == prev_p, "ma20"].min()
+                if pd.notna(cur_low):
+                    ma20_curr_month_low = round(float(cur_low), 2)
+                if pd.notna(prev_low):
+                    ma20_prev_month_low = round(float(prev_low), 2)
+
+        pullback_flags = _compute_ma_bull_pullback_flags(hist)
+
         # 回寫
         update_vals: dict = dict(
             ma5=ma5, ma10=ma10, ma20=ma20, ma60=ma60, rsi14=rsi14,
@@ -705,11 +884,16 @@ async def _backfill_indicators(db: AsyncSession, target_date) -> int:
             avg_turnover_20=avg_turnover_20,
             wma10=wma10, wma20=wma20, wma60=wma60,
             market_ok=market_ok,
+            **pullback_flags,
         )
         if lower_shadow_target is not None:
             update_vals["lower_shadow"] = lower_shadow_target
         if lowest_ls_20 is not None:
             update_vals["lowest_lower_shadow_20"] = lowest_ls_20
+        if ma20_curr_month_low is not None:
+            update_vals["ma20_curr_month_low"] = ma20_curr_month_low
+        if ma20_prev_month_low is not None:
+            update_vals["ma20_prev_month_low"] = ma20_prev_month_low
 
         await db.execute(
             update(DailyPrice)
@@ -797,7 +981,7 @@ async def _persist_fetched_history(db: AsyncSession, fallback_data: dict, target
                 open_p = _f(r.get("open"))
                 low = _f(r.get("low"))
                 vol = _i(r.get("volume"))
-                turnover = round(close * vol, 0) if (close and vol) else None
+                turnover = round(close * vol, 0) if (close is not None and vol is not None) else None
                 lower_shadow = None
                 if low is not None and open_p is not None:
                     lower_shadow = round(max(0.0, min(open_p, close) - low), 4)
@@ -884,7 +1068,14 @@ async def backfill_all_indicators(db: AsyncSession, max_dates: int = 30) -> int:
 
     result = await db.execute(
         select(DailyPrice.date)
-        .where(or_(DailyPrice.ma5.is_(None), DailyPrice.avg_volume_20.is_(None)))
+        .where(or_(
+            DailyPrice.ma5.is_(None),
+            DailyPrice.avg_volume_20.is_(None),
+            DailyPrice.ma_bull_pullback_low_high_1_3.is_(None),
+            DailyPrice.ma_bull_pullback_low_high_2_3.is_(None),
+            DailyPrice.ma_bull_pullback_breakout_1_3.is_(None),
+            DailyPrice.ma_bull_pullback_breakout_2_3.is_(None),
+        ))
         .distinct()
         .order_by(DailyPrice.date.desc())
         .limit(max_dates)

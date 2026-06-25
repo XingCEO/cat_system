@@ -3,6 +3,7 @@ TWSE Stock Filter - Database Configuration
 """
 import os
 from datetime import datetime
+from typing import Any
 from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
@@ -49,12 +50,23 @@ def _resolve_database_url() -> str:
 
 db_url = _resolve_database_url()
 
+
+def _engine_kwargs(url: str) -> dict[str, Any]:
+    """Return SQLAlchemy engine options for the selected database."""
+    kwargs: dict[str, Any] = {
+        "echo": settings.debug,
+        "future": True,
+    }
+    if url.startswith("sqlite"):
+        # Startup indicator backfills can overlap read-only chart/API traffic in
+        # local SQLite. Let aiosqlite wait for short write locks instead of
+        # surfacing transient "database is locked" errors to services.
+        kwargs["connect_args"] = {"timeout": 30}
+    return kwargs
+
+
 # Create async engine
-engine = create_async_engine(
-    db_url,
-    echo=settings.debug,
-    future=True
-)
+engine = create_async_engine(db_url, **_engine_kwargs(db_url))
 
 # Create async session factory
 async_session_maker = async_sessionmaker(
@@ -100,16 +112,23 @@ async def _migrate_existing_schema(conn):
     that were created by older app versions and would otherwise fail at runtime
     when newer ORM models select or insert these columns.
     """
+    bool_type = "BOOLEAN" if conn.dialect.name == "postgresql" else "INTEGER"
     daily_price_cols = [
         ("turnover",                  "REAL"),
         ("avg_volume_20",             "REAL"),
         ("avg_turnover_20",           "REAL"),
         ("lower_shadow",              "REAL"),
         ("lowest_lower_shadow_20",    "REAL"),
+        ("ma20_curr_month_low",       "REAL"),
+        ("ma20_prev_month_low",       "REAL"),
         ("wma10",                     "REAL"),
         ("wma20",                     "REAL"),
         ("wma60",                     "REAL"),
         ("market_ok",                 "INTEGER"),
+        ("ma_bull_pullback_low_high_1_3", bool_type),
+        ("ma_bull_pullback_low_high_2_3", bool_type),
+        ("ma_bull_pullback_breakout_1_3", bool_type),
+        ("ma_bull_pullback_breakout_2_3", bool_type),
     ]
     backtest_result_cols = [
         ("filter_conditions", "JSON"),

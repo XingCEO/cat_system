@@ -114,6 +114,45 @@ export default function StrategiesPage() {
         setShowModal(true);
     };
 
+    // 一鍵套用「MA20 月度墊高」：當月(至今)MA20最低 > 上月整月MA20最低
+    const applyMa20MonthlyLowPreset = () => {
+        const rules = {
+            logic: 'AND',
+            rules: [
+                {
+                    type: 'indicator',
+                    field: 'ma20_curr_month_low',
+                    operator: '>',
+                    target_type: 'field',
+                    target_value: 'ma20_prev_month_low',
+                },
+            ],
+            custom_formulas: [],
+        };
+        setForm(prev => ({ ...prev, name: prev.name.trim() || 'MA20 月度墊高（當月低 > 上月低）' }));
+        setRawJson(JSON.stringify(rules, null, 2));
+        setJsonError(false);
+    };
+
+    const applyMaBullPullbackPreset = (field: string, name: string) => {
+        const rules = {
+            logic: 'AND',
+            rules: [
+                {
+                    type: 'indicator',
+                    field,
+                    operator: '=',
+                    target_type: 'value',
+                    target_value: 1,
+                },
+            ],
+            custom_formulas: [],
+        };
+        setForm(prev => ({ ...prev, name: prev.name.trim() || name }));
+        setRawJson(JSON.stringify(rules, null, 2));
+        setJsonError(false);
+    };
+
     return (
         <div className="max-w-5xl mx-auto px-4 py-8">
             {/* Header */}
@@ -246,7 +285,54 @@ export default function StrategiesPage() {
                         </div>
 
                         <div className="flex flex-col gap-1.5">
-                            <label className="text-sm font-semibold text-muted-foreground">規則 JSON (進階)</label>
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <label className="text-sm font-semibold text-muted-foreground">規則 JSON (進階)</label>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 text-xs"
+                                    onClick={applyMa20MonthlyLowPreset}
+                                >
+                                    範本：MA20 月度墊高
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 text-xs"
+                                    onClick={() => applyMaBullPullbackPreset('ma_bull_pullback_low_high_1_3', '多頭回檔1/3（近60低高）')}
+                                >
+                                    低高1/3
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 text-xs"
+                                    onClick={() => applyMaBullPullbackPreset('ma_bull_pullback_low_high_2_3', '多頭回檔2/3（近60低高）')}
+                                >
+                                    低高2/3
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 text-xs"
+                                    onClick={() => applyMaBullPullbackPreset('ma_bull_pullback_breakout_1_3', '多頭回檔1/3（突破起漲）')}
+                                >
+                                    突破1/3
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 text-xs"
+                                    onClick={() => applyMaBullPullbackPreset('ma_bull_pullback_breakout_2_3', '多頭回檔2/3（突破起漲）')}
+                                >
+                                    突破2/3
+                                </Button>
+                            </div>
                             <textarea
                                 rows={8}
                                 className={`rounded-md border bg-background px-3 py-2 text-sm text-foreground font-mono resize-y focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${jsonError ? 'border-destructive' : 'border-input'}`}

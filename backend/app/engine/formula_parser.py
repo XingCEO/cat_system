@@ -28,8 +28,14 @@ ALLOWED_FIELDS = {
     "avg_turnover_20",
     "lower_shadow",
     "lowest_lower_shadow_20",
+    "ma20_curr_month_low",
+    "ma20_prev_month_low",
     "wma10", "wma20", "wma60",
     "market_ok",
+    "ma_bull_pullback_low_high_1_3",
+    "ma_bull_pullback_low_high_2_3",
+    "ma_bull_pullback_breakout_1_3",
+    "ma_bull_pullback_breakout_2_3",
 }
 
 # 允許的運算符號（移除 '.' 以禁止屬性/方法存取，避免安全風險）

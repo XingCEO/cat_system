@@ -32,6 +32,10 @@ def _make_extended_df():
         "lower_shadow":     [5.0, 3.0, 2.0],
         "lowest_lower_shadow_20": [4.0, 4.0, 3.0],
         "market_ok":    [1, 1, 0],
+        "ma_bull_pullback_low_high_1_3": [1, 0, 0],
+        "ma_bull_pullback_low_high_2_3": [0, 1, 0],
+        "ma_bull_pullback_breakout_1_3": [1, 0, 0],
+        "ma_bull_pullback_breakout_2_3": [0, 1, 0],
     })
 
 
@@ -173,6 +177,34 @@ class TestMarketOkCondition:
 
 # ─── Tests: 乖離條件 (deviation_ma20 <= 0.06) ──────────────────────────────
 
+class TestMaBullPullbackConditions:
+    def test_low_high_one_third_filter(self):
+        df = _make_extended_df()
+        mask = apply_rule(df, {
+            "field": "ma_bull_pullback_low_high_1_3",
+            "operator": "=",
+            "target_type": "value",
+            "target_value": 1,
+        })
+
+        assert mask.iloc[0]
+        assert not mask.iloc[1]
+        assert not mask.iloc[2]
+
+    def test_breakout_two_thirds_filter(self):
+        df = _make_extended_df()
+        mask = apply_rule(df, {
+            "field": "ma_bull_pullback_breakout_2_3",
+            "operator": "=",
+            "target_type": "value",
+            "target_value": 1,
+        })
+
+        assert not mask.iloc[0]
+        assert mask.iloc[1]
+        assert not mask.iloc[2]
+
+
 class TestDeviationCondition:
     def test_close_deviation_from_ma20(self):
         """(close - ma20) / ma20 <= 0.06"""
@@ -242,6 +274,18 @@ class TestFormulaParsereExtendedFields:
         ok, err = validate_formula("wma20 + 0")
         assert ok, f"Should be valid: {err}"
 
+    def test_ma_bull_pullback_fields_allowed(self):
+        from app.engine.formula_parser import validate_formula
+        fields = [
+            "ma_bull_pullback_low_high_1_3",
+            "ma_bull_pullback_low_high_2_3",
+            "ma_bull_pullback_breakout_1_3",
+            "ma_bull_pullback_breakout_2_3",
+        ]
+        for field in fields:
+            ok, err = validate_formula(f"{field} + 0")
+            assert ok, f"Should be valid: {field}: {err}"
+
     def test_ma_spread_formula_valid(self):
         from app.engine.formula_parser import validate_formula
         ok, err = validate_formula("(ma5 - ma60) / ma60")
@@ -279,6 +323,10 @@ class TestTrendPresetIntegration:
             "lower_shadow":     [3.0],
             "lowest_lower_shadow_20": [2.5],
             "market_ok":        [1],
+            "ma_bull_pullback_low_high_1_3": [1],
+            "ma_bull_pullback_low_high_2_3": [0],
+            "ma_bull_pullback_breakout_1_3": [1],
+            "ma_bull_pullback_breakout_2_3": [0],
         })
         # Custom formula columns
         df["vol_min"] = df["avg_volume_20"] * 1.5   # 45000
